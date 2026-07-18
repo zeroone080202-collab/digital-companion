@@ -331,19 +331,36 @@ function saveCompletedModules(value) {
 }
 
 const appCatalog = [
-  ["rail", "🚄", "기차예매", "#2878b8"],
-  ["air", "✈️", "항공예약", "#4b7bec"],
-  ["bank", "🏦", "한빛은행", "#168074"],
-  ["chat", "💬", "모두톡", "#fee500"],
-  ["delivery", "🛵", "바로배달", "#29b66f"],
-  ["shopping", "📦", "온쇼핑", "#e85d2a"],
-  ["taxi", "🚕", "바로택시", "#353535"],
-  ["health", "🏥", "건강예약", "#e84e5b"],
-  ["gov", "📄", "민원24＋", "#1769aa"],
+  ["rail", "🚄", "코레일톡", "#2878b8"],
+  ["air", "✈️", "항공권 예약", "#4b7bec"],
+  ["bank", "🏦", "KB스타뱅킹", "#168074"],
+  ["chat", "💬", "카카오톡", "#fee500"],
+  ["delivery", "🛵", "배달의민족", "#29b66f"],
+  ["shopping", "📦", "쿠팡", "#e85d2a"],
+  ["taxi", "🚕", "카카오 T", "#353535"],
+  ["health", "🏥", "병원 예약", "#e84e5b"],
+  ["gov", "📄", "정부24", "#1769aa"],
   ["map", "🗺️", "지도", "#45a65a"],
   ["message", "✉️", "문자", "#5e9bd6"],
   ["browser", "🌐", "인터넷", "#3078d6"],
+
 ];
+
+const entryGuides = {
+  ktx: { mode: "app", appId: "rail", appName: "코레일톡", command: "휴대전화 홈 화면에서 ‘코레일톡’ 앱을 찾아 한 번 누르세요.", note: "아이콘 아래에 ‘코레일톡’이라고 적혀 있는지 먼저 확인하세요." },
+  air: { mode: "web", appId: "browser", appName: "인터넷", query: "대한항공 항공권 예약", siteName: "대한항공 공식 홈페이지", domainHint: "koreanair.com", command: "홈 화면 아래쪽의 ‘인터넷’ 앱을 누르세요." },
+  hotel: { mode: "web", appId: "browser", appName: "인터넷", query: "부산 호텔 예약", siteName: "호텔 예약 검색 결과", domainHint: "예약 조건과 취소 가능 여부를 확인", command: "홈 화면 아래쪽의 ‘인터넷’ 앱을 누르세요." },
+  bank: { mode: "app", appId: "bank", appName: "사용 중인 은행 앱(연습에서는 KB스타뱅킹)", command: "홈 화면에서 ‘KB스타뱅킹’ 앱을 찾아 한 번 누르세요.", note: "실전에서는 본인이 거래하는 은행 앱 이름을 확인하세요." },
+  gov: { mode: "web", appId: "browser", appName: "인터넷", query: "정부24 주민등록등본", siteName: "정부24 공식 홈페이지", domainHint: "gov.kr", command: "홈 화면 아래쪽의 ‘인터넷’ 앱을 누르세요." },
+  hospital: { mode: "web", appId: "browser", appName: "인터넷", query: "가까운 병원 진료 예약", siteName: "병원 공식 예약 페이지", domainHint: "병원 이름과 주소 확인", command: "홈 화면 아래쪽의 ‘인터넷’ 앱을 누르세요." },
+  chat: { mode: "app", appId: "chat", appName: "카카오톡", command: "홈 화면에서 노란 말풍선 모양의 ‘카카오톡’ 앱을 찾아 한 번 누르세요.", note: "아이콘 모양만 보지 말고 아래의 앱 이름도 함께 읽으세요." },
+  video: { mode: "app", appId: "chat", appName: "카카오톡", command: "홈 화면에서 ‘카카오톡’ 앱을 찾아 한 번 누르세요.", note: "영상통화는 카카오톡 대화방 안에서 시작합니다." },
+  sms: { mode: "app", appId: "message", appName: "문자", command: "화면 아래쪽의 ‘문자’ 앱을 한 번 누르세요.", note: "봉투 또는 말풍선 모양과 ‘문자’라는 이름을 함께 확인하세요." },
+  delivery: { mode: "app", appId: "delivery", appName: "배달의민족", command: "홈 화면에서 ‘배달의민족’ 앱을 찾아 한 번 누르세요.", note: "실전에서는 평소 사용하는 배달 앱을 선택해도 됩니다." },
+  shopping: { mode: "app", appId: "shopping", appName: "쿠팡", command: "홈 화면에서 ‘쿠팡’ 앱을 찾아 한 번 누르세요.", note: "실전에서는 평소 사용하는 쇼핑 앱을 선택해도 됩니다." },
+  taxi: { mode: "app", appId: "taxi", appName: "카카오 T", command: "홈 화면에서 ‘카카오 T’ 앱을 찾아 한 번 누르세요.", note: "검은색 아이콘 아래의 ‘카카오 T’ 글자를 확인하세요." }
+};
+
 let state = {
   module: null,
   step: 0,
@@ -352,6 +369,7 @@ let state = {
   start: 0,
   data: {},
   lastEntry: null,
+  launcherStage: "home",
 };
 const $ = (s) => document.querySelector(s),
   $$ = (s) => [...document.querySelectorAll(s)];
@@ -432,6 +450,7 @@ function startModule(id) {
     start: Date.now(),
     data: {},
     lastEntry: null,
+    launcherStage: "home",
   };
   if (state.module.entry === "kiosk") {
     showView("practiceView");
@@ -440,39 +459,130 @@ function startModule(id) {
     showLauncher();
   }
 }
+function getEntryGuide() {
+  return entryGuides[state.module.id] || {
+    mode: "app",
+    appId: state.module.entry,
+    appName: "해당 앱",
+    command: "화면에서 필요한 앱 이름을 확인한 뒤 한 번 누르세요.",
+    note: "아이콘과 앱 이름을 함께 확인하세요."
+  };
+}
+
+function setLauncherInstructions(title, items, note = "") {
+  $("#launcherMission").textContent = title;
+  $("#launcherChecklist").innerHTML = items
+    .map((item, index) => `<li class="launcher-command ${index === 0 ? "current" : ""}"><span>${index + 1}</span><p>${item}</p></li>`)
+    .join("");
+  const safe = $("#launcherView .safe-box");
+  if (safe) safe.innerHTML = note ? `<b>확인하세요</b><br>${note}<br><small>교육용 화면이므로 실제 개인정보는 입력하지 않습니다.</small>` : "교육용 화면입니다. 실제 개인정보를 입력하지 마세요.";
+}
+
 function showLauncher() {
   showView("launcherView");
-  $("#launcherMission").textContent = state.module.goal;
-  $("#launcherChecklist").innerHTML = state.module.steps
-    .map((s, i) => `<li>${i === 0 ? "<b>지금:</b> " : ""}${s}</li>`)
-    .join("");
+  state.launcherStage = "home";
+  const guide = getEntryGuide();
+  $("#launcherTitle").textContent = `먼저 “${guide.appName}”을 여세요`;
+  setLauncherInstructions(guide.command, [
+    `휴대전화 화면에서 “${guide.appName}”이라는 이름을 찾으세요.`,
+    `찾았으면 그 아이콘을 손가락으로 한 번 누르세요.`,
+    guide.mode === "web" ? "인터넷이 열리면 다음 화면에서 검색어를 그대로 입력합니다." : "앱이 열리면 화면 안의 메뉴를 차례대로 연습합니다."
+  ], guide.note || (guide.mode === "web" ? "검색 결과에서는 공식 사이트 이름과 주소를 확인해야 합니다." : "앱 이름을 꼭 읽고 누르세요."));
+  renderLauncherHome(guide);
+}
+
+function renderLauncherHome(guide) {
+  const screen = $("#launcherView .phone-screen");
+  screen.className = "phone-screen home-screen";
+  screen.innerHTML = `<div class="phone-status"><span>오전 9:41</span><span>▮▮▮ 100%</span></div>
+    <div class="search-pill">🔍 앱 검색  ·  찾을 앱: ${guide.appName}</div>
+    <div id="appIcons" class="app-icons"></div>
+    <div class="phone-dock">
+      <button data-app="phone">☎<span>전화</span></button>
+      <button data-app="message">💬<span>문자</span></button>
+      <button data-app="browser">🌐<span>인터넷</span></button>
+      <button data-app="camera">📷<span>카메라</span></button>
+    </div>`;
   const icons = $("#appIcons");
-  icons.innerHTML = "";
   appCatalog.forEach(([id, emoji, name, color]) => {
     const b = document.createElement("button");
-    b.className = "app-icon";
+    b.className = `app-icon ${id === guide.appId ? "expected-app" : ""}`;
     b.dataset.app = id;
-    b.innerHTML = `<i style="background:${color};color:${id === "chat" ? "#222" : "#fff"}">${emoji}</i><span>${name}</span>`;
-    b.onclick = () => openApp(id);
+    b.setAttribute("aria-label", `${name} 앱 열기`);
+    b.innerHTML = `<i style="background:${color};color:${id === "chat" ? "#222" : "#fff"}">${emoji}</i><span>${name}</span>${id === guide.appId ? '<em class="tap-badge">여기를 누르세요</em>' : ''}`;
     icons.appendChild(b);
   });
 }
-function openApp(id) {
-  const expected = state.module.entry;
-  if (
-    id === expected ||
-    (expected === "browser" && id === "browser") ||
-    (expected === "message" && id === "message")
-  ) {
-    state.lastEntry = id;
-    showView("practiceView");
-    renderPractice();
-  } else {
-    wrong(
-      "이 연습에 필요한 앱이 아닙니다. 목표에 맞는 앱 이름을 다시 살펴보세요.",
-    );
-  }
+
+function renderBrowserSearch() {
+  state.launcherStage = "browser-search";
+  const guide = getEntryGuide();
+  $("#launcherTitle").textContent = "인터넷 검색창에 검색어를 입력하세요";
+  setLauncherInstructions(`검색창에 “${guide.query}”라고 입력하세요.`, [
+    "화면 위쪽의 흰색 검색창을 한 번 누르세요.",
+    `키보드로 “${guide.query}”라고 입력하세요.`,
+    "입력을 마쳤으면 파란색 ‘검색’ 버튼을 누르세요."
+  ], "주소창이나 검색창에 개인정보, 계좌 비밀번호를 입력하지 마세요.");
+  const screen = $("#launcherView .phone-screen");
+  screen.innerHTML = `<div class="phone-status"><span>오전 9:41</span><span>▮▮▮ 100%</span></div>
+    <div class="browser-bar"><button type="button" aria-label="뒤로">←</button><span>인터넷</span><button type="button" aria-label="메뉴">⋮</button></div>
+    <div class="browser-page">
+      <div class="browser-logo">검색</div>
+      <form id="webSearchForm" class="web-search-form">
+        <label for="webSearchInput">검색어 입력</label>
+        <div><input id="webSearchInput" autocomplete="off" placeholder="${guide.query}"/><button type="submit">검색</button></div>
+      </form>
+      <div class="type-exact"><b>그대로 입력하세요</b><span>${guide.query}</span></div>
+      <div id="webSearchResults" class="web-results"></div>
+    </div>`;
+  $("#webSearchInput").focus();
+  $("#webSearchForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const value = $("#webSearchInput").value.trim();
+    if (!value || !normalizeSearchText(value).includes(normalizeSearchText(guide.query).split(" ")[0])) {
+      wrong(`검색창에 “${guide.query}”라고 입력해 보세요.`);
+      return;
+    }
+    renderOfficialSearchResults(guide);
+  });
 }
+
+function renderOfficialSearchResults(guide) {
+  state.launcherStage = "browser-results";
+  $("#launcherTitle").textContent = "검색 결과에서 공식 사이트를 고르세요";
+  setLauncherInstructions(`“${guide.siteName}” 결과를 누르세요.`, [
+    `검색 결과 제목에서 “${guide.siteName}”을 찾으세요.`,
+    `주소 또는 설명에 “${guide.domainHint}”이 있는지 확인하세요.`,
+    "확인했으면 해당 검색 결과를 한 번 누르세요."
+  ], "광고라고 표시된 결과나 주소가 이상한 사이트는 누르지 않습니다.");
+  const results = $("#webSearchResults");
+  results.innerHTML = `<p class="result-count">검색 결과</p>
+    <button type="button" class="web-result official-result" data-open-official="true">
+      <small>공식 사이트 · ${guide.domainHint}</small>
+      <strong>${guide.siteName}</strong>
+      <span>${state.module.goal}을 진행할 수 있는 공식 화면입니다.</span>
+      <em>이 결과를 누르세요</em>
+    </button>
+    <button type="button" class="web-result decoy-result" data-open-decoy="true">
+      <small>광고 · 알 수 없는 주소</small><strong>빠른 예약·발급 대행</strong><span>개인정보 입력을 요구할 수 있습니다.</span>
+    </button>`;
+}
+
+function openApp(id) {
+  const guide = getEntryGuide();
+  if (id !== guide.appId) {
+    wrong(`지금은 “${guide.appName}”을 눌러야 합니다. 앱 아이콘 아래의 이름을 다시 확인하세요.`);
+    return;
+  }
+  state.lastEntry = id;
+  if (guide.mode === "web") {
+    renderBrowserSearch();
+    return;
+  }
+  showView("practiceView");
+  renderPractice();
+}
+
 function renderPractice() {
   const m = state.module;
   $("#practiceTitle").textContent = m.title;
@@ -1185,6 +1295,21 @@ document.addEventListener("click", (e) => {
   if (appButton && appButton.closest("#appIcons, .phone-dock")) {
     e.preventDefault();
     openApp(appButton.dataset.app);
+    return;
+  }
+
+  const officialResult = e.target.closest("[data-open-official]");
+  if (officialResult) {
+    e.preventDefault();
+    showView("practiceView");
+    renderPractice();
+    return;
+  }
+
+  const decoyResult = e.target.closest("[data-open-decoy]");
+  if (decoyResult) {
+    e.preventDefault();
+    wrong("이 결과는 ‘광고’이며 공식 사이트 주소가 아닙니다. 위의 공식 사이트 결과를 누르세요.");
     return;
   }
 
