@@ -1246,3 +1246,91 @@ select:focus-visible {
     flex: 1 1 120px;
   }
 }
+
+/* Clear step-by-step guide */
+.command-box {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 14px;
+  align-items: start;
+  margin: 16px 0 18px;
+}
+.command-number {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #0b4d89;
+  color: #fff;
+  font-size: 1.5rem;
+  font-weight: 900;
+}
+.command-caption {
+  margin: 0 0 4px;
+  color: #586677;
+  font-weight: 800;
+}
+.command-box h2 { margin: 0; line-height: 1.38; }
+.exact-steps { display: grid; gap: 10px; margin: 10px 0 18px; }
+.exact-step {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  background: #f3f7fc;
+  border: 1px solid #dce6f1;
+  border-radius: 13px;
+}
+.exact-step span {
+  width: 30px; height: 30px; display:grid; place-items:center;
+  border-radius: 50%; background:#d9eaff; color:#0b4d89; font-weight:900;
+}
+.exact-step p { margin: 1px 0 0; font-weight: 750; line-height: 1.48; }
+.why-box { padding: 14px; border-left: 5px solid #f3b61f; background:#fff9e8; border-radius: 10px; }
+.why-box b { display:block; margin-bottom:4px; }
+.why-box p { margin:0; }
+.practice-tip { margin:14px 0 0; color:#0b4d89; font-weight:800; }
+.target-control { position:relative; outline: 4px solid #ffcc3e !important; outline-offset: 3px; animation: guidePulse 1.35s infinite; }
+.finger { display:inline-block; margin-right:4px; animation: fingerBounce .8s infinite alternate; }
+@keyframes guidePulse { 50% { outline-color:#ff7a00; box-shadow:0 0 0 7px rgba(255,178,0,.18); } }
+@keyframes fingerBounce { to { transform: translateY(-4px); } }
+
+/* Realistic rail booking simulator */
+.rail-page { background:#f2f4f7; min-height:540px; padding:18px; color:#1a2430; }
+.rail-nav { display:flex; gap:30px; padding:14px 18px; background:#fff; border-bottom:1px solid #d6dce3; }
+.rail-nav b { color:#1554a0; }
+.rail-tabs { display:flex; margin:18px 0 0; }
+.rail-tabs button { flex:1; padding:14px; border:1px solid #cfd7e1; background:#fff; font-weight:800; }
+.rail-tabs .active { color:#fff; background:#1762ad; border-color:#1762ad; }
+.rail-search-card { background:#fff; border:1px solid #ced7e1; border-radius:4px; padding:22px; box-shadow:0 4px 12px rgba(0,0,0,.06); }
+.route-row { display:grid; grid-template-columns:1fr 58px 1fr; gap:12px; align-items:center; }
+.station-box { min-height:110px; padding:16px 20px; text-align:left; border:1px solid #b8c4d0; background:#fff; border-radius:4px; }
+.station-box small,.station-box span { display:block; color:#68788a; }
+.station-box strong { display:block; margin:5px 0; font-size:2rem; }
+.swap-route { width:52px;height:52px;border-radius:50%;font-size:1.4rem;background:#eef4fb;border:1px solid #b9c8d9; }
+.booking-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:18px; }
+.booking-grid label span { display:block; margin-bottom:7px; font-weight:800; }
+.booking-grid input,.booking-grid select { width:100%; min-height:50px; padding:10px; border:1px solid #b9c5d1; background:#fff; }
+.rail-search-button { width:100%; margin-top:18px; padding:17px; border:0; border-radius:4px; background:#155ca8; color:#fff; font-size:1.2rem; font-weight:900; }
+.rail-notice { margin-top:12px; padding:12px; background:#fff; border:1px solid #d7dee7; color:#5e6c7b; }
+.result-route { display:flex; align-items:center; gap:14px; background:#fff; padding:18px; border:1px solid #d7dde5; }
+.result-route b { font-size:1.35rem; }.result-route small { margin-left:auto; color:#5d6b7a; }
+.result-legend { display:flex; gap:10px; padding:12px 0; }.result-legend span { padding:6px 10px; background:#eaf2fb; border-radius:20px; }
+.train-list { display:grid; gap:10px; }
+.train-card { display:grid; grid-template-columns:1fr 1fr 1.15fr 1fr 1.15fr 120px; align-items:center; gap:10px; background:#fff; border:1px solid #d5dde6; padding:16px; }
+.train-card>div { display:flex; flex-direction:column; }.train-card small { color:#6a7785; margin-top:4px; }.train-card button { padding:12px 8px; background:#fff; border:1px solid #1762ad; color:#1762ad; font-weight:900; }
+.train-card.target-row { background:#fffdf3; }
+.journey-line { text-align:center; border-bottom:2px solid #aab8c6; }.journey-line span { transform:translateY(10px); background:#fff; padding:0 8px; font-size:.85rem; color:#687788; }
+.car-tabs { display:flex; gap:6px; overflow:auto; padding-bottom:12px; }.car-tabs button { min-width:90px; padding:12px; border:1px solid #bdc8d3; background:#fff; }.car-tabs .active { background:#1762ad;color:#fff; }
+.seat-guide { display:flex; flex-wrap:wrap; gap:12px; align-items:center; background:#fff; padding:12px; }.seat-guide span { width:24px;height:24px;border:1px solid #9eacba;display:inline-block;margin-left:8px; }.selected-box{background:#1762ad}.booked-box{background:#c8ced6}.direction{text-align:center;font-weight:900;padding:12px;}
+.row-number { width:28px; text-align:center; color:#657382; }
+.selected-seat-bar { position:sticky; bottom:0; display:grid; grid-template-columns:1fr 1fr 180px; align-items:center; gap:12px; padding:14px; background:#fff; border-top:1px solid #cad3dd; }.selected-seat-bar .rail-search-button { margin:0; }
+.booking-summary,.payment-panel { max-width:720px; margin:auto; background:#fff; border:1px solid #d5dde6; padding:24px; }
+.summary-title { display:flex; justify-content:center; gap:20px; font-size:1.7rem; padding-bottom:18px; border-bottom:1px solid #d7dee6; }
+.booking-summary dl { margin:0; }.booking-summary dl div { display:grid; grid-template-columns:150px 1fr; padding:14px 0; border-bottom:1px solid #edf0f3; }.booking-summary dt { color:#667687; }.booking-summary dd { margin:0; font-weight:900; }.booking-summary .price { color:#d33; font-size:1.3rem; }
+.agreement { display:flex; gap:10px; margin-top:18px; padding:14px; background:#f5f7fa; font-weight:800; }
+.payment-method { display:flex; justify-content:space-between; padding:18px; border:2px solid #1762ad; }.payment-total { display:flex;justify-content:space-between;align-items:end;padding:24px 0;border-bottom:1px solid #d7dee6;}.payment-total strong{font-size:2rem;color:#d33}.safe-payment{margin-top:18px;padding:14px;background:#eef7f1;color:#17613a;font-weight:800}
+.mobile-ticket { max-width:520px; margin:10px auto; background:#fff; border-radius:14px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,.15); }.ticket-brand{padding:16px;background:#165da8;color:#fff;font-weight:900}.ticket-route{display:grid;grid-template-columns:1fr 40px 1fr;align-items:center;text-align:center;padding:24px}.ticket-route small,.ticket-route strong,.ticket-route b{display:block}.ticket-route strong{font-size:1.6rem}.ticket-details{display:flex;justify-content:space-around;padding:15px;background:#f3f6f9}.qr-sim{text-align:center;font-size:3rem;line-height:1;padding:25px}.mobile-ticket p{text-align:center;padding:0 16px 20px;color:#687788}
+@media (max-width:900px){.booking-grid{grid-template-columns:1fr 1fr}.train-card{grid-template-columns:1fr 1fr}.train-card button{grid-column:1/-1}.route-row{grid-template-columns:1fr}.swap-route{justify-self:center}.selected-seat-bar{grid-template-columns:1fr}.practice-layout{grid-template-columns:1fr}.mission-panel.sticky{position:static}}
