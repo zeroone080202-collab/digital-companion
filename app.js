@@ -1,144 +1,944 @@
-(() => {
-  'use strict';
-  const $ = (s, r=document) => r.querySelector(s);
-  const home = $('#home');
-  const practice = $('#practice');
-  const sim = $('#simulator');
-  const toastEl = $('#toast');
-  const state = { mode:null, step:0, mistakes:0, hints:0, font:18, data:{} };
-
-  const flows = {
-    ktx:{
-      category:'철도 승차권 예매 연습', title:'KTX 승차권 예매',
-      guides:[
-        ['출발역과 도착역 선택','출발역과 도착역을 확인한 뒤 날짜와 시간을 선택하세요.','파란색 조회 버튼을 누르기 전 출발역과 도착역이 서로 다른지 확인하세요.'],
-        ['열차 선택','조회된 열차 중 원하는 출발시간의 예약 버튼을 누르세요.','출발시간과 도착시간, 일반실 운임을 함께 확인하세요.'],
-        ['좌석 선택','호차를 확인하고 회색이 아닌 좌석을 선택하세요.','창가 좌석은 A 또는 D입니다. 회색 좌석은 이미 예약된 좌석입니다.'],
-        ['예약 내용 확인','구간, 날짜, 열차, 호차, 좌석을 다시 확인하세요.','틀린 내용이 있으면 처음부터 버튼으로 다시 연습할 수 있습니다.'],
-        ['승차권 확인','모의 모바일 승차권에서 출발역·시간·좌석을 확인하세요.','실제 탑승 전에도 같은 항목을 반드시 확인하세요.']
-      ]
-    },
-    metro:{
-      category:'역사 발매기 연습', title:'서울 지하철 1회용 교통카드',
-      guides:[
-        ['1회용 교통카드 선택','발매기 첫 화면에서 1회용 교통카드 메뉴를 누르세요.','화면 왼쪽의 파란색 1회용 교통카드 버튼을 찾으세요.'],
-        ['도착역 선택','목적지 역명을 검색하거나 화면의 역 버튼을 누르세요.','이번 연습에서는 강남역을 선택합니다.'],
-        ['이용 인원 선택','성인 1명을 선택하세요.','성인 1명 버튼을 누르세요.'],
-        ['운임 확인','운임과 1회용 카드 보증금 500원을 확인하세요.','총 결제금액을 읽은 뒤 확인 버튼을 누르세요.'],
-        ['결제 방법 선택','현금 또는 카드 결제 방법을 선택하세요.','실제 기기에서는 지원하는 결제 방식이 기기마다 다를 수 있습니다.'],
-        ['카드 받기','발급구에서 나온 1회용 교통카드를 받으세요.','화면 아래 카드 발급구 위치를 확인하세요.'],
-        ['개찰구 통과','개찰구 단말기에 카드 한 장을 대세요.','교통카드 표시가 있는 단말기에 한 장만 접촉하세요.'],
-        ['보증금 환급','도착역 환급기에 카드를 넣고 보증금을 받으세요.','1회용 카드는 버리지 말고 환급기에 넣으세요.']
-      ]
-    },
-    gtx:{
-      category:'GTX-A 이용 연습', title:'GTX-A 1회용 교통카드 이용',
-      guides:[
-        ['1회용 교통카드 선택','발매기에서 1회용 교통카드 메뉴를 선택하세요.','GTX-A도 좌석 예약이 아니라 교통카드 방식입니다.'],
-        ['도착역 선택','운정중앙에서 서울역으로 이동하도록 서울역을 선택하세요.','서울역 버튼을 누르세요.'],
-        ['이용 인원 선택','성인 1명을 선택하세요.','성인 1명 버튼을 누르세요.'],
-        ['운임 확인','구간 운임과 보증금 500원을 확인하세요.','운정중앙~서울역 성인 평일 운임을 확인하세요.'],
-        ['결제 방법 선택','현금 또는 카드 결제를 선택하세요.','실제 기기 지원 방식은 역사별 기기에 따라 다를 수 있습니다.'],
-        ['카드 받기','발급구에서 1회용 교통카드를 받으세요.','카드를 두고 가지 않도록 발급구를 확인하세요.'],
-        ['개찰구 통과','단말기에 카드 한 장을 접촉하세요.','여러 장을 겹쳐 대지 마세요.'],
-        ['보증금 환급','하차 후 환급기에 카드를 넣으세요.','카드가 훼손되면 보증금을 돌려받지 못할 수 있습니다.']
-      ]
-    }
+const modules = [
+  {
+    id: "ktx",
+    cat: "transport",
+    icon: "🚄",
+    title: "KTX 기차표 예매",
+    desc: "앱 찾기부터 열차 조회, 호차·좌석 선택, 승차권 확인까지",
+    goal: "서울역→부산역, 오전 열차, 창가 좌석 예매",
+    entry: "rail",
+    steps: [
+      "앱 찾기",
+      "여정 입력",
+      "열차 선택",
+      "좌석 선택",
+      "예약 확인",
+      "승차권 보기",
+    ],
+  },
+  {
+    id: "metro",
+    cat: "transport",
+    icon: "🚇",
+    title: "지하철 1회용 카드",
+    desc: "역 발매기에서 목적지 선택, 요금 투입, 카드 수령까지",
+    goal: "서울역에서 잠실역 가는 1회용 교통카드 발급",
+    entry: "kiosk",
+    steps: [
+      "기기 시작",
+      "1회용 카드",
+      "목적지",
+      "인원·운임",
+      "결제",
+      "카드 수령",
+    ],
+  },
+  {
+    id: "gtx",
+    cat: "transport",
+    icon: "🚆",
+    title: "GTX-A 이용",
+    desc: "노선 찾기, 1회용 카드 발급, 개찰구 태그와 환급",
+    goal: "운정중앙역에서 서울역까지 GTX-A 이용",
+    entry: "kiosk",
+    steps: ["노선 확인", "목적지", "운임 확인", "카드 발급", "개찰구", "환급"],
+  },
+  {
+    id: "air",
+    cat: "transport",
+    icon: "✈️",
+    title: "비행기표 예매",
+    desc: "인터넷 또는 앱에서 항공편 검색, 시간·좌석 선택, 예약 확인",
+    goal: "인천→제주 왕복 항공권과 통로 좌석 예약",
+    entry: "air",
+    steps: ["앱 찾기", "여정 입력", "항공편", "승객 정보", "좌석", "예약 확인"],
+  },
+  {
+    id: "hotel",
+    cat: "transport",
+    icon: "🏨",
+    title: "호텔 예약",
+    desc: "지역과 날짜를 검색하고 객실·취소 조건을 확인해 예약",
+    goal: "부산 1박, 성인 2명, 무료 취소 객실 예약",
+    entry: "browser",
+    steps: [
+      "인터넷 열기",
+      "검색",
+      "날짜·인원",
+      "객실 선택",
+      "조건 확인",
+      "예약",
+    ],
+  },
+  {
+    id: "bank",
+    cat: "money",
+    icon: "🏦",
+    title: "은행 계좌 송금",
+    desc: "은행 앱 찾기, 이체 메뉴, 계좌·금액·받는 분 확인",
+    goal: "김민수에게 30,000원 송금하고 이름 재확인",
+    entry: "bank",
+    steps: [
+      "은행 앱 찾기",
+      "이체 선택",
+      "계좌 입력",
+      "금액 입력",
+      "받는 분 확인",
+      "완료",
+    ],
+  },
+  {
+    id: "atm",
+    cat: "money",
+    icon: "💳",
+    title: "ATM 현금 출금",
+    desc: "카드 넣기, 비밀번호, 금액 선택, 카드·현금 회수",
+    goal: "ATM에서 50,000원을 출금하고 카드 먼저 받기",
+    entry: "kiosk",
+    steps: ["카드 투입", "출금 선택", "비밀번호", "금액", "확인", "회수"],
+  },
+  {
+    id: "gov",
+    cat: "money",
+    icon: "📄",
+    title: "정부 민원서류 발급",
+    desc: "인터넷 검색부터 로그인, 주민등록등본 신청·출력까지",
+    goal: "정부 민원 사이트에서 주민등록등본 1부 발급",
+    entry: "browser",
+    steps: [
+      "인터넷 열기",
+      "공식 사이트 찾기",
+      "민원 검색",
+      "본인 확인",
+      "내용 선택",
+      "발급",
+    ],
+  },
+  {
+    id: "hospital",
+    cat: "life",
+    icon: "🏥",
+    title: "병원 예약·무인접수",
+    desc: "병원 검색, 진료과·시간 예약 후 현장 접수기 이용",
+    goal: "내과 오전 진료를 예약하고 현장 접수표 받기",
+    entry: "browser",
+    steps: [
+      "병원 찾기",
+      "진료과",
+      "날짜·시간",
+      "예약 확인",
+      "접수기",
+      "접수표",
+    ],
+  },
+  {
+    id: "chat",
+    cat: "communication",
+    icon: "💬",
+    title: "메신저 연락하기",
+    desc: "메신저 앱을 찾아 대화방 열기, 문자와 사진 보내기",
+    goal: "딸에게 “잘 도착했다”고 보내고 사진 1장 전송",
+    entry: "chat",
+    steps: ["앱 찾기", "연락처 찾기", "메시지", "사진 선택", "전송", "확인"],
+  },
+  {
+    id: "video",
+    cat: "communication",
+    icon: "📹",
+    title: "영상통화",
+    desc: "대화방에서 영상통화를 걸고 카메라·마이크 조절",
+    goal: "가족에게 영상통화를 걸고 카메라를 한 번 전환",
+    entry: "chat",
+    steps: ["앱 찾기", "대화방", "영상통화", "연결", "카메라 전환", "종료"],
+  },
+  {
+    id: "sms",
+    cat: "communication",
+    icon: "🛡️",
+    title: "수상한 문자 판별",
+    desc: "문자 앱을 열어 택배·금융 사칭 링크의 위험을 확인",
+    goal: "문자 5개 중 수상한 문자를 골라 링크를 누르지 않기",
+    entry: "message",
+    steps: ["문자 앱", "메시지 확인", "위험 표시", "판단", "신고·삭제", "완료"],
+  },
+  {
+    id: "food",
+    cat: "life",
+    icon: "🍔",
+    title: "음식점 키오스크",
+    desc: "매장·포장, 메뉴·옵션, 주문 확인, 카드 결제까지",
+    goal: "불고기버거 세트를 포장 주문하고 카드 결제",
+    entry: "kiosk",
+    steps: ["시작", "매장·포장", "메뉴", "옵션", "주문 확인", "결제"],
+  },
+  {
+    id: "delivery",
+    cat: "life",
+    icon: "🛵",
+    title: "배달 음식 주문",
+    desc: "배달 앱 찾기, 가게·메뉴·주소·결제방법 확인",
+    goal: "집 주소로 김밥 2줄을 주문하고 요청사항 입력",
+    entry: "delivery",
+    steps: ["앱 찾기", "주소 확인", "가게", "메뉴·수량", "결제", "주문 확인"],
+  },
+  {
+    id: "shopping",
+    cat: "life",
+    icon: "📦",
+    title: "온라인 물건 주문",
+    desc: "인터넷 쇼핑 앱에서 검색, 옵션·배송지·최종금액 확인",
+    goal: "생수 2L 6개를 검색해 배송지 확인 후 주문",
+    entry: "shopping",
+    steps: ["앱 찾기", "상품 검색", "옵션", "장바구니", "배송지", "결제 확인"],
+  },
+  {
+    id: "taxi",
+    cat: "transport",
+    icon: "🚕",
+    title: "택시 호출",
+    desc: "지도에서 현재 위치와 목적지를 확인하고 차량 호출",
+    goal: "현재 위치에서 서울역까지 일반 택시 호출",
+    entry: "taxi",
+    steps: ["앱 찾기", "현재 위치", "목적지", "차종·요금", "호출", "차량 확인"],
+  },
+];
+const appCatalog = [
+  ["rail", "🚄", "기차예매", "#2878b8"],
+  ["air", "✈️", "항공예약", "#4b7bec"],
+  ["bank", "🏦", "한빛은행", "#168074"],
+  ["chat", "💬", "모두톡", "#fee500"],
+  ["delivery", "🛵", "바로배달", "#29b66f"],
+  ["shopping", "📦", "온쇼핑", "#e85d2a"],
+  ["taxi", "🚕", "바로택시", "#353535"],
+  ["health", "🏥", "건강예약", "#e84e5b"],
+  ["gov", "📄", "민원24＋", "#1769aa"],
+  ["map", "🗺️", "지도", "#45a65a"],
+  ["message", "✉️", "문자", "#5e9bd6"],
+  ["browser", "🌐", "인터넷", "#3078d6"],
+];
+let state = {
+  module: null,
+  step: 0,
+  mistakes: 0,
+  hints: 0,
+  start: 0,
+  data: {},
+  lastEntry: null,
+};
+const $ = (s) => document.querySelector(s),
+  $$ = (s) => [...document.querySelectorAll(s)];
+function showView(id) {
+  $$(".view").forEach((v) => v.classList.remove("active"));
+  $("#" + id).classList.add("active");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+function renderHome(cat = "all") {
+  const grid = $("#moduleGrid");
+  grid.innerHTML = "";
+  modules
+    .filter((m) => cat === "all" || m.cat === cat)
+    .forEach((m) => {
+      const b = document.createElement("button");
+      b.className = "module-card";
+      b.innerHTML = `<span class="module-icon">${m.icon}</span><h3>${m.title}</h3><p>${m.desc}</p><span class="goal">실전 목표: ${m.goal}</span>`;
+      b.onclick = () => startModule(m.id);
+      grid.appendChild(b);
+    });
+  $("#moduleCount").textContent = modules.length + "개";
+  $("#completeCount").textContent =
+    JSON.parse(localStorage.getItem("digital-completed") || "[]").length + "개";
+}
+function startModule(id) {
+  state = {
+    module: modules.find((m) => m.id === id),
+    step: 0,
+    mistakes: 0,
+    hints: 0,
+    start: Date.now(),
+    data: {},
+    lastEntry: null,
   };
-
-  function escapeHtml(v=''){return String(v).replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[m]))}
-  function money(n){return Number(n).toLocaleString('ko-KR')+'원'}
-  function toast(msg){toastEl.textContent=msg;toastEl.classList.add('show');setTimeout(()=>toastEl.classList.remove('show'),1900)}
-  function speak(text){if(!('speechSynthesis' in window))return toast('이 브라우저는 음성 안내를 지원하지 않습니다.');speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='ko-KR';u.rate=.84;speechSynthesis.speak(u)}
-  function mistake(msg){state.mistakes++;$('#mistakes').textContent=state.mistakes;toast(msg)}
-  function currentFlow(){return flows[state.mode]}
-  function updateGuide(){const f=currentFlow(), g=f.guides[state.step];$('#practice-category').textContent=f.category;$('#practice-title').textContent=f.title;$('#guide-title').textContent=g[0];$('#guide-text').textContent=g[1];$('#hint-box').textContent=g[2];$('#hint-box').classList.add('hidden');$('#mistakes').textContent=state.mistakes;$('#hints').textContent=state.hints;const pct=((state.step+1)/f.guides.length)*100;$('#progress-bar').style.width=pct+'%';$('#progress-text').textContent=`${state.step+1}단계 / ${f.guides.length}단계`}
-  function start(mode){state.mode=mode;state.step=0;state.mistakes=0;state.hints=0;state.data={};home.classList.add('hidden');practice.classList.remove('hidden');render();window.scrollTo({top:0,behavior:'smooth'})}
-  function next(){const max=currentFlow().guides.length-1;if(state.step<max){state.step++;render()}else complete()}
-  function complete(){toast('연습을 완료했습니다.');setTimeout(()=>{practice.classList.add('hidden');home.classList.remove('hidden');state.mode=null;window.scrollTo({top:0,behavior:'smooth'})},1000)}
-  function render(){updateGuide();if(state.mode==='ktx')renderKtx();else renderMachine(state.mode==='gtx')}
-
-  function railShell(body, active='승차권 예매'){
-    return `<div class="rail-window">
-      <div class="rail-brandbar"><div class="rail-brand"><i></i><span>코레일 연습</span></div><div class="rail-util"><span>로그인</span><span>승차권 확인</span><span>고객센터</span></div></div>
-      <div class="rail-nav"><span class="${active==='승차권 예매'?'active':''}">승차권 예매</span><span>승차권 확인</span><span>예약승차권 조회/취소</span><span>고객센터</span></div>
-      <div class="rail-body">${body}</div>
-    </div>`
+  if (state.module.entry === "kiosk") {
+    showView("practiceView");
+    renderPractice();
+  } else {
+    showLauncher();
   }
-
-  function renderKtx(){
-    if(state.step===0){
-      const today=new Date();today.setDate(today.getDate()+1);const d=today.toISOString().slice(0,10);
-      sim.innerHTML=railShell(`<h3 class="rail-title">승차권 예매</h3><p class="rail-sub">출발역과 도착역, 날짜와 시간을 선택하세요.</p>
-        <div class="booking-box">
-          <div class="booking-row"><div class="booking-label">여정</div><div class="booking-control"><div class="station-select">
-            <div class="station-field"><label>출발</label><select id="from"><option>서울</option><option>용산</option><option>광명</option><option>대전</option><option>동대구</option><option>부산</option></select></div>
-            <button class="swap-btn" data-action="swap">⇄</button>
-            <div class="station-field"><label>도착</label><select id="to"><option>부산</option><option>동대구</option><option>대전</option><option>광명</option><option>용산</option><option>서울</option></select></div>
-          </div></div></div>
-          <div class="booking-row"><div class="booking-label">출발일시</div><div class="booking-control"><div class="date-time-grid"><input id="date" type="date" value="${d}"><select id="hour"><option>06시 이후</option><option>08시 이후</option><option>10시 이후</option><option>12시 이후</option></select><select id="people"><option>어른 1명</option><option>어른 2명</option></select></div></div></div>
-          <div class="booking-row"><div class="booking-label">열차 종류</div><div class="booking-control"><label><input type="radio" checked> KTX·KTX-산천</label>&nbsp;&nbsp;<label><input type="radio"> 전체 열차</label></div></div>
-        </div><div class="rail-actions"><button class="primary" data-action="ktx-search">조회하기</button></div>`);return;
-    }
-    if(state.step===1){
-      const trains=[['KTX 101','07:27','10:03','2시간 36분','59,800'],['KTX 117','09:58','12:41','2시간 43분','59,800'],['KTX 123','11:00','13:38','2시간 38분','59,800'],['KTX 135','13:47','16:25','2시간 38분','59,800']];
-      sim.innerHTML=railShell(`<h3 class="rail-title">열차 조회 결과</h3><p class="rail-sub">원하는 열차의 예약 버튼을 누르세요.</p><table class="train-list"><thead><tr><th>열차</th><th>출발</th><th>도착</th><th>소요시간</th><th>일반실</th><th>예약</th></tr></thead><tbody>${trains.map(r=>`<tr><td><strong>${r[0]}</strong></td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td><td>${r[4]}원</td><td><button class="reserve-btn" data-train='${JSON.stringify({no:r[0],dep:r[1],arr:r[2],duration:r[3],fare:r[4]})}'>예약</button></td></tr>`).join('')}</tbody></table>`);return;
-    }
-    if(state.step===2){
-      const occ=['1B','2C','3D','4A','5B','6C','7A'];
-      sim.innerHTML=railShell(`<h3 class="rail-title">좌석 선택</h3><p class="rail-sub">원하는 호차와 좌석을 선택하세요.</p><div class="seat-page"><div class="car-tabs">${[1,2,3,4,5].map(n=>`<button class="${n===1?'active':''}" data-car="${n}">${n}호차</button>`).join('')}</div><div class="seat-map"><div class="train-direction">열차 진행 방향 →</div>${Array.from({length:8},(_,i)=>i+1).map(r=>`<div class="seat-row"><button class="seat window ${occ.includes(r+'A')?'occupied':''}" ${occ.includes(r+'A')?'disabled':''} data-seat="${r}A">${r}A</button><button class="seat ${occ.includes(r+'B')?'occupied':''}" ${occ.includes(r+'B')?'disabled':''} data-seat="${r}B">${r}B</button><span class="aisle">통로</span><button class="seat ${occ.includes(r+'C')?'occupied':''}" ${occ.includes(r+'C')?'disabled':''} data-seat="${r}C">${r}C</button><button class="seat window ${occ.includes(r+'D')?'occupied':''}" ${occ.includes(r+'D')?'disabled':''} data-seat="${r}D">${r}D</button></div>`).join('')}<div class="legend"><span><i></i>선택 가능</span><span><i class="l-selected"></i>선택 좌석</span><span><i class="l-occupied"></i>예약 완료</span></div></div></div>`);return;
-    }
-    if(state.step===3){
-      const d=state.data;
-      sim.innerHTML=railShell(`<h3 class="rail-title">예약 내용 확인</h3><p class="rail-sub">결제 전에 내용을 다시 확인하세요.</p><div class="summary-card"><div class="summary-line"><span>구간</span><strong>${escapeHtml(d.from)} → ${escapeHtml(d.to)}</strong></div><div class="summary-line"><span>출발일</span><strong>${escapeHtml(d.date)}</strong></div><div class="summary-line"><span>열차</span><strong>${escapeHtml(d.train.no)} · ${escapeHtml(d.train.dep)} 출발</strong></div><div class="summary-line"><span>좌석</span><strong>${d.car||1}호차 ${escapeHtml(d.seat)}</strong></div><div class="summary-line"><span>운임</span><strong>${d.train.fare}원</strong></div></div><div class="rail-actions"><button class="primary" data-action="next">모의 결제 완료</button></div>`);return;
-    }
-    const d=state.data;
-    sim.innerHTML=railShell(`<div class="mobile-ticket"><div class="ticket-top"><strong>모바일 승차권</strong><span>교육용</span></div><div class="ticket-route"><strong>${escapeHtml(d.from)}</strong><i></i><strong>${escapeHtml(d.to)}</strong></div><div class="ticket-data"><div><small>출발일</small><strong>${escapeHtml(d.date)}</strong></div><div><small>열차</small><strong>${escapeHtml(d.train.no)}</strong></div><div><small>출발시간</small><strong>${escapeHtml(d.train.dep)}</strong></div><div><small>호차</small><strong>${d.car||1}호차</strong></div><div><small>좌석</small><strong>${escapeHtml(d.seat)}</strong></div><div><small>운임</small><strong>${d.train.fare}원</strong></div></div><div class="barcode"></div><div class="rail-actions" style="padding-bottom:22px"><button class="primary" data-action="finish">승차권 확인 완료</button></div></div>`);
-  }
-
-  function kioskShell(body,gtx){
-    return `<div class="kiosk-room"><aside class="reference-card"><img src="assets/real-ticket-kiosk-reference.png" alt="실제 교통카드 키오스크 참고 사진"><p>제공된 실제 기기 사진을 참고한 교육용 모의 발매기입니다.</p></aside><div class="ticket-kiosk"><div class="kiosk-sign">${gtx?'GTX-A 교통카드 발매기':'교통카드 키오스크'}<small>TICKET KIOSK</small></div><div class="screen-bezel"><div class="ticket-screen"><div class="ticket-screen-head"><strong>${gtx?'GTX-A 1회용 교통카드':'서울 지하철 승차권 발매'}</strong><div class="language-row"><span>한국어</span><span>English</span><span>日本語</span><span>中文</span></div></div>${body}</div></div><div class="hardware-deck"><div class="hardware-module">교통카드 대는 곳<div class="hardware-slot"></div></div><div class="hardware-module">지폐·동전 투입구<div class="hardware-slot"></div></div><div class="hardware-module">신용카드 결제부<div class="hardware-slot"></div></div></div><div class="card-dispenser">1회용 교통카드 나오는 곳</div></div></div>`
-  }
-
-  function renderMachine(gtx){
-    const stations=gtx?['서울역','연신내','대곡','킨텍스','운정중앙']:['강남','잠실','홍대입구','시청','종로3가','동대문','사당','신촌'];
-    if(state.step===0){sim.innerHTML=kioskShell(`<div class="screen-content"><h3>원하시는 업무를 선택해 주세요</h3><div class="service-grid"><button class="service-btn blue" data-action="next"><span>🎫</span>1회용 교통카드</button><button class="service-btn purple" data-wrong="충전은 소지한 교통카드에 금액을 넣는 메뉴입니다."><span>💳</span>교통카드 충전</button><button class="service-btn green" data-wrong="우대용 교통카드는 별도 발급 조건이 필요합니다."><span>👤</span>우대용 교통카드</button><button class="service-btn cyan" data-wrong="정기권 메뉴가 아닙니다."><span>📅</span>정기권</button><button class="service-btn navy" data-wrong="이번 연습은 카드 환불이 아닙니다."><span>↩</span>카드 환불</button></div></div>`,gtx);return}
-    if(state.step===1){sim.innerHTML=kioskShell(`<div class="screen-content"><h3>도착역을 선택해 주세요</h3><div class="station-tools"><input id="station-input" placeholder="역 이름을 입력하세요"><button data-action="station-search">검색</button></div><div class="station-buttons">${stations.map(s=>`<button data-station="${s}">${s}</button>`).join('')}</div><div class="screen-bottom"><button class="cancel-btn" data-action="restart">처음 화면</button></div></div>`,gtx);return}
-    if(state.step===2){sim.innerHTML=kioskShell(`<div class="screen-content"><h3>이용 인원을 선택해 주세요</h3><div class="people-grid"><button class="large-choice" data-people="성인 1명"><strong>1</strong>성인 1명</button><button class="large-choice" data-people="성인 2명"><strong>2</strong>성인 2명</button><button class="large-choice" data-wrong="이번 연습은 성인 1명으로 진행합니다."><strong>어린이</strong>어린이</button><button class="large-choice" data-wrong="우대 대상자는 증빙 절차가 필요할 수 있습니다."><strong>우대</strong>우대용</button></div></div>`,gtx);return}
-    if(state.step===3){
-      const fare=gtx?4450:1550;state.data.fare=fare;
-      sim.innerHTML=kioskShell(`<div class="screen-content"><h3>결제 금액을 확인해 주세요</h3><div class="fare-panel"><div class="fare-line"><span>출발역</span><strong>${gtx?'운정중앙':'서울역'}</strong></div><div class="fare-line"><span>도착역</span><strong>${escapeHtml(state.data.station)}</strong></div><div class="fare-line"><span>이용운임</span><strong>${money(fare)}</strong></div><div class="fare-line"><span>1회용 카드 보증금</span><strong>500원</strong></div><div class="fare-total"><span>총 결제금액</span><strong>${money(fare+500)}</strong></div></div><div class="screen-bottom"><button class="cancel-btn" data-action="restart">취소</button><button class="confirm-btn" data-action="next">확인</button></div></div>`,gtx);return;
-    }
-    if(state.step===4){sim.innerHTML=kioskShell(`<div class="screen-content"><h3>결제 방법을 선택해 주세요</h3><div class="payment-grid"><button class="large-choice" data-payment="현금"><strong>현금</strong>지폐 또는 동전 투입</button><button class="large-choice" data-payment="카드"><strong>카드</strong>신용·체크카드 결제</button></div><div class="screen-bottom"><button class="cancel-btn" data-action="restart">취소</button></div></div>`,gtx);return}
-    if(state.step===5){sim.innerHTML=kioskShell(`<div class="screen-content" style="text-align:center"><h3>1회용 교통카드가 발급되었습니다</h3><p>기기 아래쪽 발급구에서 카드를 꺼내 주세요.</p><div class="issued-card">1회용 교통카드<br><small>교육용</small></div><div><button class="confirm-btn" data-action="next">카드를 받았습니다</button></div></div>`,gtx);return}
-    if(state.step===6){sim.innerHTML=`<div class="gate-sim"><h3 class="gate-title">개찰구 통과 연습</h3><p style="text-align:center">오른쪽 단말기에 1회용 카드를 한 장만 대세요.</p><div class="gate-row"><div class="gate-unit"><div class="reader-pad">출구 방향</div></div><div class="gate-arrow">➜</div><div class="gate-unit"><div class="reader-pad"><button data-action="tap-card">교통카드<br>대는 곳</button></div></div></div></div>`;return}
-    sim.innerHTML=`<div class="refund-box"><h3>보증금 환급기</h3><p>도착역에서 사용한 1회용 교통카드를 투입구에 넣으세요.</p><div class="issued-card">사용 완료 카드</div><div class="refund-slot"></div><button class="primary" data-action="refund">카드 넣기</button></div>`;
-  }
-
-  document.addEventListener('click',e=>{
-    const b=e.target.closest('button');if(!b)return;
-    if(b.dataset.start)return start(b.dataset.start);
-    const a=b.dataset.action;
-    if(a==='home'){practice.classList.add('hidden');home.classList.remove('hidden');state.mode=null;return}
-    if(a==='restart')return start(state.mode);
-    if(a==='next')return next();
-    if(a==='finish')return complete();
-    if(a==='hint'){state.hints++;$('#hints').textContent=state.hints;$('#hint-box').classList.remove('hidden');return}
-    if(a==='step-speak'){const g=currentFlow().guides[state.step];return speak(`${g[0]}. ${g[1]}`)}
-    if(a==='speak'){return speak(practice.classList.contains('hidden')?'연습할 교통 서비스를 선택하세요.':`${$('#practice-title').textContent}. ${$('#guide-title').textContent}. ${$('#guide-text').textContent}`)}
-    if(a==='font-plus'||a==='font-minus'){state.font=Math.max(16,Math.min(24,state.font+(a==='font-plus'?1:-1)));document.documentElement.style.setProperty('--base',state.font+'px');return toast('글자 크기를 조절했습니다.')}
-    if(a==='contrast'){document.body.classList.toggle('contrast');return}
-    if(b.dataset.wrong)return mistake(b.dataset.wrong);
-    if(a==='swap'){const f=$('#from'),t=$('#to'),v=f.value;f.value=t.value;t.value=v;return}
-    if(a==='ktx-search'){const from=$('#from').value,to=$('#to').value;if(from===to)return mistake('출발역과 도착역이 같습니다.');state.data.from=from;state.data.to=to;state.data.date=$('#date').value;return next()}
-    if(b.dataset.train){state.data.train=JSON.parse(b.dataset.train);return next()}
-    if(b.dataset.car){state.data.car=Number(b.dataset.car);document.querySelectorAll('.car-tabs button').forEach(x=>x.classList.toggle('active',x===b));return toast(`${state.data.car}호차를 선택했습니다.`)}
-    if(b.dataset.seat){document.querySelectorAll('.seat').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');state.data.seat=b.dataset.seat;setTimeout(next,450);return}
-    if(a==='station-search'){const v=$('#station-input').value.trim();const valid=state.mode==='gtx'?['서울역','연신내','대곡','킨텍스','운정중앙']:['강남','잠실','홍대입구','시청','종로3가','동대문','사당','신촌'];if(!v)return mistake('역 이름을 입력해 주세요.');if(!valid.includes(v))return mistake('화면에 표시된 역 중에서 선택해 주세요.');state.data.station=v;return next()}
-    if(b.dataset.station){const target=state.mode==='gtx'?'서울역':'강남';if(b.dataset.station!==target)return mistake(`이번 연습에서는 ${target}을 선택해 주세요.`);state.data.station=b.dataset.station;return next()}
-    if(b.dataset.people){if(b.dataset.people!=='성인 1명')return mistake('이번 연습은 성인 1명으로 진행합니다.');state.data.people=b.dataset.people;return next()}
-    if(b.dataset.payment){state.data.payment=b.dataset.payment;return next()}
-    if(a==='tap-card'){toast('삑! 카드가 정상적으로 인식되었습니다.');return setTimeout(next,700)}
-    if(a==='refund'){toast('보증금 500원이 환급되었습니다.');return setTimeout(complete,900)}
+}
+function showLauncher() {
+  showView("launcherView");
+  $("#launcherMission").textContent = state.module.goal;
+  $("#launcherChecklist").innerHTML = state.module.steps
+    .map((s, i) => `<li>${i === 0 ? "<b>지금:</b> " : ""}${s}</li>`)
+    .join("");
+  const icons = $("#appIcons");
+  icons.innerHTML = "";
+  appCatalog.forEach(([id, emoji, name, color]) => {
+    const b = document.createElement("button");
+    b.className = "app-icon";
+    b.dataset.app = id;
+    b.innerHTML = `<i style="background:${color};color:${id === "chat" ? "#222" : "#fff"}">${emoji}</i><span>${name}</span>`;
+    b.onclick = () => openApp(id);
+    icons.appendChild(b);
   });
-})();
+}
+function openApp(id) {
+  const expected = state.module.entry;
+  if (
+    id === expected ||
+    (expected === "browser" && id === "browser") ||
+    (expected === "message" && id === "message")
+  ) {
+    state.lastEntry = id;
+    showView("practiceView");
+    renderPractice();
+  } else {
+    wrong(
+      "이 연습에 필요한 앱이 아닙니다. 목표에 맞는 앱 이름을 다시 살펴보세요.",
+    );
+  }
+}
+function renderPractice() {
+  const m = state.module;
+  $("#practiceTitle").textContent = m.title;
+  $("#practiceStep").textContent =
+    `${state.step + 1} / ${m.steps.length}단계 · ${m.steps[state.step]}`;
+  $("#progressBar").style.width = `${(state.step / m.steps.length) * 100}%`;
+  $("#mistakeCount").textContent = state.mistakes;
+  $("#hintCount").textContent = state.hints;
+  const ui = renderers[m.id] || renderGeneric;
+  ui();
+}
+function instruction(
+  title,
+  reason = "화면의 정보를 천천히 확인한 뒤 선택하세요.",
+) {
+  $("#currentInstruction").textContent = title;
+  $("#currentReason").textContent = reason;
+}
+function next(data = {}) {
+  Object.assign(state.data, data);
+  state.step++;
+  if (state.step >= state.module.steps.length) {
+    complete();
+  } else renderPractice();
+}
+function wrong(msg) {
+  state.mistakes++;
+  $("#mistakeCount").textContent = state.mistakes;
+  toast(msg);
+}
+function hint() {
+  state.hints++;
+  $("#hintCount").textContent = state.hints;
+  const hints = {
+    ktx: "출발역과 도착역을 먼저 고르고 파란 조회 버튼을 누르세요.",
+    metro: "첫 화면에서 “1회용 교통카드”를 선택합니다.",
+    gtx: "GTX는 좌석 예약이 아니라 교통카드를 발급받아 이용합니다.",
+    bank: "이체 버튼을 찾은 뒤 계좌번호와 받는 분 이름을 꼭 확인하세요.",
+    chat: "노란색 말풍선 앱을 찾으세요.",
+    video: "대화방 오른쪽 위의 카메라 모양 버튼을 찾으세요.",
+    gov: "주소가 gov.kr로 끝나는 공식 사이트인지 확인하세요.",
+  };
+  toast(
+    hints[state.module.id] ||
+      "왼쪽의 “지금 할 일”을 먼저 읽고, 같은 문구가 있는 버튼을 찾아보세요.",
+  );
+}
+function complete() {
+  const sec = Math.max(1, Math.round((Date.now() - state.start) / 1000));
+  $("#resultTitle").textContent = `${state.module.title} 연습을 마쳤습니다.`;
+  $("#resultSummary").textContent =
+    `“${state.module.goal}” 목표를 끝까지 수행했습니다.`;
+  $("#resultTime").textContent = `${Math.floor(sec / 60)}분 ${sec % 60}초`;
+  $("#resultMistakes").textContent = state.mistakes + "회";
+  $("#resultHints").textContent = state.hints + "회";
+  const list = JSON.parse(localStorage.getItem("digital-completed") || "[]");
+  if (!list.includes(state.module.id)) {
+    list.push(state.module.id);
+    localStorage.setItem("digital-completed", JSON.stringify(list));
+  }
+  showView("resultView");
+}
+function sim(html) {
+  $("#simulator").innerHTML = html;
+}
+function top(title, sub = "교육용 모의 화면") {
+  return `<div class="sim-top"><h2>${title}</h2><span class="education-badge">${sub}</span></div>`;
+}
+const renderers = {
+  ktx() {
+    const s = state.step;
+    if (s === 0) {
+      instruction(
+        "출발역·도착역과 날짜를 선택한 뒤 열차를 조회하세요.",
+        "실제 예매에서도 가장 먼저 여정과 시간을 정합니다.",
+      );
+      sim(
+        top("기차예매 · 승차권 예매") +
+          `<div class="sim-body"><div class="form-grid"><div class="field"><label>출발역</label><select id="from"><option>서울</option><option>용산</option><option>광명</option></select></div><div class="field"><label>도착역</label><select id="to"><option>부산</option><option>대전</option><option>동대구</option></select></div><div class="field"><label>출발일</label><input type="date" value="2026-07-20"></div><div class="field"><label>출발시간</label><select><option>08시 이후</option><option>10시 이후</option></select></div></div><button class="big-primary" id="searchTrain">열차 조회하기</button></div>`,
+      );
+      $("#searchTrain").onclick = () =>
+        next({ from: $("#from").value, to: $("#to").value });
+    } else if (s === 1) {
+      instruction("원하는 출발시간의 KTX 열차에서 “좌석선택”을 누르세요.");
+      sim(
+        top(`${state.data.from} → ${state.data.to} 열차 조회`) +
+          `<div class="sim-body"><table class="data-table"><thead><tr><th>열차</th><th>출발</th><th>도착</th><th>일반실</th><th>선택</th></tr></thead><tbody><tr><td>KTX 011</td><td>08:27</td><td>11:02</td><td>59,800원</td><td><button data-train="KTX 011">좌석선택</button></td></tr><tr><td>KTX 015</td><td>09:00</td><td>11:41</td><td>59,800원</td><td><button data-train="KTX 015">좌석선택</button></td></tr><tr><td>KTX 019</td><td>09:32</td><td>12:08</td><td>59,800원</td><td><button data-train="KTX 019">좌석선택</button></td></tr></tbody></table></div>`,
+      );
+      $$("[data-train]").forEach(
+        (b) =>
+          (b.onclick = () =>
+            next({
+              train: b.dataset.train,
+              time: b.closest("tr").children[1].textContent,
+            })),
+      );
+    } else if (s === 2) {
+      instruction(
+        "5호차에서 창가 좌석을 하나 선택하세요.",
+        "A와 D가 창가 좌석입니다. 회색은 이미 예약된 좌석입니다.",
+      );
+      let rows = "";
+      for (let r = 1; r <= 8; r++) {
+        rows += `<div class="seat-row"><button class="seat ${r === 2 ? "booked" : ""}" data-seat="${r}A">${r}A</button><button class="seat" data-seat="${r}B">${r}B</button><span class="aisle">통로</span><button class="seat ${r === 4 ? "booked" : ""}" data-seat="${r}C">${r}C</button><button class="seat" data-seat="${r}D">${r}D</button></div>`;
+      }
+      sim(
+        top(`${state.data.train} · 5호차 좌석선택`) +
+          `<div class="sim-body"><div class="seat-map">${rows}</div><button class="big-primary" id="seatNext">선택한 좌석으로 계속</button></div>`,
+      );
+      $$(".seat:not(.booked)").forEach(
+        (b) =>
+          (b.onclick = () => {
+            $$(".seat").forEach((x) => x.classList.remove("selected"));
+            b.classList.add("selected");
+            state.data.seat = b.dataset.seat;
+          }),
+      );
+      $("#seatNext").onclick = () =>
+        state.data.seat ? next() : wrong("좌석을 먼저 선택하세요.");
+    } else if (s === 3) {
+      instruction("출발역·도착역·열차·좌석을 확인하고 예약을 진행하세요.");
+      sim(
+        top("예약 내용 확인") +
+          `<div class="sim-body"><div class="ticket"><div class="ticket-head">기차 승차권 예약 확인</div><div class="ticket-grid"><div><span>구간</span><b>${state.data.from} → ${state.data.to}</b></div><div><span>열차</span><b>${state.data.train}</b></div><div><span>출발</span><b>${state.data.time}</b></div><div><span>호차</span><b>5호차</b></div><div><span>좌석</span><b>${state.data.seat}</b></div><div><span>운임</span><b>59,800원</b></div></div></div><button class="big-primary" id="confirmTrain">위 내용으로 예약하기</button></div>`,
+      );
+      $("#confirmTrain").onclick = () => next();
+    } else if (s === 4) {
+      instruction(
+        "결제 전에 금액을 마지막으로 확인하고 “모의 결제”를 누르세요.",
+      );
+      sim(
+        top("결제하기") +
+          `<div class="sim-body"><div class="account-card"><span>결제 예정 금액</span><strong>59,800원</strong><p>실제 카드정보는 입력하지 않습니다.</p></div><button class="big-primary" id="payTrain">모의 결제</button></div>`,
+      );
+      $("#payTrain").onclick = () => next();
+    } else {
+      instruction("승차권에서 출발시간과 좌석을 다시 확인하세요.");
+      sim(
+        top("모바일 승차권") +
+          `<div class="sim-body"><div class="ticket"><div class="ticket-head">승차권 · 발권 완료</div><div class="ticket-grid"><div><span>출발</span><b>${state.data.from} ${state.data.time}</b></div><div><span>도착</span><b>${state.data.to}</b></div><div><span>열차</span><b>${state.data.train}</b></div><div><span>호차</span><b>5호차</b></div><div><span>좌석</span><b>${state.data.seat}</b></div><div><span>QR 승차권</span><b>▦ ▦ ▦</b></div></div></div><button class="big-primary" id="finishTrain">확인했습니다</button></div>`,
+      );
+      $("#finishTrain").onclick = () => next();
+    }
+  },
+  metro() {
+    renderTicketKiosk("서울 지하철", "서울역", "잠실역", 1650);
+  },
+  gtx() {
+    renderTicketKiosk("GTX-A", "운정중앙", "서울역", 4450);
+  },
+  bank() {
+    const s = state.step;
+    if (s === 0) {
+      instruction("첫 화면에서 “이체” 버튼을 누르세요.");
+      sim(
+        top("한빛은행") +
+          `<div class="bank-app"><div class="app-header">한빛은행 홈</div><div class="account-card"><span>입출금통장 123-***-456789</span><strong>1,245,800원</strong></div><div class="sim-body choice-grid"><button class="choice-card" id="transfer">↗ 이체</button><button class="choice-card">조회</button><button class="choice-card">공과금</button><button class="choice-card">카드</button></div></div>`,
+      );
+      $("#transfer").onclick = () => next();
+    } else if (s === 1) {
+      instruction("받는 분 계좌번호를 입력하고 다음을 누르세요.");
+      sim(
+        top("한빛은행 · 계좌이체") +
+          `<div class="bank-app"><div class="app-header">받는 분 계좌</div><div class="sim-body"><div class="field"><label>은행</label><select><option>한빛은행</option><option>국민은행</option><option>농협은행</option></select></div><div class="field"><label>계좌번호</label><input id="account" inputmode="numeric" placeholder="숫자만 입력" value="110245678901"></div><button class="big-primary" id="accountNext">다음</button></div></div>`,
+      );
+      $("#accountNext").onclick = () =>
+        $("#account").value.length >= 10
+          ? next({ account: $("#account").value })
+          : wrong("계좌번호를 다시 확인하세요.");
+    } else if (s === 2) {
+      instruction("송금할 금액 30,000원을 입력하세요.");
+      sim(
+        top("한빛은행 · 금액 입력") +
+          `<div class="bank-app"><div class="app-header">보낼 금액</div><div class="sim-body"><input id="amount" value="" readonly style="width:100%;font-size:2rem;padding:18px;text-align:right"><div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, "00", 0, "←"].map((x) => `<button data-key="${x}">${x}</button>`).join("")}</div><button class="big-primary" id="amountNext">다음</button></div></div>`,
+      );
+      $$("[data-key]").forEach(
+        (b) =>
+          (b.onclick = () => {
+            let v = $("#amount").value;
+            if (b.dataset.key === "←") v = v.slice(0, -1);
+            else v += b.dataset.key;
+            $("#amount").value = v;
+          }),
+      );
+      $("#amountNext").onclick = () =>
+        $("#amount").value === "30000"
+          ? next({ amount: 30000 })
+          : wrong("이번 목표 금액은 30,000원입니다.");
+    } else if (s === 3) {
+      instruction(
+        "받는 분 이름이 “김민수”인지 확인하세요.",
+        "이름이 다르면 절대 송금하지 말고 이전으로 돌아가야 합니다.",
+      );
+      sim(
+        top("받는 분 확인") +
+          `<div class="bank-app"><div class="app-header">계좌 확인 결과</div><div class="sim-body"><div class="account-card"><span>받는 분</span><strong>김민수</strong><p>한빛은행 ${state.data.account}</p></div><button class="big-primary" id="nameOk">김민수님이 맞습니다</button><button class="big-primary" style="background:#777" id="nameNo">아닙니다</button></div></div>`,
+      );
+      $("#nameOk").onclick = () => next();
+      $("#nameNo").onclick = () => wrong("이번 목표의 받는 분은 김민수입니다.");
+    } else if (s === 4) {
+      instruction("모든 내용을 마지막으로 확인하고 이체를 누르세요.");
+      sim(
+        top("이체 최종 확인") +
+          `<div class="bank-app"><div class="app-header">이체 내용</div><div class="sim-body"><table class="data-table"><tr><th>받는 분</th><td>김민수</td></tr><tr><th>계좌</th><td>${state.data.account}</td></tr><tr><th>금액</th><td>30,000원</td></tr><tr><th>수수료</th><td>0원</td></tr></table><button class="big-primary" id="sendMoney">모의 이체하기</button></div></div>`,
+      );
+      $("#sendMoney").onclick = () => next();
+    } else {
+      instruction("이체 결과를 확인하고 끝내세요.");
+      sim(
+        top("이체 완료") +
+          `<div class="bank-app"><div class="app-header">✓ 이체 완료</div><div class="sim-body"><div class="result-check">✓</div><h2 style="text-align:center">김민수님께<br>30,000원을 보냈습니다.</h2><button class="big-primary" id="finishBank">확인</button></div></div>`,
+      );
+      $("#finishBank").onclick = () => next();
+    }
+  },
+  chat() {
+    renderChat(false);
+  },
+  video() {
+    renderChat(true);
+  },
+  gov() {
+    renderBrowserFlow(
+      "민원24＋",
+      "주민등록등본 발급",
+      "주민등록표 등본(초본)",
+      "발급하기",
+    );
+  },
+  hotel() {
+    renderBrowserFlow(
+      "여행숙소",
+      "부산 호텔 1박",
+      "무료 취소 가능한 객실",
+      "예약하기",
+    );
+  },
+  hospital() {
+    renderBrowserFlow(
+      "우리병원",
+      "내과 진료 예약",
+      "오전 10:30 진료",
+      "예약 확정",
+    );
+  },
+  air() {
+    renderBrowserFlow(
+      "하늘항공",
+      "인천 → 제주 왕복",
+      "오전편 · 통로 좌석",
+      "항공권 예약",
+    );
+  },
+  delivery() {
+    renderCommerce("바로배달", "김밥 2줄", "우리집 주소", "배달 주문");
+  },
+  shopping() {
+    renderCommerce("온쇼핑", "생수 2L 6개", "기본 배송지", "상품 주문");
+  },
+  taxi() {
+    renderCommerce("바로택시", "서울역", "현재 위치", "택시 호출");
+  },
+  food() {
+    renderFood();
+  },
+  atm() {
+    renderATM();
+  },
+  sms() {
+    renderSMS();
+  },
+};
+function renderTicketKiosk(label, from, to, fare) {
+  const s = state.step;
+  if (s === 0) {
+    instruction("발매기 화면에서 “1회용 교통카드”를 누르세요.");
+    sim(
+      `<div class="kiosk-stage"><div class="kiosk-sign">교통카드 키오스크 · Ticket Kiosk</div><div class="kiosk-machine"><div class="kiosk-screen"><h2>${label} 승차권 발매</h2><div class="kiosk-menu"><button id="once">1회용<br>교통카드</button><button>교통카드<br>충전</button><button>우대용<br>교통카드</button><button>정기권</button></div></div>${hardware()}</div></div>`,
+    );
+    $("#once").onclick = () => next();
+  } else if (s === 1) {
+    instruction(`목적지 “${to}”를 선택하세요.`);
+    sim(
+      kioskWrap(
+        `<h2>도착역을 선택해 주세요</h2><p>출발역: ${from}</p><div class="choice-grid">${[to, "시청", "강남", "홍대입구"].map((x) => `<button class="choice-card" data-dest="${x}">${x}</button>`).join("")}</div>`,
+      ),
+    );
+    $$("[data-dest]").forEach(
+      (b) =>
+        (b.onclick = () =>
+          b.dataset.dest === to
+            ? next({ dest: to })
+            : wrong(`이번 목표 목적지는 ${to}입니다.`)),
+    );
+  } else if (s === 2) {
+    instruction("성인 1명을 선택하고 운임을 확인하세요.");
+    sim(
+      kioskWrap(
+        `<h2>이용 인원을 선택해 주세요</h2><div class="choice-grid"><button class="choice-card selected" id="adult">성인 1명</button><button class="choice-card">어린이 0명</button></div><table class="data-table" style="margin-top:20px"><tr><th>운임</th><td>${fare.toLocaleString()}원</td></tr><tr><th>카드 보증금</th><td>500원</td></tr><tr><th>합계</th><td><b>${(fare + 500).toLocaleString()}원</b></td></tr></table><button class="big-primary" id="fareNext">확인</button>`,
+      ),
+    );
+    $("#fareNext").onclick = () => next();
+  } else if (s === 3) {
+    instruction("현금 또는 카드 결제 방법을 선택하세요.");
+    sim(
+      kioskWrap(
+        `<h2>결제 방법을 선택해 주세요</h2><div class="choice-grid"><button class="choice-card" data-pay="cash">💵 현금</button><button class="choice-card" data-pay="card">💳 신용카드</button></div>`,
+      ),
+    );
+    $$("[data-pay]").forEach(
+      (b) => (b.onclick = () => next({ pay: b.dataset.pay })),
+    );
+  } else if (s === 4) {
+    instruction(
+      state.data.pay === "cash"
+        ? "지폐 투입구에 금액을 넣는 연습을 하세요."
+        : "신용카드를 카드 투입구에 넣는 연습을 하세요.",
+    );
+    sim(
+      kioskWrap(
+        `<h2>${state.data.pay === "cash" ? "현금을 투입해 주세요" : "카드를 투입해 주세요"}</h2><div class="hardware-panel"><button class="hardware" id="insert"><div class="hardware-slot"></div>${state.data.pay === "cash" ? "지폐 투입구" : "신용카드 투입구"}</button><div class="hardware"><div class="hardware-slot"></div>동전 투입구</div><div class="hardware"><div class="hardware-slot"></div>카드 발급구</div></div>`,
+      ),
+    );
+    $("#insert").onclick = () => next();
+  } else {
+    instruction("카드 발급구에서 1회용 교통카드를 가져가세요.");
+    sim(
+      kioskWrap(
+        `<h2>발급이 완료되었습니다</h2><div class="result-check">✓</div><p style="text-align:center;font-size:1.2rem">${from} → ${to}<br>카드를 반드시 가져가세요.</p><button class="big-primary" id="takeCard">카드를 받았습니다</button>`,
+      ),
+    );
+    $("#takeCard").onclick = () => next();
+  }
+}
+function kioskWrap(content) {
+  return `<div class="kiosk-stage"><div class="kiosk-sign">교통카드 키오스크 · Ticket Kiosk</div><div class="kiosk-machine"><div class="kiosk-screen">${content}</div>${hardware()}</div></div>`;
+}
+function hardware() {
+  return `<div class="hardware-panel"><div class="hardware"><div class="hardware-slot"></div>지폐 투입구</div><div class="hardware"><div class="hardware-slot"></div>동전 투입구</div><div class="hardware"><div class="hardware-slot"></div>카드 투입구</div><div class="hardware"><div class="hardware-slot"></div>교통카드 접촉부</div><div class="hardware"><div class="hardware-slot"></div>카드 발급구</div></div>`;
+}
+function renderChat(video) {
+  const s = state.step;
+  if (s === 0) {
+    instruction("검색창에서 가족 이름 “딸”을 찾아 대화방을 여세요.");
+    sim(
+      top("모두톡") +
+        `<div class="chat-app"><div class="chat-head"><span>대화</span><span>🔍</span></div><div class="sim-body"><button class="choice-card" id="daughter">👩 딸</button><button class="choice-card">👨 아들</button><button class="choice-card">친구 모임</button></div></div>`,
+    );
+    $("#daughter").onclick = () => next();
+  } else if (video) {
+    if (s === 1) {
+      instruction("오른쪽 위 카메라 모양을 눌러 영상통화를 거세요.");
+      sim(
+        top("모두톡 · 딸") +
+          `<div class="chat-app"><div class="chat-head"><span>← 딸</span><button id="videoBtn">📹</button></div><div class="chat-body"><div class="bubble">엄마, 잘 도착했어요?</div></div></div>`,
+      );
+      $("#videoBtn").onclick = () => next();
+    } else if (s === 2) {
+      instruction("영상통화 연결 버튼을 누르세요.");
+      sim(
+        top("영상통화 확인") +
+          `<div class="chat-app"><div class="video-call"><div><div class="avatar-large">👩</div><h2 style="text-align:center">딸</h2></div><button class="big-primary" id="connectCall" style="position:absolute;bottom:30px;width:80%">영상통화 연결</button></div></div>`,
+      );
+      $("#connectCall").onclick = () => next();
+    } else if (s === 3) {
+      instruction("통화 중 카메라 전환 버튼을 눌러보세요.");
+      sim(videoUI());
+      $("#switchCam").onclick = () => next();
+    } else if (s === 4) {
+      instruction("마이크가 켜져 있는지 확인한 뒤 통화를 종료하세요.");
+      sim(videoUI());
+      $("#endCall").onclick = () => next();
+    } else {
+      instruction("영상통화가 종료됐는지 확인하세요.");
+      sim(
+        top("모두톡") +
+          `<div class="chat-app"><div class="chat-head">딸</div><div class="chat-body"><div class="bubble me">영상통화 01:12</div></div><button class="big-primary" id="finishVideo" style="position:absolute;bottom:20px;width:90%;left:5%">확인</button></div>`,
+      );
+      $("#finishVideo").onclick = () => next();
+    }
+  } else {
+    if (s === 1) {
+      instruction("입력창에 “잘 도착했다”고 입력하고 전송하세요.");
+      sim(chatUI());
+      $("#sendChat").onclick = () => {
+        const t = $("#chatText").value.trim();
+        t ? next({ message: t }) : wrong("메시지를 입력하세요.");
+      };
+    } else if (s === 2) {
+      instruction("사진 추가 버튼을 눌러 사진을 선택하세요.");
+      sim(chatUI(true));
+      $("#addPhoto").onclick = () => next();
+    } else if (s === 3) {
+      instruction("선택한 사진을 전송하세요.");
+      sim(
+        top("모두톡 · 사진 전송") +
+          `<div class="chat-app"><div class="chat-head">← 딸</div><div class="chat-body"><div class="bubble me">${state.data.message}</div><div class="bubble me" style="font-size:4rem">🌳</div></div><button class="big-primary" id="sendPhoto" style="position:absolute;bottom:20px;width:90%;left:5%">사진 전송</button></div>`,
+      );
+      $("#sendPhoto").onclick = () => next();
+    } else if (s === 4) {
+      instruction("보낸 메시지와 사진이 대화방에 표시되는지 확인하세요.");
+      sim(
+        top("모두톡 · 딸") +
+          `<div class="chat-app"><div class="chat-head">← 딸</div><div class="chat-body"><div class="bubble">엄마, 잘 도착했어요?</div><div class="bubble me">${state.data.message}</div><div class="bubble me" style="font-size:4rem">🌳</div></div><button class="big-primary" id="chatDone" style="position:absolute;bottom:20px;width:90%;left:5%">확인</button></div>`,
+      );
+      $("#chatDone").onclick = () => next();
+    } else next();
+  }
+}
+function chatUI(photo = false) {
+  return (
+    top("모두톡 · 딸") +
+    `<div class="chat-app"><div class="chat-head"><span>← 딸</span><span>📞 📹</span></div><div class="chat-body"><div class="bubble">엄마, 잘 도착했어요?</div></div><div class="chat-input"><button id="addPhoto">＋</button><input id="chatText" placeholder="메시지 입력" value="${photo ? state.data.message || "잘 도착했다" : ""}"><button id="sendChat">전송</button></div></div>`
+  );
+}
+function videoUI() {
+  return (
+    top("모두톡 · 영상통화") +
+    `<div class="chat-app"><div class="video-call"><div><div class="avatar-large">👩</div><h2 style="text-align:center">딸과 통화 중</h2></div><div class="call-controls"><button>🎙️</button><button id="switchCam">🔄</button><button id="endCall" class="call-end">☎</button></div></div></div>`
+  );
+}
+function renderBrowserFlow(brand, query, result, finalLabel) {
+  const s = state.step;
+  if (s === 0) {
+    instruction("인터넷 주소창을 눌러 검색어를 입력하세요.");
+    sim(
+      browser(
+        `<h2>인터넷 검색</h2><div class="field"><label>검색어</label><input id="searchQ" value="${query}"></div><button class="big-primary" id="browserSearch">검색</button>`,
+      ),
+    );
+    $("#browserSearch").onclick = () => next();
+  } else if (s === 1) {
+    instruction("광고가 아닌 공식 또는 신뢰할 수 있는 결과를 선택하세요.");
+    sim(
+      browser(
+        `<h2>검색 결과</h2><button class="choice-card" id="official"><b>${brand} 공식</b><br>${query}</button><button class="choice-card">광고 · 빠른 발급 대행</button><button class="choice-card">개인 블로그 안내</button>`,
+      ),
+    );
+    $("#official").onclick = () => next();
+  } else if (s === 2) {
+    instruction(`“${result}” 항목을 선택하세요.`);
+    sim(
+      site(
+        brand,
+        `<h2>${query}</h2><div class="choice-grid"><button class="choice-card" id="wanted">${result}</button><button class="choice-card">다른 서비스</button></div>`,
+      ),
+    );
+    $("#wanted").onclick = () => next();
+  } else if (s === 3) {
+    instruction("날짜·인원·신청 내용을 확인하고 다음 단계로 이동하세요.");
+    sim(
+      site(
+        brand,
+        `<h2>신청 정보</h2><div class="form-grid"><div class="field"><label>신청자</label><input value="홍길동" readonly></div><div class="field"><label>신청 내용</label><input value="${result}" readonly></div></div><button class="big-primary" id="infoNext">다음</button>`,
+      ),
+    );
+    $("#infoNext").onclick = () => next();
+  } else if (s === 4) {
+    instruction("취소 조건·발급 내용·최종 금액을 확인하세요.");
+    sim(
+      site(
+        brand,
+        `<h2>최종 확인</h2><table class="data-table"><tr><th>내용</th><td>${result}</td></tr><tr><th>신청자</th><td>홍길동</td></tr><tr><th>비용</th><td>교육용 0원</td></tr></table><button class="big-primary" id="finalNext">${finalLabel}</button>`,
+      ),
+    );
+    $("#finalNext").onclick = () => next();
+  } else {
+    instruction("완료 화면을 확인하세요.");
+    sim(
+      site(
+        brand,
+        `<div class="result-check">✓</div><h2 style="text-align:center">${finalLabel} 완료</h2><button class="big-primary" id="browserDone">확인</button>`,
+      ),
+    );
+    $("#browserDone").onclick = () => next();
+  }
+}
+function browser(content) {
+  return `<div class="sim-body"><div class="browser-shell"><div class="browser-bar"><span>← → ↻</span><input value="검색 또는 주소 입력"></div><div class="site-page"><div class="site-content">${content}</div></div></div></div>`;
+}
+function site(brand, content) {
+  return `<div class="sim-body"><div class="browser-shell"><div class="browser-bar"><span>← → ↻</span><input value="https://official.example"></div><div class="site-page"><div class="site-header">${brand}</div><div class="site-content">${content}</div></div></div></div>`;
+}
+function renderCommerce(brand, item, address, action) {
+  const s = state.step;
+  if (s === 0) {
+    instruction(`${brand} 앱의 검색창을 누르세요.`);
+    sim(
+      top(brand) +
+        `<div class="bank-app"><div class="app-header">${brand}</div><div class="sim-body"><input style="width:100%;padding:15px" value="${item}" id="productSearch"><button class="big-primary" id="doSearch">검색</button></div></div>`,
+    );
+    $("#doSearch").onclick = () => next();
+  } else if (s === 1) {
+    instruction(`검색 결과에서 “${item}”을 선택하세요.`);
+    sim(
+      top(brand) +
+        `<div class="sim-body product-grid"><button class="product" id="targetProduct"><div class="product-image">📦</div><h3>${item}</h3><p>12,900원</p></button><button class="product"><div class="product-image">🧴</div><h3>다른 상품</h3></button></div>`,
+    );
+    $("#targetProduct").onclick = () => next();
+  } else if (s === 2) {
+    instruction("수량과 옵션을 확인하세요.");
+    sim(
+      top(brand) +
+        `<div class="sim-body"><table class="data-table"><tr><th>상품</th><td>${item}</td></tr><tr><th>수량</th><td>1</td></tr><tr><th>가격</th><td>12,900원</td></tr></table><button class="big-primary" id="optionNext">장바구니 담기</button></div>`,
+    );
+    $("#optionNext").onclick = () => next();
+  } else if (s === 3) {
+    instruction(`배송지 또는 출발 위치가 “${address}”인지 확인하세요.`);
+    sim(
+      top(brand) +
+        `<div class="sim-body"><div class="field"><label>주소·위치</label><input value="${address}" readonly></div><button class="big-primary" id="addressNext">주소가 맞습니다</button></div>`,
+    );
+    $("#addressNext").onclick = () => next();
+  } else if (s === 4) {
+    instruction("최종 금액과 결제방법을 확인하세요.");
+    sim(
+      top(brand) +
+        `<div class="sim-body"><table class="data-table"><tr><th>내용</th><td>${item}</td></tr><tr><th>금액</th><td>12,900원</td></tr><tr><th>결제</th><td>교육용 모의 결제</td></tr></table><button class="big-primary" id="commercePay">${action}</button></div>`,
+    );
+    $("#commercePay").onclick = () => next();
+  } else {
+    instruction("주문 또는 호출 결과를 확인하세요.");
+    sim(
+      top(brand) +
+        `<div class="sim-body"><div class="result-check">✓</div><h2 style="text-align:center">${action} 완료</h2><button class="big-primary" id="commerceDone">확인</button></div>`,
+    );
+    $("#commerceDone").onclick = () => next();
+  }
+}
+function renderFood() {
+  renderCommerce("푸드 키오스크", "불고기버거 세트", "포장", "카드 결제");
+}
+function renderATM() {
+  renderCommerce("ATM", "현금 50,000원", "카드 먼저 회수", "출금 완료");
+}
+function renderSMS() {
+  const s = state.step;
+  if (s < 5) {
+    instruction(
+      `${s + 1}번째 문자를 읽고 수상한지 판단하세요.`,
+      "링크, 개인정보 요구, 급한 행동 유도 여부를 확인하세요.",
+    );
+    const suspicious = s % 2 === 0;
+    sim(
+      top("문자 메시지") +
+        `<div class="chat-app"><div class="chat-head">${suspicious ? "[국제발신] 배송안내" : "우리병원"}</div><div class="chat-body"><div class="bubble">${suspicious ? "주소 오류로 배송이 중단되었습니다. 아래 링크에서 개인정보를 입력하세요. http://short.url" : "내일 오전 10시 30분 진료 예약이 확인되었습니다. 변경은 병원 대표번호로 연락해 주세요."}</div></div><div class="chat-input"><button id="safe">안전</button><button id="sus">수상함</button></div></div>`,
+    );
+    $("#sus").onclick = () =>
+      suspicious
+        ? next()
+        : wrong("이 문자는 링크나 개인정보 요구가 없는 예약 안내입니다.");
+    $("#safe").onclick = () =>
+      !suspicious
+        ? next()
+        : wrong("출처 불명 링크와 개인정보 요구가 있어 수상합니다.");
+  } else next();
+}
+function renderGeneric() {
+  instruction("화면의 안내에 따라 다음 단계를 진행하세요.");
+  sim(
+    top(state.module.title) +
+      `<div class="sim-body"><h2>${state.module.steps[state.step]}</h2><button class="big-primary" id="genericNext">다음 단계</button></div>`,
+  );
+  $("#genericNext").onclick = () => next();
+}
+function toast(msg) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 3000);
+}
+function speak() {
+  const view = $(".view.active");
+  const text = view.innerText.slice(0, 1200);
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "ko-KR";
+  u.rate = 0.85;
+  speechSynthesis.speak(u);
+}
+function renderGoals() {
+  const list = $("#goalList");
+  list.innerHTML = modules
+    .map(
+      (m) =>
+        `<div class="goal-item"><b>${m.icon} ${m.title}</b><p>${m.goal}</p></div>`,
+    )
+    .join("");
+}
+$$("[data-category]").forEach(
+  (b) =>
+    (b.onclick = () => {
+      $$("[data-category]").forEach((x) => x.classList.remove("active"));
+      b.classList.add("active");
+      renderHome(b.dataset.category);
+    }),
+);
+document.addEventListener("click", (e) => {
+  const a = e.target.closest("[data-action]");
+  if (!a) return;
+  const x = a.dataset.action;
+  if (x === "home") {
+    showView("homeView");
+    renderHome();
+  }
+  if (x === "back-launcher") {
+    state.module.entry === "kiosk" ? showView("homeView") : showLauncher();
+  }
+  if (x === "hint") hint();
+  if (x === "restart") startModule(state.module.id);
+  if (x === "repeat") startModule(state.module.id);
+  if (x === "font-up")
+    document.documentElement.style.setProperty(
+      "--font-scale",
+      Math.min(
+        1.3,
+        parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue(
+            "--font-scale",
+          ) || 1,
+        ) + 0.1,
+      ),
+    );
+  if (x === "font-down")
+    document.documentElement.style.setProperty(
+      "--font-scale",
+      Math.max(
+        0.9,
+        parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue(
+            "--font-scale",
+          ) || 1,
+        ) - 0.1,
+      ),
+    );
+  if (x === "contrast") document.body.classList.toggle("high-contrast");
+  if (x === "speak") speak();
+  if (x === "open-goals") {
+    $("#goalDialog").showModal();
+    renderGoals();
+  }
+  if (x === "close-goals") $("#goalDialog").close();
+});
+renderHome();
