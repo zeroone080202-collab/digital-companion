@@ -3,117 +3,834 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="고령층을 위한 실제 생활형 디지털 연습 서비스" />
-  <meta name="theme-color" content="#1747a6" />
-  <title>디지털 동행</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta name="theme-color" content="#155eef" />
+  <title>생활 디지털 연습장</title>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --panel: #ffffff;
+      --text: #172033;
+      --muted: #5e6b82;
+      --line: #d9e1ee;
+      --primary: #155eef;
+      --primary-dark: #0e46b7;
+      --success: #137a4b;
+      --warning: #a15c00;
+      --danger: #bd2c2c;
+      --focus: #ffbf00;
+      --radius: 22px;
+      --shadow: 0 16px 40px rgba(28, 52, 92, 0.12);
+      --base-font: 20px;
+    }
+
+    * { box-sizing: border-box; }
+    html { font-size: var(--base-font); scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: "Pretendard", "Noto Sans KR", Arial, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.6;
+    }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 5px solid var(--focus);
+      outline-offset: 3px;
+    }
+    .hidden { display: none !important; }
+
+    body.contrast {
+      --bg: #000;
+      --panel: #111;
+      --text: #fff;
+      --muted: #f1f1f1;
+      --line: #fff;
+      --primary: #ffe100;
+      --primary-dark: #cdb600;
+      --success: #5cff9b;
+      --warning: #ffd27a;
+      --danger: #ff8a8a;
+      --shadow: none;
+    }
+    body.contrast .primary-btn,
+    body.contrast .choice-btn.primary { color: #000; }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 24px;
+      background: rgba(255,255,255,0.96);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(10px);
+    }
+    body.contrast .topbar { background: #000; }
+    .brand {
+      border: 0;
+      background: transparent;
+      font-weight: 900;
+      color: var(--text);
+      font-size: 1.15rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .top-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .small-btn {
+      min-height: 48px;
+      padding: 10px 16px;
+      border: 2px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+      color: var(--text);
+      font-weight: 800;
+    }
+
+    main { width: min(1180px, calc(100% - 28px)); margin: 28px auto 60px; }
+    .hero {
+      display: grid;
+      grid-template-columns: 1.5fr 0.9fr;
+      gap: 22px;
+      align-items: stretch;
+      margin-bottom: 26px;
+    }
+    .hero-main, .hero-side, .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+    .hero-main { padding: 38px; }
+    .eyebrow { color: var(--primary); font-weight: 900; margin: 0 0 6px; }
+    h1 { font-size: clamp(2rem, 5vw, 3.4rem); line-height: 1.18; margin: 0 0 14px; letter-spacing: -0.04em; }
+    .hero-main p { font-size: 1.08rem; color: var(--muted); margin: 0 0 24px; }
+    .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+    .primary-btn, .secondary-btn, .danger-btn {
+      min-height: 64px;
+      padding: 14px 24px;
+      border-radius: 16px;
+      font-weight: 900;
+      border: 0;
+    }
+    .primary-btn { background: var(--primary); color: white; }
+    .primary-btn:hover { background: var(--primary-dark); }
+    .secondary-btn { background: var(--panel); color: var(--text); border: 2px solid var(--line); }
+    .danger-btn { background: #fff1f1; color: var(--danger); border: 2px solid #ffd4d4; }
+    .hero-side { padding: 28px; }
+    .hero-side h2 { margin: 0 0 14px; font-size: 1.35rem; }
+    .promise { display: grid; gap: 12px; }
+    .promise div {
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: var(--bg);
+      font-weight: 800;
+    }
+
+    .section-head { display: flex; justify-content: space-between; gap: 16px; align-items: end; margin: 34px 0 16px; }
+    .section-head h2 { margin: 0; font-size: 1.8rem; }
+    .section-head p { margin: 0; color: var(--muted); }
+    .category-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+    .tab-btn {
+      min-height: 52px;
+      padding: 10px 17px;
+      border-radius: 999px;
+      border: 2px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+      font-weight: 900;
+    }
+    .tab-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+
+    .lesson-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .lesson-card {
+      text-align: left;
+      width: 100%;
+      min-height: 220px;
+      padding: 24px;
+      background: var(--panel);
+      border: 2px solid var(--line);
+      border-radius: 20px;
+      color: var(--text);
+      box-shadow: 0 8px 22px rgba(28, 52, 92, 0.08);
+      transition: transform .15s ease, border-color .15s ease;
+    }
+    .lesson-card:hover { transform: translateY(-4px); border-color: var(--primary); }
+    .lesson-icon { font-size: 2.35rem; display: block; margin-bottom: 12px; }
+    .lesson-card h3 { margin: 0 0 8px; font-size: 1.25rem; }
+    .lesson-card p { color: var(--muted); margin: 0 0 14px; }
+    .lesson-meta { font-size: .88rem; font-weight: 900; color: var(--primary); }
+
+    .practice-shell {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 310px;
+      gap: 18px;
+      align-items: start;
+    }
+    .practice-main { min-width: 0; }
+    .practice-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 22px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      margin-bottom: 14px;
+    }
+    .practice-title-wrap { display: flex; align-items: center; gap: 14px; }
+    .practice-title-wrap .big-icon { font-size: 2.2rem; }
+    .practice-title-wrap h2 { margin: 0; font-size: 1.35rem; }
+    .practice-title-wrap p { margin: 0; color: var(--muted); font-size: .92rem; }
+    .step-line { height: 12px; background: #e5ebf5; border-radius: 99px; overflow: hidden; margin-bottom: 14px; }
+    .step-line > div { height: 100%; background: var(--primary); width: 0; transition: width .25s; }
+
+    .simulator {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      min-height: 650px;
+      overflow: hidden;
+    }
+    .sim-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #fff, #f7f9fd);
+    }
+    body.contrast .sim-head { background: #111; }
+    .sim-head strong { font-size: 1.12rem; }
+    .training-badge {
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: #eaf2ff;
+      color: var(--primary);
+      font-weight: 900;
+      font-size: .82rem;
+    }
+    .sim-body { padding: 24px; }
+    .question { font-size: 1.55rem; line-height: 1.35; font-weight: 900; margin: 0 0 8px; }
+    .subtext { color: var(--muted); margin: 0 0 22px; }
+    .choice-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+    .choice-grid.one { grid-template-columns: 1fr; }
+    .choice-grid.three { grid-template-columns: repeat(3, 1fr); }
+    .choice-btn {
+      min-height: 86px;
+      padding: 16px;
+      border-radius: 16px;
+      border: 2px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+      font-weight: 900;
+      text-align: center;
+    }
+    .choice-btn:hover { border-color: var(--primary); background: #f5f8ff; }
+    .choice-btn.primary { background: var(--primary); color: white; border-color: var(--primary); }
+    .choice-btn.selected { border: 4px solid var(--primary); background: #eef4ff; }
+    .choice-btn small { display: block; color: var(--muted); font-weight: 700; margin-top: 5px; }
+
+    .side-guide {
+      position: sticky;
+      top: 90px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+    }
+    .guide-face { font-size: 3rem; text-align: center; }
+    .side-guide h3 { margin: 4px 0 6px; text-align: center; }
+    .guide-text { background: var(--bg); border-radius: 14px; padding: 15px; font-weight: 800; margin: 14px 0; }
+    .guide-actions { display: grid; gap: 10px; }
+
+    .nav-actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 24px; }
+    .nav-actions button { min-width: 140px; }
+
+    /* realistic modules */
+    .device-frame { max-width: 430px; margin: 0 auto; background: #1d2533; padding: 12px; border-radius: 34px; box-shadow: 0 18px 40px rgba(0,0,0,.2); }
+    .device-screen { background: #f8fafc; min-height: 610px; border-radius: 25px; overflow: hidden; color: #172033; }
+    .phone-status { height: 38px; display: flex; justify-content: space-between; align-items: center; padding: 0 18px; font-size: .78rem; font-weight: 900; background: white; }
+    .phone-header { padding: 14px 18px; background: white; border-bottom: 1px solid #e2e8f0; display:flex; gap:12px; align-items:center; font-weight:900; }
+    .avatar { width: 46px; height: 46px; border-radius: 50%; display:grid; place-items:center; background:#ffe66d; font-size:1.35rem; }
+    .chat-area { padding: 20px 16px; min-height: 400px; background: #b9d4e8; }
+    .bubble { max-width: 76%; padding: 13px 15px; margin-bottom: 12px; border-radius: 16px; background: white; box-shadow: 0 2px 4px rgba(0,0,0,.08); }
+    .bubble.me { margin-left: auto; background:#fee500; }
+    .chat-input { display:flex; gap:8px; padding:12px; background:white; }
+    .chat-input input { flex:1; min-height:52px; border:2px solid #d7dee9; border-radius:14px; padding:0 14px; }
+
+    .kiosk-layout { display:grid; grid-template-columns: 1fr 290px; min-height:560px; border:8px solid #2c3340; border-radius:22px; overflow:hidden; background:#f3f5f8; }
+    .kiosk-menu { padding:18px; }
+    .kiosk-title { background:#b3202e; color:#fff; padding:18px; margin:-18px -18px 18px; font-weight:900; display:flex; justify-content:space-between; }
+    .menu-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
+    .menu-item { background:#fff; border:2px solid #dbe2ed; border-radius:14px; padding:12px; text-align:left; }
+    .menu-photo { height:100px; border-radius:12px; display:grid; place-items:center; font-size:3rem; background:linear-gradient(135deg,#fff4d7,#ffd7b8); margin-bottom:8px; }
+    .cart-pane { background:white; border-left:2px solid #dbe2ed; padding:18px; display:flex; flex-direction:column; }
+    .cart-list { flex:1; }
+    .cart-row { display:flex; justify-content:space-between; gap:8px; padding:10px 0; border-bottom:1px solid #e5e7eb; }
+    .cart-total { font-size:1.25rem; font-weight:900; padding:14px 0; }
+
+    .subway-machine { background:#d9dde3; border:8px solid #4f5965; border-radius:22px; padding:18px; }
+    .subway-screen { background:white; border:5px solid #252b33; border-radius:12px; overflow:hidden; }
+    .subway-head { background:#167647; color:white; padding:15px 18px; font-weight:900; display:flex; justify-content:space-between; }
+    .map-wrap { position:relative; height:360px; overflow:auto; background:#fbfcfe; }
+    .metro-map { min-width:720px; height:360px; position:relative; }
+    .line { position:absolute; height:10px; border-radius:99px; }
+    .line.l1 { left:50px; top:170px; width:590px; background:#0052a4; }
+    .line.l2a { left:130px; top:70px; width:430px; background:#00a84d; transform:rotate(18deg); transform-origin:left center; }
+    .line.l4 { left:350px; top:40px; width:10px; height:280px; background:#00a5de; }
+    .station { position:absolute; width:28px; height:28px; border-radius:50%; border:6px solid #0052a4; background:white; transform:translate(-50%,-50%); }
+    .station.green { border-color:#00a84d; }
+    .station.blue { border-color:#00a5de; }
+    .station.transfer { box-shadow:0 0 0 6px #fff, 0 0 0 10px #333; }
+    .station-label { position:absolute; transform:translate(-50%, 18px); font-size:14px; font-weight:900; white-space:nowrap; }
+    .station-btn { position:absolute; transform:translate(-50%,-50%); width:44px; height:44px; border-radius:50%; background:transparent; border:0; z-index:3; }
+
+    .ticket-card, .booking-card, .bank-card, .delivery-card {
+      background:white; color:#172033; border:2px solid #dbe2ed; border-radius:18px; padding:18px; box-shadow:0 8px 20px rgba(0,0,0,.07);
+    }
+    .ticket-list, .booking-list { display:grid; gap:12px; }
+    .row-between { display:flex; justify-content:space-between; gap:16px; align-items:center; }
+    .price { font-weight:900; color:#155eef; }
+    .field-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:14px; }
+    .field { display:grid; gap:7px; }
+    .field label { font-weight:900; }
+    .field input, .field select { min-height:58px; border:2px solid #cfd8e6; border-radius:14px; padding:0 14px; background:white; color:#172033; }
+
+    .keypad { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; max-width:420px; margin:18px auto; }
+    .key { min-height:70px; border-radius:14px; border:2px solid #cad3e0; background:white; font-size:1.35rem; font-weight:900; }
+    .amount-display { max-width:520px; margin:0 auto; min-height:80px; display:grid; place-items:center; border:3px solid #1c4fa3; border-radius:14px; background:#eaf3ff; font-size:1.65rem; font-weight:900; }
+
+    .video-call { max-width:430px; margin:0 auto; height:610px; border-radius:32px; overflow:hidden; position:relative; background:linear-gradient(160deg,#5276a3,#1d2837); color:white; display:flex; flex-direction:column; justify-content:space-between; padding:30px 20px; }
+    .video-person { text-align:center; padding-top:70px; }
+    .video-avatar { width:150px; height:150px; border-radius:50%; background:#ffd78c; display:grid; place-items:center; font-size:5rem; margin:0 auto 18px; border:6px solid rgba(255,255,255,.4); }
+    .call-controls { display:flex; justify-content:center; gap:22px; }
+    .call-btn { width:72px; height:72px; border-radius:50%; border:0; font-size:1.6rem; }
+    .call-btn.end { background:#e93a3a; color:white; }
+
+    .result-box { text-align:center; padding:36px 20px; }
+    .result-icon { font-size:5rem; }
+    .result-box h2 { font-size:2rem; margin:8px 0; }
+    .score-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:24px 0; }
+    .score-item { background:var(--bg); border-radius:14px; padding:18px 10px; }
+    .score-item strong { display:block; font-size:1.5rem; }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 28px;
+      transform: translateX(-50%) translateY(30px);
+      opacity: 0;
+      pointer-events: none;
+      background: #172033;
+      color: white;
+      padding: 14px 20px;
+      border-radius: 14px;
+      font-weight: 900;
+      z-index: 100;
+      transition: .2s;
+      max-width: calc(100% - 28px);
+      text-align:center;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    footer { text-align:center; color:var(--muted); padding:30px 16px 50px; }
+
+    @media (max-width: 950px) {
+      .hero { grid-template-columns:1fr; }
+      .lesson-grid { grid-template-columns:repeat(2,1fr); }
+      .practice-shell { grid-template-columns:1fr; }
+      .side-guide { position:static; }
+      .kiosk-layout { grid-template-columns:1fr; }
+      .cart-pane { border-left:0; border-top:2px solid #dbe2ed; }
+    }
+    @media (max-width: 640px) {
+      .topbar { align-items:flex-start; padding:12px; }
+      .brand span:last-child { display:none; }
+      .small-btn { min-height:44px; padding:8px 11px; font-size:.86rem; }
+      main { width:min(100% - 16px, 1180px); margin-top:14px; }
+      .hero-main, .hero-side { padding:23px; }
+      .lesson-grid { grid-template-columns:1fr; }
+      .lesson-card { min-height:180px; }
+      .section-head { display:block; }
+      .choice-grid, .choice-grid.three, .field-grid { grid-template-columns:1fr; }
+      .sim-body { padding:16px; }
+      .simulator { min-height:600px; }
+      .practice-header { align-items:flex-start; }
+      .nav-actions { flex-direction:column-reverse; }
+      .nav-actions button { width:100%; }
+      .score-grid { grid-template-columns:1fr; }
+      .kiosk-layout { border-width:4px; }
+      .menu-grid { grid-template-columns:1fr; }
+    }
+  </style>
 </head>
 <body>
-  <a class="skip-link" href="#main">본문 바로가기</a>
-
   <header class="topbar">
-    <button class="brand" type="button" data-home aria-label="첫 화면으로 이동">
-      <span class="brand-mark">동</span>
-      <span><b>디지털 동행</b><small>생활 속 디지털 연습</small></span>
+    <button class="brand" id="homeBrand" aria-label="첫 화면으로 이동">
+      <span>🧭</span><span>생활 디지털 연습장</span>
     </button>
-    <div class="accessibility-tools" aria-label="화면 설정">
-      <button id="fontDown" class="tool-btn" type="button">가−</button>
-      <button id="fontUp" class="tool-btn" type="button">가+</button>
-      <button id="contrastToggle" class="tool-btn" type="button">◐ 고대비</button>
-      <button id="voiceToggle" class="tool-btn voice" type="button" aria-pressed="false">🔊 음성 안내</button>
+    <div class="top-actions">
+      <button class="small-btn" id="fontDown">글자 작게</button>
+      <button class="small-btn" id="fontUp">글자 크게</button>
+      <button class="small-btn" id="contrastBtn">고대비</button>
+      <button class="small-btn" id="speakBtn">🔊 읽어주기</button>
     </div>
   </header>
 
-  <main id="main">
-    <section id="homeView" class="view active">
-      <div class="home-shell">
-        <div class="hero-copy">
-          <span class="pill">실제 결제 없는 안전한 연습</span>
-          <h1>디지털 생활,<br><em>천천히 함께</em> 연습해요.</h1>
-          <p>음식 주문과 수상한 문자 구별을 실제 화면과 비슷하게 연습할 수 있습니다.</p>
+  <main>
+    <section id="homeView">
+      <div class="hero">
+        <div class="hero-main">
+          <p class="eyebrow">실수해도 괜찮은 안전한 연습</p>
+          <h1>생활 속 디지털 일을<br>천천히 직접 연습해요</h1>
+          <p>키오스크, 교통표 예매, 송금, 예약, 영상통화, 배달 주문을 실제와 비슷한 화면에서 연습할 수 있습니다.</p>
           <div class="hero-actions">
-            <button class="primary-cta" data-open="kiosk" type="button">지금 연습 시작하기</button>
-            <button class="outline-cta" data-open="guide" type="button">사용 방법 보기</button>
-          </div>
-          <ul class="trust-list">
-            <li>✓ 회원가입 없음</li><li>✓ 개인정보 입력 없음</li><li>✓ 잘못 눌러도 괜찮음</li>
-          </ul>
-        </div>
-        <div class="hero-visual" aria-hidden="true">
-          <div class="device-card">
-            <div class="device-top"><span></span><b>주문 연습</b><i>안전 모드</i></div>
-            <div class="mini-menu"><span>🍔</span><div><b>불고기 버거</b><small>6,900원</small></div><button>담기</button></div>
-            <div class="mini-menu"><span>☕</span><div><b>따뜻한 커피</b><small>2,500원</small></div><button>담기</button></div>
-            <div class="device-bottom">천천히 눌러도 괜찮아요</div>
+            <button class="primary-btn" id="startBtn">연습 고르기</button>
+            <button class="secondary-btn" id="resumeBtn">최근 연습 이어하기</button>
           </div>
         </div>
-      </div>
-
-      <div class="content-wrap">
-        <div class="section-title"><div><span>연습 메뉴</span><h2>무엇을 연습할까요?</h2></div><p>원하는 항목을 눌러 시작하세요.</p></div>
-        <div class="service-grid">
-          <button class="service-card blue" data-open="kiosk" type="button"><span class="service-icon">🖥️</span><small>생활 연습 01</small><strong>음식 주문 키오스크</strong><p>메뉴 선택부터 카드 결제까지 실제 흐름으로 연습합니다.</p><i>연습하기 →</i></button>
-          <button class="service-card orange" data-open="smishing" type="button"><span class="service-icon">💬</span><small>생활 연습 02</small><strong>수상한 문자 구별</strong><p>실제 문자 앱처럼 보이는 화면에서 스미싱을 판별합니다.</p><i>연습하기 →</i></button>
-          <button class="service-card green" data-open="guide" type="button"><span class="service-icon">📱</span><small>쉬운 사용 안내</small><strong>스마트폰 기초</strong><p>글자 확대, 고대비 화면, 음성 안내 사용법을 배웁니다.</p><i>배우기 →</i></button>
-          <button class="service-card purple" data-open="results" type="button"><span class="service-icon">📈</span><small>나의 기록</small><strong>연습 결과 확인</strong><p>완료 시간, 실수 횟수, 정답률을 한눈에 확인합니다.</p><i>확인하기 →</i></button>
-        </div>
-        <div class="safety-banner"><span>🛡️</span><div><b>안심하고 이용하세요</b><p>이 서비스는 교육용입니다. 실제 결제, 계좌이체, 개인정보 입력이 발생하지 않습니다.</p></div></div>
-      </div>
-    </section>
-
-    <section id="kioskView" class="view app-view">
-      <div class="app-header"><button class="round-back" data-home type="button">←</button><div><span>생활 연습 01</span><h2>음식 주문 키오스크</h2></div><div class="safe-chip">🔒 교육용 화면</div></div>
-      <div class="kiosk-stage">
-        <aside class="coach-panel">
-          <div class="coach-avatar">👩‍🏫</div><h3>디지털 도우미</h3><p id="coachText">화면의 안내를 보고 천천히 선택해 보세요.</p>
-          <button id="kioskSpeak" class="coach-btn" type="button">🔊 안내 듣기</button>
-          <button id="kioskHelp" class="coach-btn help" type="button">💡 힌트 보기</button>
-          <div class="step-list" id="stepList"></div>
+        <aside class="hero-side">
+          <h2>안심하고 연습하세요</h2>
+          <div class="promise">
+            <div>✅ 실제 돈은 빠져나가지 않습니다.</div>
+            <div>✅ 개인정보와 카드번호를 저장하지 않습니다.</div>
+            <div>✅ 언제든 처음으로 돌아갈 수 있습니다.</div>
+            <div>✅ 버튼을 누르면 음성으로 안내합니다.</div>
+          </div>
         </aside>
-        <div class="kiosk-machine">
-          <div class="machine-frame">
-            <div class="machine-brand"><b>GOOD MEAL</b><span>주문 키오스크</span></div>
-            <div id="kioskPanel" class="machine-screen" aria-live="polite"></div>
-            <div class="machine-footer"><span>교육용 모의 화면</span><span>실제 결제되지 않습니다</span></div>
+      </div>
+
+      <div class="section-head" id="lessonSection">
+        <div>
+          <h2>무엇을 연습하시겠어요?</h2>
+          <p>한 번에 하나씩 골라서 천천히 연습하세요.</p>
+        </div>
+      </div>
+      <div class="category-tabs" id="categoryTabs"></div>
+      <div class="lesson-grid" id="lessonGrid"></div>
+    </section>
+
+    <section id="practiceView" class="hidden" aria-live="polite">
+      <div class="practice-shell">
+        <div class="practice-main">
+          <div class="practice-header">
+            <div class="practice-title-wrap">
+              <span class="big-icon" id="practiceIcon">🍔</span>
+              <div>
+                <h2 id="practiceTitle">연습 제목</h2>
+                <p id="practiceStepText">1단계</p>
+              </div>
+            </div>
+            <button class="secondary-btn" id="quitBtn">연습 나가기</button>
           </div>
-          <div class="machine-stand"><div></div></div>
+          <div class="step-line"><div id="stepProgress"></div></div>
+          <div class="simulator">
+            <div class="sim-head">
+              <strong id="simulatorTitle">교육용 연습 화면</strong>
+              <span class="training-badge">교육용 · 실제 결제 없음</span>
+            </div>
+            <div class="sim-body" id="simBody"></div>
+          </div>
         </div>
+        <aside class="side-guide">
+          <div class="guide-face">👩‍🏫</div>
+          <h3>디지털 도우미</h3>
+          <div class="guide-text" id="guideText">화면을 천천히 살펴보세요.</div>
+          <div class="guide-actions">
+            <button class="primary-btn" id="hintBtn">힌트 보기</button>
+            <button class="secondary-btn" id="repeatBtn">🔊 설명 다시 듣기</button>
+            <button class="secondary-btn" id="restartBtn">처음부터 다시</button>
+          </div>
+        </aside>
       </div>
-    </section>
-
-    <section id="smishingView" class="view app-view">
-      <div class="app-header"><button class="round-back" data-home type="button">←</button><div><span>생활 연습 02</span><h2>수상한 문자 구별</h2></div><div id="quizCount" class="safe-chip">1 / 6</div></div>
-      <div class="phone-stage">
-        <aside class="lesson-panel"><span class="lesson-badge">안전 수칙</span><h3>이 세 가지를 확인하세요</h3><ol><li>모르는 링크가 있는가?</li><li>돈이나 개인정보를 요구하는가?</li><li>급하게 행동하도록 재촉하는가?</li></ol><div id="quizStatus" class="score-chip">현재 정답 0개</div></aside>
-        <div class="phone-shell">
-          <div class="phone-notch"></div>
-          <div class="phone-status"><span>9:41</span><span>● ● ● 100%</span></div>
-          <div class="message-header"><button type="button">‹</button><div class="sender-avatar">문</div><div><b id="senderName">알 수 없음</b><small>문자 메시지</small></div><span>ⓘ</span></div>
-          <div id="quizPanel" class="message-body" aria-live="polite"></div>
-        </div>
-        <aside class="answer-panel"><h3>어떻게 판단하시겠어요?</h3><p>문자를 읽고 아래에서 선택하세요.</p><div id="quizButtons" class="answer-buttons"></div></aside>
-      </div>
-    </section>
-
-    <section id="guideView" class="view app-view simple-page">
-      <div class="app-header"><button class="round-back" data-home type="button">←</button><div><span>쉬운 사용 안내</span><h2>화면을 편하게 바꾸는 방법</h2></div></div>
-      <div class="guide-hero"><div>👋</div><p>화면 위쪽 버튼으로 언제든 글자와 화면을 편하게 바꿀 수 있습니다.</p></div>
-      <div class="guide-grid">
-        <article><span>가+</span><div><small>1단계</small><h3>글자를 크게 보기</h3><p>화면 위의 <b>가+</b> 버튼을 누르세요. 최대 3단계까지 커집니다.</p></div></article>
-        <article><span>◐</span><div><small>2단계</small><h3>고대비 화면 사용</h3><p>글자와 배경을 더 뚜렷하게 보고 싶을 때 사용하세요.</p></div></article>
-        <article><span>🔊</span><div><small>3단계</small><h3>음성 안내 듣기</h3><p>화면 설명이 필요하면 음성 안내 버튼을 누르세요.</p></div></article>
-      </div>
-    </section>
-
-    <section id="resultsView" class="view app-view simple-page">
-      <div class="app-header"><button class="round-back" data-home type="button">←</button><div><span>나의 기록</span><h2>연습 결과</h2></div></div>
-      <div id="resultsPanel" class="result-dashboard"></div>
-      <button id="resetResults" class="reset-btn" type="button">기록 모두 지우기</button>
     </section>
   </main>
 
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <footer><b>디지털 동행</b><span>고령층을 위한 생활형 디지털 교육 서비스</span><small>본 서비스는 교육용이며 실제 금융·결제 기능을 제공하지 않습니다.</small></footer>
-  <script src="app.js"></script>
+  <footer>
+    이 사이트는 교육용 모의 연습입니다. 실제 기관·은행·항공사·메신저 화면은 서비스에 따라 다를 수 있습니다.
+  </footer>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const categories = [
+      { id: 'all', label: '전체' },
+      { id: 'kiosk', label: '키오스크' },
+      { id: 'transport', label: '교통·여행' },
+      { id: 'money', label: '은행·금융' },
+      { id: 'contact', label: '연락하기' },
+      { id: 'shopping', label: '주문·배달' },
+      { id: 'public', label: '병원·공공' }
+    ];
+
+    const lessons = [
+      { id:'food', category:'kiosk', icon:'🍔', title:'음식점 키오스크', desc:'매장·포장 선택부터 메뉴 주문과 카드 결제까지', time:'약 4분', steps:5 },
+      { id:'cafe', category:'kiosk', icon:'☕', title:'카페 키오스크', desc:'음료 크기, 온도, 추가 옵션을 고르고 결제하기', time:'약 4분', steps:5 },
+      { id:'subway', category:'transport', icon:'🚇', title:'지하철 승차권', desc:'노선도에서 목적지를 고르고 교통카드·1회권 이용하기', time:'약 5분', steps:5 },
+      { id:'train', category:'transport', icon:'🚄', title:'기차표 예매', desc:'출발지·도착지와 시간을 골라 좌석 예매하기', time:'약 5분', steps:5 },
+      { id:'flight', category:'transport', icon:'✈️', title:'비행기표 예매', desc:'여행 날짜와 항공편을 고르고 예약 내용 확인하기', time:'약 6분', steps:6 },
+      { id:'hotel', category:'transport', icon:'🏨', title:'호텔 예약', desc:'지역·날짜·객실을 선택하고 예약 확인하기', time:'약 5분', steps:5 },
+      { id:'transfer', category:'money', icon:'💸', title:'은행 송금', desc:'받는 사람과 금액을 확인하고 안전하게 송금하기', time:'약 5분', steps:5 },
+      { id:'atm', category:'money', icon:'🏧', title:'ATM 현금 출금', desc:'카드 넣기, 비밀번호, 금액, 명세표 선택하기', time:'약 4분', steps:5 },
+      { id:'message', category:'contact', icon:'💬', title:'카카오톡 메시지', desc:'대화방을 열고 글과 사진을 보내는 방법 연습', time:'약 4분', steps:5 },
+      { id:'video', category:'contact', icon:'📹', title:'카카오톡 영상통화', desc:'영상통화를 걸고 마이크·카메라를 조절하기', time:'약 4분', steps:5 },
+      { id:'onlineShop', category:'shopping', icon:'🛒', title:'온라인 물건 주문', desc:'상품 고르기, 주소 확인, 결제 직전까지 연습', time:'약 5분', steps:5 },
+      { id:'delivery', category:'shopping', icon:'🛵', title:'배달 음식 주문', desc:'가게·메뉴·배달 주소를 고르고 주문 확인하기', time:'약 5분', steps:5 },
+      { id:'hospital', category:'public', icon:'🏥', title:'병원 예약·무인접수', desc:'진료과, 날짜를 고르고 접수번호 확인하기', time:'약 5분', steps:5 },
+      { id:'certificate', category:'public', icon:'📄', title:'무인민원발급기', desc:'필요한 서류를 찾고 본인확인과 발급 과정을 연습', time:'약 5분', steps:5 },
+      { id:'taxi', category:'transport', icon:'🚕', title:'택시 호출', desc:'현재 위치와 목적지를 확인해 택시 부르기', time:'약 4분', steps:5 }
+    ];
+
+    const app = {
+      lesson: null,
+      step: 0,
+      mistakes: 0,
+      hints: 0,
+      startedAt: 0,
+      data: {},
+      fontSize: Number(localStorage.getItem('seniorFont') || 20),
+      contrast: localStorage.getItem('seniorContrast') === 'true'
+    };
+
+    const el = id => document.getElementById(id);
+    const homeView = el('homeView');
+    const practiceView = el('practiceView');
+    const lessonGrid = el('lessonGrid');
+    const categoryTabs = el('categoryTabs');
+    const simBody = el('simBody');
+    const guideText = el('guideText');
+    const toast = el('toast');
+
+    function applySettings(){
+      document.documentElement.style.setProperty('--base-font', app.fontSize + 'px');
+      document.body.classList.toggle('contrast', app.contrast);
+      localStorage.setItem('seniorFont', app.fontSize);
+      localStorage.setItem('seniorContrast', app.contrast);
+    }
+
+    function showToast(msg){
+      toast.textContent = msg;
+      toast.classList.add('show');
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(() => toast.classList.remove('show'), 2200);
+    }
+
+    function speak(text){
+      if(!('speechSynthesis' in window)) return showToast('이 브라우저는 음성 안내를 지원하지 않습니다.');
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'ko-KR';
+      u.rate = 0.82;
+      speechSynthesis.speak(u);
+    }
+
+    function currentGuide(){ return guideText.textContent.trim(); }
+
+    function renderCategories(){
+      categoryTabs.innerHTML = categories.map((c,i)=>`<button class="tab-btn ${i===0?'active':''}" data-cat="${c.id}">${c.label}</button>`).join('');
+      categoryTabs.addEventListener('click', e=>{
+        const btn=e.target.closest('[data-cat]'); if(!btn) return;
+        document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        renderLessons(btn.dataset.cat);
+      });
+    }
+
+    function renderLessons(cat='all'){
+      const list = cat==='all' ? lessons : lessons.filter(l=>l.category===cat);
+      lessonGrid.innerHTML = list.map(l=>`
+        <button class="lesson-card" data-lesson="${l.id}">
+          <span class="lesson-icon">${l.icon}</span>
+          <h3>${l.title}</h3>
+          <p>${l.desc}</p>
+          <span class="lesson-meta">${l.time} · ${l.steps}단계</span>
+        </button>`).join('');
+      lessonGrid.querySelectorAll('[data-lesson]').forEach(btn=>btn.addEventListener('click',()=>startLesson(btn.dataset.lesson)));
+    }
+
+    function startLesson(id){
+      app.lesson = lessons.find(l=>l.id===id);
+      app.step = 0; app.mistakes=0; app.hints=0; app.startedAt=Date.now(); app.data={};
+      localStorage.setItem('lastLesson', id);
+      homeView.classList.add('hidden');
+      practiceView.classList.remove('hidden');
+      window.scrollTo({top:0,behavior:'smooth'});
+      renderStep();
+    }
+
+    function leavePractice(){
+      speechSynthesis?.cancel?.();
+      practiceView.classList.add('hidden');
+      homeView.classList.remove('hidden');
+      app.lesson=null;
+      window.scrollTo({top:0,behavior:'smooth'});
+    }
+
+    function next(data={}){
+      Object.assign(app.data, data);
+      app.step++;
+      renderStep();
+    }
+    function wrong(msg='다시 한 번 확인해 보세요.'){
+      app.mistakes++;
+      showToast(msg);
+      guideText.textContent = msg;
+      speak(msg);
+    }
+    function selectAndNext(key,value){ app.data[key]=value; next(); }
+
+    function renderStep(){
+      const l=app.lesson;
+      el('practiceIcon').textContent=l.icon;
+      el('practiceTitle').textContent=l.title;
+      el('practiceStepText').textContent=`${Math.min(app.step+1,l.steps)}단계 / ${l.steps}단계`;
+      el('stepProgress').style.width=`${Math.min((app.step+1)/l.steps*100,100)}%`;
+      el('simulatorTitle').textContent=`${l.title} 연습`;
+      const fn = renderers[l.id];
+      if(fn) fn(app.step); else finishLesson();
+    }
+
+    function setGuide(text, auto=false){ guideText.textContent=text; if(auto) speak(text); }
+    function nav(backFn, nextFn, nextLabel='다음으로'){
+      return `<div class="nav-actions">
+        <button class="secondary-btn" id="backStep">이전 단계</button>
+        <button class="primary-btn" id="nextStep">${nextLabel}</button>
+      </div>`;
+    }
+    function bindNav(backFn, nextFn){
+      const b=el('backStep'), n=el('nextStep');
+      if(b) b.onclick=backFn || (()=>{ if(app.step>0){app.step--;renderStep();} });
+      if(n) n.onclick=nextFn;
+    }
+
+    function finishLesson(extra=''){
+      const sec=Math.max(1,Math.round((Date.now()-app.startedAt)/1000));
+      const min=Math.floor(sec/60), rem=sec%60;
+      const record={lesson:app.lesson.id,title:app.lesson.title,date:new Date().toISOString(),seconds:sec,mistakes:app.mistakes,hints:app.hints};
+      const history=JSON.parse(localStorage.getItem('practiceHistory')||'[]');
+      history.unshift(record); localStorage.setItem('practiceHistory',JSON.stringify(history.slice(0,30)));
+      simBody.innerHTML=`<div class="result-box">
+        <div class="result-icon">🎉</div>
+        <h2>연습을 끝냈습니다!</h2>
+        <p>${app.lesson.title}의 기본 과정을 끝까지 해냈습니다.</p>
+        ${extra}
+        <div class="score-grid">
+          <div class="score-item"><span>걸린 시간</span><strong>${min}분 ${rem}초</strong></div>
+          <div class="score-item"><span>다시 확인한 횟수</span><strong>${app.mistakes}회</strong></div>
+          <div class="score-item"><span>힌트 사용</span><strong>${app.hints}회</strong></div>
+        </div>
+        <div class="choice-grid">
+          <button class="secondary-btn" id="againBtn">한 번 더 연습</button>
+          <button class="primary-btn" id="homeBtn">다른 연습 고르기</button>
+        </div>
+      </div>`;
+      setGuide('잘하셨습니다. 실제로 이용할 때도 오늘 연습한 순서를 천천히 떠올려 보세요.', true);
+      el('againBtn').onclick=()=>startLesson(app.lesson.id);
+      el('homeBtn').onclick=leavePractice;
+      el('practiceStepText').textContent='연습 완료';
+      el('stepProgress').style.width='100%';
+    }
+
+    const commonStart = (title, text, options) => {
+      simBody.innerHTML=`<h3 class="question">${title}</h3><p class="subtext">${text}</p><div class="choice-grid">${options.map(o=>`<button class="choice-btn" data-v="${o.v}">${o.icon||''}<br>${o.label}${o.small?`<small>${o.small}</small>`:''}</button>`).join('')}</div>`;
+      simBody.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>selectAndNext('choice'+app.step,b.dataset.v));
+    };
+
+    const foodFlow = (step, cafe=false) => {
+      const menus = cafe ? [
+        {n:'따뜻한 아메리카노',p:3500,e:'☕'},{n:'차가운 카페라테',p:4500,e:'🥛'},{n:'유자차',p:4200,e:'🍋'},{n:'카스텔라',p:3800,e:'🍰'}
+      ] : [
+        {n:'불고기버거',p:6200,e:'🍔'},{n:'새우버거',p:6500,e:'🍤'},{n:'치킨세트',p:8500,e:'🍗'},{n:'샐러드',p:5900,e:'🥗'}
+      ];
+      if(step===0){ commonStart('어디에서 드시겠어요?','화면에서 알맞은 버튼을 한 번 눌러보세요.',[{v:'매장',label:'매장에서 먹기',icon:'🍽️'},{v:'포장',label:'포장해서 가져가기',icon:'🛍️'}]); setGuide('매장에서 드시면 왼쪽, 가져가시면 오른쪽 버튼을 누르세요.',true); }
+      else if(step===1){
+        simBody.innerHTML=`<div class="kiosk-layout"><div class="kiosk-menu"><div class="kiosk-title"><span>${cafe?'우리동네 카페':'행복버거'}</span><span>${app.data.choice0}</span></div><h3 class="question">메뉴를 하나 골라주세요</h3><div class="menu-grid">${menus.map((m,i)=>`<button class="menu-item" data-i="${i}"><div class="menu-photo">${m.e}</div><strong>${m.n}</strong><div>${m.p.toLocaleString()}원</div></button>`).join('')}</div></div><aside class="cart-pane"><h3>주문 목록</h3><div class="cart-list">아직 고른 메뉴가 없습니다.</div><button class="primary-btn" disabled>주문 확인</button></aside></div>`;
+        simBody.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{const m=menus[+b.dataset.i];app.data.menu=m;next();}); setGuide('먹고 싶은 메뉴 그림을 한 번 누르세요.',true);
+      }
+      else if(step===2){
+        const m=app.data.menu;
+        simBody.innerHTML=`<h3 class="question">옵션을 선택하세요</h3><p class="subtext">선택하지 않아도 기본 옵션으로 주문할 수 있습니다.</p><div class="ticket-card"><h3>${m.e} ${m.n}</h3><div class="choice-grid">${cafe?`<button class="choice-btn" data-opt="보통 크기">보통 크기</button><button class="choice-btn" data-opt="큰 크기">큰 크기 +500원</button><button class="choice-btn" data-opt="덜 달게">덜 달게</button><button class="choice-btn" data-opt="기본">기본으로</button>`:`<button class="choice-btn" data-opt="단품">단품</button><button class="choice-btn" data-opt="세트">세트 +2,000원</button><button class="choice-btn" data-opt="소스 제외">소스 제외</button><button class="choice-btn" data-opt="기본">기본으로</button>`}</div></div>`;
+        simBody.querySelectorAll('[data-opt]').forEach(b=>b.onclick=()=>{app.data.option=b.dataset.opt;next();}); setGuide('원하는 옵션이 있으면 고르고, 없으면 기본으로를 누르세요.',true);
+      }
+      else if(step===3){
+        const m=app.data.menu; const extra=(app.data.option==='세트'?2000:app.data.option==='큰 크기'?500:0); const total=m.p+extra; app.data.total=total;
+        simBody.innerHTML=`<h3 class="question">주문 내용을 확인하세요</h3><div class="ticket-card"><div class="row-between"><strong>${m.n}</strong><span>${m.p.toLocaleString()}원</span></div><div class="row-between"><span>옵션: ${app.data.option}</span><span>${extra?`+${extra.toLocaleString()}원`:'추가금액 없음'}</span></div><hr><div class="row-between"><strong>결제 금액</strong><strong class="price">${total.toLocaleString()}원</strong></div></div><div class="choice-grid" style="margin-top:18px"><button class="choice-btn" data-pay="card">💳<br>카드 결제</button><button class="choice-btn" data-pay="simple">📱<br>휴대폰 결제</button></div>`;
+        simBody.querySelectorAll('[data-pay]').forEach(b=>b.onclick=()=>{app.data.pay=b.dataset.pay;next();}); setGuide('주문과 금액을 확인한 뒤 결제 방법을 누르세요.',true);
+      }
+      else if(step===4){
+        simBody.innerHTML=`<h3 class="question">${app.data.pay==='card'?'카드를 단말기에 넣어주세요':'휴대폰의 결제 화면을 단말기에 가까이 대주세요'}</h3><p class="subtext">실제 카드나 휴대폰은 필요하지 않습니다. 아래 연습 버튼을 누르세요.</p><div class="device-frame" style="max-width:360px"><div class="device-screen" style="min-height:360px;display:grid;place-items:center;text-align:center;padding:24px"><div><div style="font-size:5rem">${app.data.pay==='card'?'💳':'📱'}</div><h3>${app.data.total.toLocaleString()}원</h3><p>승인을 기다리는 중입니다.</p><button class="primary-btn" id="payDone">결제 연습 완료</button></div></div></div>`;
+        el('payDone').onclick=()=>finishLesson(`<p><strong>실전 기억:</strong> 결제 금액과 주문번호를 마지막에 꼭 확인하세요.</p>`); setGuide('카드는 IC칩이 있는 방향을 확인하고, 승인될 때까지 빼지 마세요.',true);
+      }
+    };
+
+    const renderers = {
+      food: s=>foodFlow(s,false),
+      cafe: s=>foodFlow(s,true),
+      subway: s=>{
+        if(s===0){ commonStart('어떤 승차권을 이용하시겠어요?','교통카드가 있다면 충전 또는 바로 승차할 수 있습니다.',[{v:'교통카드',label:'교통카드 충전',icon:'💳'},{v:'1회권',label:'1회용 승차권',icon:'🎫'}]); setGuide('교통카드가 없다고 생각하고 1회용 승차권을 선택해 보세요.',true); }
+        else if(s===1){
+          simBody.innerHTML=`<div class="subway-machine"><div class="subway-screen"><div class="subway-head"><span>서울 지하철 승차권</span><span>목적지 선택</span></div><div class="map-wrap"><div class="metro-map">
+          <div class="line l1"></div><div class="line l2a"></div><div class="line l4"></div>
+          ${stationHTML('서울역',120,170,'',true)}${stationHTML('시청',230,170,'',true)}${stationHTML('종로3가',350,170,'',true)}${stationHTML('동대문',470,170,'',true)}${stationHTML('청량리',600,170,'',false)}
+          ${stationHTML('홍대입구',165,82,'green',true)}${stationHTML('을지로입구',300,125,'green',false)}${stationHTML('강남',485,190,'green',false)}${stationHTML('잠실',600,225,'green',false)}
+          ${stationHTML('혜화',355,70,'blue',false)}${stationHTML('충무로',355,235,'blue',true)}${stationHTML('사당',355,305,'blue',false)}
+          </div></div></div></div><p class="subtext">교육용 간략 노선도입니다. 실제 이동 전에는 공식 노선도와 안내 방송을 다시 확인하세요.</p>`;
+          simBody.querySelectorAll('[data-station]').forEach(b=>b.onclick=()=>{app.data.station=b.dataset.station;next();}); setGuide('도착하려는 역 이름을 찾아 눌러보세요. 연습에서는 강남역을 선택해 보세요.',true);
+        }
+        else if(s===2){
+          if(app.data.station!=='강남'){ app.mistakes++; }
+          commonStart(`${app.data.station}역까지 몇 명이 가시나요?`,'승객 수를 선택하세요.',[{v:'1',label:'어른 1명',icon:'👤'},{v:'2',label:'어른 2명',icon:'👥'}]); setGuide('혼자 이동한다고 생각하고 어른 1명을 누르세요.',true);
+        }
+        else if(s===3){
+          app.data.fare=app.data.choice2==='2'?3000:1500;
+          simBody.innerHTML=`<h3 class="question">금액을 확인하고 결제하세요</h3><div class="ticket-card"><div class="row-between"><span>출발역</span><strong>서울역</strong></div><div class="row-between"><span>도착역</span><strong>${app.data.station}</strong></div><div class="row-between"><span>승객</span><strong>${app.data.choice2}명</strong></div><hr><div class="row-between"><span>결제금액</span><strong class="price">${app.data.fare.toLocaleString()}원</strong></div></div><div class="choice-grid" style="margin-top:16px"><button class="choice-btn" data-pay="card">카드</button><button class="choice-btn" data-pay="cash">현금</button></div>`;
+          simBody.querySelectorAll('[data-pay]').forEach(b=>b.onclick=()=>next({pay:b.dataset.pay})); setGuide('도착역과 인원, 금액을 먼저 확인하세요.',true);
+        }
+        else if(s===4){
+          simBody.innerHTML=`<div class="result-box"><div class="result-icon">🎫</div><h2>승차권이 나왔습니다</h2><p>승차권과 거스름돈이 있는지 확인하세요.</p><button class="primary-btn" id="takeTicket">승차권 받기</button></div>`;
+          el('takeTicket').onclick=()=>finishLesson('<p><strong>실전 기억:</strong> 개찰구에서는 승차권을 태그하고, 내릴 때까지 잃어버리지 마세요.</p>'); setGuide('기계 아래쪽에서 승차권과 영수증을 꼭 챙기세요.',true);
+        }
+      },
+      train: s=>bookingFlow(s,'기차'),
+      flight: s=>bookingFlow(s,'비행기'),
+      hotel: s=>hotelFlow(s),
+      transfer: s=>bankTransferFlow(s),
+      atm: s=>atmFlow(s),
+      message: s=>messageFlow(s),
+      video: s=>videoFlow(s),
+      onlineShop: s=>shopFlow(s,false),
+      delivery: s=>shopFlow(s,true),
+      hospital: s=>hospitalFlow(s),
+      certificate: s=>certificateFlow(s),
+      taxi: s=>taxiFlow(s)
+    };
+
+    function stationHTML(name,x,y,cls='',transfer=false){
+      return `<span class="station ${cls} ${transfer?'transfer':''}" style="left:${x}px;top:${y}px"></span><span class="station-label" style="left:${x}px;top:${y}px">${name}</span><button class="station-btn" style="left:${x}px;top:${y}px" data-station="${name}" aria-label="${name} 선택"></button>`;
+    }
+
+    function bookingFlow(s,type){
+      const isFlight=type==='비행기';
+      if(s===0){
+        simBody.innerHTML=`<h3 class="question">출발지와 도착지를 선택하세요</h3><div class="field-grid"><div class="field"><label>출발</label><select id="from"><option>${isFlight?'서울(인천)':'서울역'}</option><option>${isFlight?'부산(김해)':'용산역'}</option></select></div><div class="field"><label>도착</label><select id="to"><option>${isFlight?'제주':'부산역'}</option><option>${isFlight?'부산(김해)':'대전역'}</option></select></div></div>${nav(null,()=>{})}`;
+        bindNav(null,()=>next({from:el('from').value,to:el('to').value})); setGuide('출발지와 도착지가 서로 맞는지 천천히 확인하세요.',true);
+      } else if(s===1){
+        simBody.innerHTML=`<h3 class="question">가는 날짜와 시간을 고르세요</h3><div class="field-grid"><div class="field"><label>가는 날짜</label><input id="date" type="date" value="2026-08-01"></div><div class="field"><label>시간대</label><select id="time"><option>오전 9시 무렵</option><option>오후 1시 무렵</option><option>오후 6시 무렵</option></select></div></div>${nav()}`;
+        bindNav(null,()=>next({date:el('date').value,time:el('time').value})); setGuide('날짜를 잘못 고르는 일이 많습니다. 연도, 월, 일을 차례로 확인하세요.',true);
+      } else if(s===2){
+        const list=isFlight?[['OA101','09:10','10:20','89,000원'],['OA203','13:30','14:40','76,000원'],['OA305','18:20','19:30','68,000원']]:[['KTX 101','09:00','11:35','59,800원'],['KTX 117','13:10','15:48','59,800원'],['KTX 133','18:05','20:42','59,800원']];
+        simBody.innerHTML=`<h3 class="question">${type} 시간을 선택하세요</h3><div class="ticket-list">${list.map((r,i)=>`<button class="ticket-card row-between" data-trip="${i}"><div><strong>${r[0]}</strong><div>${r[1]} 출발 → ${r[2]} 도착</div></div><span class="price">${r[3]}</span></button>`).join('')}</div>`;
+        simBody.querySelectorAll('[data-trip]').forEach(b=>b.onclick=()=>{app.data.trip=list[+b.dataset.trip];next();}); setGuide('출발 시간과 도착 시간을 모두 확인한 뒤 선택하세요.',true);
+      } else if(s===3){
+        simBody.innerHTML=`<h3 class="question">좌석을 선택하세요</h3><p class="subtext">통로 쪽인지 창가 쪽인지 확인하세요.</p><div class="choice-grid three"><button class="choice-btn" data-seat="1A">창가 1A</button><button class="choice-btn" data-seat="1B">통로 1B</button><button class="choice-btn" data-seat="2A">창가 2A</button><button class="choice-btn" data-seat="2B">통로 2B</button><button class="choice-btn" data-seat="3A">창가 3A</button><button class="choice-btn" data-seat="3B">통로 3B</button></div>`;
+        simBody.querySelectorAll('[data-seat]').forEach(b=>b.onclick=()=>next({seat:b.dataset.seat})); setGuide('멀미가 있으면 창가보다 통로 좌석이 편할 수 있습니다.',true);
+      } else if(s===4){
+        const r=app.data.trip;
+        simBody.innerHTML=`<h3 class="question">예약 내용을 마지막으로 확인하세요</h3><div class="booking-card"><div class="row-between"><span>구간</span><strong>${app.data.from} → ${app.data.to}</strong></div><div class="row-between"><span>날짜</span><strong>${app.data.date}</strong></div><div class="row-between"><span>시간</span><strong>${r[1]} 출발</strong></div><div class="row-between"><span>좌석</span><strong>${app.data.seat}</strong></div><div class="row-between"><span>금액</span><strong class="price">${r[3]}</strong></div></div>${nav(null,null,'예약 확인')}`;
+        bindNav(null,()=> isFlight ? next() : finishLesson('<p><strong>실전 기억:</strong> 예매 후 승차권 화면이나 문자 메시지를 저장해 두세요.</p>'));
+        setGuide('이름, 날짜, 출발지, 도착지, 시간을 꼭 다시 확인하세요.',true);
+      } else if(s===5 && isFlight){
+        simBody.innerHTML=`<h3 class="question">탑승자 정보를 확인하세요</h3><div class="field-grid"><div class="field"><label>성명</label><input value="홍길동" readonly></div><div class="field"><label>생년월일</label><input value="1955-05-10" readonly></div></div><p class="subtext">연습용 정보입니다. 실제 예약에서는 신분증과 같은 이름을 입력해야 합니다.</p>${nav(null,null,'예약 완료')}`;
+        bindNav(null,()=>finishLesson('<p><strong>실전 기억:</strong> 항공권 예약 후 터미널과 탑승 시간을 전자항공권에서 다시 확인하세요.</p>')); setGuide('항공권 이름은 반드시 신분증의 이름과 같아야 합니다.',true);
+      }
+    }
+
+    function hotelFlow(s){
+      if(s===0){ commonStart('어느 지역의 호텔을 찾으시나요?','여행할 지역을 선택하세요.',[{v:'서울',label:'서울',icon:'🏙️'},{v:'부산',label:'부산',icon:'🌊'},{v:'제주',label:'제주',icon:'🏝️'},{v:'강릉',label:'강릉',icon:'🌅'}]); setGuide('먼저 여행할 지역을 고르세요.',true); }
+      else if(s===1){ simBody.innerHTML=`<h3 class="question">숙박 날짜를 선택하세요</h3><div class="field-grid"><div class="field"><label>체크인</label><input id="checkin" type="date" value="2026-08-01"></div><div class="field"><label>체크아웃</label><input id="checkout" type="date" value="2026-08-02"></div></div>${nav()}`; bindNav(null,()=>next({checkin:el('checkin').value,checkout:el('checkout').value})); setGuide('체크아웃 날짜는 체크인 날짜보다 뒤여야 합니다.',true); }
+      else if(s===2){ const rooms=[['스탠다드룸','침대 1개 · 2명','98,000원'],['디럭스룸','침대 2개 · 2명','128,000원'],['패밀리룸','침대 2개 · 4명','168,000원']]; simBody.innerHTML=`<h3 class="question">객실을 선택하세요</h3><div class="booking-list">${rooms.map((r,i)=>`<button class="booking-card row-between" data-room="${i}"><div><strong>${r[0]}</strong><div>${r[1]}</div></div><span class="price">${r[2]}</span></button>`).join('')}</div>`; simBody.querySelectorAll('[data-room]').forEach(b=>b.onclick=()=>{app.data.room=rooms[+b.dataset.room];next();}); setGuide('숙박 인원과 침대 수를 확인하세요.',true); }
+      else if(s===3){ commonStart('취소 조건을 선택하세요','조금 비싸더라도 무료 취소가 가능한 상품이 안전할 수 있습니다.',[{v:'무료취소',label:'3일 전까지 무료 취소',icon:'✅'},{v:'취소불가',label:'취소 불가 · 더 저렴함',icon:'⚠️'}]); setGuide('일정이 바뀔 가능성이 있으면 무료 취소 상품을 고르세요.',true); }
+      else if(s===4){ const r=app.data.room; simBody.innerHTML=`<h3 class="question">예약 내용을 확인하세요</h3><div class="booking-card"><div class="row-between"><span>지역</span><strong>${app.data.choice0}</strong></div><div class="row-between"><span>날짜</span><strong>${app.data.checkin} ~ ${app.data.checkout}</strong></div><div class="row-between"><span>객실</span><strong>${r[0]}</strong></div><div class="row-between"><span>취소</span><strong>${app.data.choice3}</strong></div><div class="row-between"><span>금액</span><strong class="price">${r[2]}</strong></div></div><button class="primary-btn" style="width:100%;margin-top:16px" id="hotelDone">예약 연습 완료</button>`; el('hotelDone').onclick=()=>finishLesson('<p><strong>실전 기억:</strong> 호텔 주소, 체크인 시간, 취소 마감일을 예약 문자에서 확인하세요.</p>'); setGuide('예약 버튼을 누르기 전 날짜와 취소 조건을 마지막으로 확인하세요.',true); }
+    }
+
+    function bankTransferFlow(s){
+      if(s===0){ commonStart('누구에게 보내시겠어요?','등록된 받는 사람 중에서 선택하세요.',[{v:'김영희',label:'김영희',small:'○○은행 1234'},{v:'박민수',label:'박민수',small:'△△은행 5678'}]); setGuide('이름만 보지 말고 은행과 계좌 끝자리도 함께 확인하세요.',true); }
+      else if(s===1){ simBody.innerHTML=`<h3 class="question">보낼 금액을 입력하세요</h3><div class="amount-display" id="amountDisplay">0원</div><div class="keypad">${['1','2','3','4','5','6','7','8','9','지움','0','확인'].map(k=>`<button class="key" data-key="${k}">${k}</button>`).join('')}</div>`; let amt=''; const draw=()=>el('amountDisplay').textContent=(Number(amt||0)).toLocaleString()+'원'; simBody.querySelectorAll('[data-key]').forEach(b=>b.onclick=()=>{const k=b.dataset.key;if(k==='지움')amt=amt.slice(0,-1);else if(k==='확인'){if(!amt||Number(amt)===0)return wrong('금액을 입력해 주세요.');app.data.amount=Number(amt);next();return;}else if(amt.length<8)amt+=k;draw();}); setGuide('연습으로 5만원을 입력해 보세요. 실제 송금 전에는 금액을 두 번 확인하세요.',true); }
+      else if(s===2){ simBody.innerHTML=`<h3 class="question">받는 사람을 다시 확인하세요</h3><div class="bank-card"><div class="row-between"><span>받는 사람</span><strong>${app.data.choice0}</strong></div><div class="row-between"><span>계좌 끝자리</span><strong>${app.data.choice0==='김영희'?'1234':'5678'}</strong></div><div class="row-between"><span>보낼 금액</span><strong class="price">${app.data.amount.toLocaleString()}원</strong></div></div><div class="choice-grid" style="margin-top:16px"><button class="choice-btn" id="notMine">정보가 다릅니다</button><button class="choice-btn primary" id="confirmReceiver">맞습니다</button></div>`; el('notMine').onclick=()=>wrong('좋습니다. 정보가 다르면 절대 송금하지 말고 이전 단계로 돌아가야 합니다.'); el('confirmReceiver').onclick=()=>next(); setGuide('이름과 금액이 조금이라도 다르면 송금을 멈추세요.',true); }
+      else if(s===3){ simBody.innerHTML=`<h3 class="question">송금 비밀번호를 입력하는 연습입니다</h3><p class="subtext">실제 비밀번호가 아닌 연습용 숫자 123456을 입력하세요.</p><div class="amount-display" id="pinDisplay">○ ○ ○ ○ ○ ○</div><div class="keypad">${['1','2','3','4','5','6','7','8','9','지움','0','확인'].map(k=>`<button class="key" data-key="${k}">${k}</button>`).join('')}</div>`; let pin=''; const draw=()=>el('pinDisplay').textContent=(pin.split('').map(()=> '●').join(' ')+' ○ ○ ○ ○ ○ ○').split(' ').slice(0,6).join(' '); simBody.querySelectorAll('[data-key]').forEach(b=>b.onclick=()=>{const k=b.dataset.key;if(k==='지움')pin=pin.slice(0,-1);else if(k==='확인'){if(pin!=='123456')return wrong('연습용 숫자 123456을 입력해 보세요.');next();return;}else if(pin.length<6)pin+=k;draw();}); setGuide('비밀번호는 다른 사람이 보지 않도록 손으로 가리고 입력하세요.',true); }
+      else if(s===4){ simBody.innerHTML=`<div class="result-box"><div class="result-icon">✅</div><h2>송금 연습 완료</h2><p>${app.data.choice0}님에게 ${app.data.amount.toLocaleString()}원을 보내는 과정을 연습했습니다.</p><button class="primary-btn" id="transferDone">확인</button></div>`; el('transferDone').onclick=()=>finishLesson('<p><strong>사기 예방:</strong> 전화나 문자로 급하게 송금을 요구하면 가족이나 금융회사에 직접 확인하세요.</p>'); setGuide('송금 완료 화면에서 받는 사람과 금액을 다시 확인하세요.',true); }
+    }
+
+    function atmFlow(s){
+      if(s===0){ commonStart('어떤 일을 하시겠어요?','ATM 첫 화면에서 현금 출금을 선택하세요.',[{v:'출금',label:'현금 출금',icon:'💵'},{v:'입금',label:'현금 입금',icon:'📥'},{v:'조회',label:'잔액 조회',icon:'🔎'},{v:'이체',label:'계좌 이체',icon:'🔁'}]); setGuide('연습에서는 현금 출금을 눌러보세요.',true); }
+      else if(s===1){ if(app.data.choice0!=='출금')app.mistakes++; simBody.innerHTML=`<h3 class="question">카드를 넣는 방향을 확인하세요</h3><div class="device-frame" style="max-width:450px"><div class="device-screen" style="min-height:360px;display:grid;place-items:center;text-align:center"><div><div style="font-size:5rem">💳</div><p>IC칩이 앞쪽으로 가도록 넣습니다.</p><button class="primary-btn" id="insertCard">카드 넣기 연습</button></div></div></div>`; el('insertCard').onclick=()=>next(); setGuide('카드를 억지로 밀지 말고 그림에 표시된 방향을 확인하세요.',true); }
+      else if(s===2){ simBody.innerHTML=`<h3 class="question">연습용 비밀번호 1234를 입력하세요</h3><div class="amount-display" id="atmPin">○ ○ ○ ○</div><div class="keypad">${['1','2','3','4','5','6','7','8','9','지움','0','확인'].map(k=>`<button class="key" data-key="${k}">${k}</button>`).join('')}</div>`; let pin=''; const draw=()=>el('atmPin').textContent=(pin.split('').map(()=> '●').concat(['○','○','○','○']).slice(0,4).join(' ')); simBody.querySelectorAll('[data-key]').forEach(b=>b.onclick=()=>{const k=b.dataset.key;if(k==='지움')pin=pin.slice(0,-1);else if(k==='확인'){if(pin!=='1234')return wrong('연습용 비밀번호 1234를 입력해 보세요.');next();return;}else if(pin.length<4)pin+=k;draw();}); setGuide('비밀번호를 입력할 때는 주변 사람에게 보이지 않게 가리세요.',true); }
+      else if(s===3){ commonStart('얼마를 찾으시겠어요?','필요한 금액을 선택하세요.',[{v:'10000',label:'1만원'},{v:'50000',label:'5만원'},{v:'100000',label:'10만원'},{v:'직접',label:'직접 입력'}]); setGuide('연습으로 5만원을 선택해 보세요.',true); }
+      else if(s===4){ simBody.innerHTML=`<div class="result-box"><div class="result-icon">💵</div><h2>현금과 카드를 받으세요</h2><p>현금 → 카드 → 명세표 순서로 모두 챙겼는지 확인합니다.</p><button class="primary-btn" id="atmDone">모두 받았습니다</button></div>`; el('atmDone').onclick=()=>finishLesson('<p><strong>실전 기억:</strong> 자리를 떠나기 전 카드와 현금을 꼭 다시 확인하세요.</p>'); setGuide('ATM 앞에서 돈을 오래 세지 말고 안전한 곳으로 이동하세요.',true); }
+    }
+
+    function messageFlow(s){
+      if(s===0){ simBody.innerHTML=phoneShell(`<div class="phone-header"><div class="avatar">👧</div><div>딸 김영희<br><small>대화방</small></div></div><div class="chat-area"><button class="choice-btn primary" style="width:100%;margin-top:120px" id="openChat">대화방 열기</button></div>`); el('openChat').onclick=()=>next(); setGuide('연락할 사람의 이름과 사진을 확인하고 대화방을 여세요.',true); }
+      else if(s===1){ simBody.innerHTML=phoneShell(`<div class="phone-header"><div class="avatar">👧</div><div>딸 김영희</div></div><div class="chat-area"><div class="bubble">엄마, 오늘 저녁 7시에 갈게요.</div></div><div class="chat-input"><input id="chatText" placeholder="메시지를 입력하세요"><button class="primary-btn" id="sendText">보내기</button></div>`); el('sendText').onclick=()=>{const v=el('chatText').value.trim();if(!v)return wrong('보낼 글을 먼저 입력하세요.');app.data.message=v;next();}; setGuide('입력칸을 누르고 “그래 조심해서 와”라고 적어 보세요.',true); }
+      else if(s===2){ simBody.innerHTML=phoneShell(`<div class="phone-header"><div class="avatar">👧</div><div>딸 김영희</div></div><div class="chat-area"><div class="bubble">엄마, 오늘 저녁 7시에 갈게요.</div><div class="bubble me">${app.data.message}</div></div><div class="chat-input"><button class="choice-btn" style="width:100%" id="plusBtn">＋ 사진이나 파일 보내기</button></div>`); el('plusBtn').onclick=()=>next(); setGuide('사진을 보내려면 입력칸 옆의 더하기 버튼을 누릅니다.',true); }
+      else if(s===3){ simBody.innerHTML=phoneShell(`<div class="phone-header"><strong>보낼 항목 선택</strong></div><div style="padding:22px"><div class="choice-grid"><button class="choice-btn" data-attach="사진">🖼️<br>사진</button><button class="choice-btn" data-attach="카메라">📷<br>카메라</button><button class="choice-btn" data-attach="연락처">👤<br>연락처</button><button class="choice-btn" data-attach="위치">📍<br>위치</button></div></div>`); simBody.querySelectorAll('[data-attach]').forEach(b=>b.onclick=()=>next({attach:b.dataset.attach})); setGuide('이미 찍어둔 사진을 보내려면 사진을 누르세요.',true); }
+      else if(s===4){ simBody.innerHTML=phoneShell(`<div class="phone-header"><div class="avatar">👧</div><div>딸 김영희</div></div><div class="chat-area"><div class="bubble">엄마, 오늘 저녁 7시에 갈게요.</div><div class="bubble me">${app.data.message}</div><div class="bubble me" style="font-size:4rem">🌷</div></div><div style="padding:12px;background:white"><button class="primary-btn" style="width:100%" id="msgDone">메시지 연습 완료</button></div>`); el('msgDone').onclick=()=>finishLesson('<p><strong>실전 기억:</strong> 잘못 보낸 메시지는 길게 눌러 삭제할 수 있지만 상대방이 이미 봤을 수도 있습니다.</p>'); setGuide('사진을 보내기 전 상대방 대화방이 맞는지 한 번 더 확인하세요.',true); }
+    }
+
+    function phoneShell(inner){ return `<div class="device-frame"><div class="device-screen"><div class="phone-status"><span>09:41</span><span>●●● 85%</span></div>${inner}</div></div>`; }
+
+    function videoFlow(s){
+      if(s===0){ simBody.innerHTML=phoneShell(`<div class="phone-header"><div class="avatar">👦</div><div>아들 민수</div></div><div style="padding:26px;text-align:center"><div style="font-size:6rem">👦</div><h3>아들 민수</h3><div class="choice-grid"><button class="choice-btn" data-call="voice">📞<br>음성통화</button><button class="choice-btn primary" data-call="video">📹<br>영상통화</button></div></div>`); simBody.querySelectorAll('[data-call]').forEach(b=>b.onclick=()=>{if(b.dataset.call!=='video')return wrong('연습에서는 영상통화를 눌러보세요.');next();}); setGuide('얼굴을 보며 통화하려면 영상통화 버튼을 누르세요.',true); }
+      else if(s===1){ simBody.innerHTML=`<div class="video-call"><div class="video-person"><div class="video-avatar">👦</div><h2>아들 민수</h2><p>연결 중...</p></div><div class="call-controls"><button class="call-btn">🎙️</button><button class="call-btn">📹</button><button class="call-btn end" id="answerBtn">📞</button></div></div>`; el('answerBtn').textContent='받기'; el('answerBtn').style.background='#22a65a'; el('answerBtn').onclick=()=>next(); setGuide('상대방이 받으면 영상이 연결됩니다. 연습에서는 받기 버튼을 누르세요.',true); }
+      else if(s===2){ simBody.innerHTML=`<div class="video-call"><div style="position:absolute;right:18px;top:18px;width:110px;height:150px;border-radius:14px;background:#8093a8;display:grid;place-items:center;font-size:3rem;border:3px solid white">👵</div><div class="video-person"><div class="video-avatar">👦</div><h2>아들 민수</h2><p>통화 중 00:12</p></div><div class="call-controls"><button class="call-btn" id="micBtn">🎙️</button><button class="call-btn" id="camBtn">📹</button><button class="call-btn end" id="endCall">📞</button></div></div>`; el('micBtn').onclick=()=>{app.data.mic=!app.data.mic;el('micBtn').textContent=app.data.mic?'🔇':'🎙️';showToast(app.data.mic?'마이크가 꺼졌습니다.':'마이크가 켜졌습니다.');}; el('camBtn').onclick=()=>{app.data.cam=!app.data.cam;el('camBtn').textContent=app.data.cam?'🚫':'📹';showToast(app.data.cam?'카메라가 꺼졌습니다.':'카메라가 켜졌습니다.');}; el('endCall').onclick=()=>next(); setGuide('목소리가 들리지 않으면 마이크 버튼이 꺼져 있는지 확인하세요. 통화를 마치려면 빨간 버튼을 누르세요.',true); }
+      else if(s===3){ commonStart('통화가 끝났습니다','다시 걸거나 대화방으로 돌아갈 수 있습니다.',[{v:'다시걸기',label:'다시 영상통화',icon:'📹'},{v:'대화방',label:'대화방으로 돌아가기',icon:'💬'}]); setGuide('실전에서는 잘못 끊겼다면 다시 걸기 버튼을 누르면 됩니다.',true); }
+      else if(s===4){ finishLesson('<p><strong>실전 기억:</strong> 영상이 안 보이면 카메라 권한과 카메라 꺼짐 버튼을 확인하세요.</p>'); }
+    }
+
+    function shopFlow(s,delivery){
+      const products=delivery?[['김치찌개','12,000원','🍲'],['비빔밥','10,000원','🍚'],['치킨','22,000원','🍗']]:[['세제 2개','13,900원','🧴'],['휴지 24롤','18,900원','🧻'],['쌀 10kg','31,900원','🍚']];
+      if(s===0){ commonStart(delivery?'어떤 음식을 주문할까요?':'어떤 물건을 주문할까요?','원하는 종류를 선택하세요.',delivery?[{v:'한식',label:'한식',icon:'🍲'},{v:'치킨',label:'치킨',icon:'🍗'},{v:'중식',label:'중식',icon:'🥟'},{v:'카페',label:'카페·디저트',icon:'🍰'}]:[{v:'생활용품',label:'생활용품',icon:'🧴'},{v:'식품',label:'식품',icon:'🥬'},{v:'건강',label:'건강용품',icon:'🩹'},{v:'의류',label:'옷',icon:'👕'}]); setGuide('먼저 찾고 싶은 종류를 누르세요.',true); }
+      else if(s===1){ simBody.innerHTML=`<h3 class="question">상품을 하나 선택하세요</h3><div class="booking-list">${products.map((p,i)=>`<button class="delivery-card row-between" data-product="${i}"><div style="display:flex;gap:14px;align-items:center"><span style="font-size:2.5rem">${p[2]}</span><strong>${p[0]}</strong></div><span class="price">${p[1]}</span></button>`).join('')}</div>`; simBody.querySelectorAll('[data-product]').forEach(b=>b.onclick=()=>{app.data.product=products[+b.dataset.product];next();}); setGuide('상품 이름, 수량, 가격을 함께 확인하세요.',true); }
+      else if(s===2){ simBody.innerHTML=`<h3 class="question">받을 주소를 확인하세요</h3><div class="delivery-card"><div class="field"><label>주소</label><input id="addr" value="서울시 행복구 사랑로 10"></div><div class="field" style="margin-top:12px"><label>상세주소</label><input id="detail" value="101동 1001호"></div></div>${nav()}`; bindNav(null,()=>next({address:el('addr').value+' '+el('detail').value})); setGuide('동과 호수가 맞는지 꼭 확인하세요.',true); }
+      else if(s===3){ commonStart(delivery?'배달 요청을 선택하세요':'배송 방법을 선택하세요','필요한 방법을 고르세요.',delivery?[{v:'문앞',label:'문 앞에 놓아주세요',icon:'🚪'},{v:'직접',label:'직접 받을게요',icon:'🤝'}]:[{v:'일반',label:'일반 배송',small:'2~3일'},{v:'빠른',label:'빠른 배송',small:'다음 날'}]); setGuide('문 앞 배달은 음식이나 물건을 바로 확인하는 것이 좋습니다.',true); }
+      else if(s===4){ const p=app.data.product; simBody.innerHTML=`<h3 class="question">주문 내용을 확인하세요</h3><div class="delivery-card"><div class="row-between"><span>상품</span><strong>${p[0]}</strong></div><div class="row-between"><span>주소</span><strong>${app.data.address}</strong></div><div class="row-between"><span>${delivery?'배달 요청':'배송'}</span><strong>${app.data.choice3}</strong></div><div class="row-between"><span>결제 예정</span><strong class="price">${p[1]}</strong></div></div><button class="primary-btn" style="width:100%;margin-top:16px" id="orderDone">주문 연습 완료</button>`; el('orderDone').onclick=()=>finishLesson(`<p><strong>실전 기억:</strong> ${delivery?'가게와 주소, 요청사항':'판매자와 배송지, 최종 금액'}을 주문 전에 확인하세요.</p>`); setGuide('주문 버튼을 누르기 전 주소와 금액을 마지막으로 확인하세요.',true); }
+    }
+
+    function hospitalFlow(s){
+      if(s===0){ commonStart('어떤 진료를 받으시나요?','증상에 맞는 진료과를 선택하세요.',[{v:'내과',label:'내과',small:'감기·소화·혈압'},{v:'정형외과',label:'정형외과',small:'허리·무릎·관절'},{v:'안과',label:'안과',small:'눈·시력'},{v:'치과',label:'치과',small:'치아·잇몸'}]); setGuide('잘 모르겠으면 병원 안내 데스크에 먼저 물어보세요.',true); }
+      else if(s===1){ simBody.innerHTML=`<h3 class="question">예약 날짜를 선택하세요</h3><div class="field-grid"><button class="choice-btn" data-date="오늘 오후 3시">오늘 오후 3시</button><button class="choice-btn" data-date="내일 오전 10시">내일 오전 10시</button><button class="choice-btn" data-date="모레 오후 2시">모레 오후 2시</button></div>`; simBody.querySelectorAll('[data-date]').forEach(b=>b.onclick=()=>next({visit:b.dataset.date})); setGuide('병원까지 이동할 시간을 생각해서 여유 있게 고르세요.',true); }
+      else if(s===2){ commonStart('처음 방문하시나요?','진료 기록이 있는지 선택하세요.',[{v:'초진',label:'처음 방문',icon:'🆕'},{v:'재진',label:'전에 방문한 적 있음',icon:'📁'}]); setGuide('처음 가는 병원이라면 처음 방문을 누르세요.',true); }
+      else if(s===3){ simBody.innerHTML=`<h3 class="question">병원 도착 후 무인접수기 화면입니다</h3><div class="subway-machine"><div class="subway-screen"><div class="subway-head"><span>행복병원</span><span>무인 접수</span></div><div style="padding:28px"><div class="choice-grid"><button class="choice-btn primary" id="reception">진료 접수</button><button class="choice-btn">진료비 수납</button><button class="choice-btn">처방전 발급</button><button class="choice-btn">예약 확인</button></div></div></div></div>`; el('reception').onclick=()=>next(); setGuide('진료 전에 왔다면 진료 접수를 누르세요.',true); }
+      else if(s===4){ simBody.innerHTML=`<div class="result-box"><div class="result-icon">🏥</div><h2>접수번호 105번</h2><p>${app.data.choice0} · ${app.data.visit}</p><button class="primary-btn" id="hospitalDone">번호표 받기</button></div>`; el('hospitalDone').onclick=()=>finishLesson('<p><strong>실전 기억:</strong> 번호표의 진료과와 대기번호를 확인하고 안내 화면을 보세요.</p>'); setGuide('번호표를 잃어버리지 말고 대기 화면에서 내 번호를 확인하세요.',true); }
+    }
+
+    function certificateFlow(s){
+      if(s===0){ commonStart('어떤 서류가 필요하신가요?','가장 자주 사용하는 서류를 골라 연습합니다.',[{v:'주민등록등본',label:'주민등록등본',icon:'📄'},{v:'가족관계증명서',label:'가족관계증명서',icon:'👪'},{v:'건축물대장',label:'건축물대장',icon:'🏢'},{v:'지방세증명',label:'지방세 증명',icon:'🧾'}]); setGuide('제출 기관이 요구한 정확한 서류 이름을 확인하세요.',true); }
+      else if(s===1){ commonStart('본인 서류인가요?','본인 또는 가족 서류인지 선택하세요.',[{v:'본인',label:'본인 서류',icon:'🙋'},{v:'가족',label:'가족 서류',icon:'👪'}]); setGuide('가족 서류는 추가 확인이 필요할 수 있습니다.',true); }
+      else if(s===2){ simBody.innerHTML=`<h3 class="question">본인 확인 방법을 선택하세요</h3><div class="choice-grid"><button class="choice-btn" data-auth="지문">☝️<br>지문 확인</button><button class="choice-btn" data-auth="신분증">🪪<br>신분증 확인</button></div>`; simBody.querySelectorAll('[data-auth]').forEach(b=>b.onclick=()=>next({auth:b.dataset.auth})); setGuide('기계 안내에 따라 손가락을 올리거나 신분증을 놓으세요.',true); }
+      else if(s===3){ commonStart('주민등록번호 뒷자리를 표시할까요?','제출처에서 요구하지 않으면 가리는 것이 안전합니다.',[{v:'가림',label:'뒷자리 가리기',icon:'🔒'},{v:'표시',label:'전체 표시',icon:'👁️'}]); setGuide('개인정보 보호를 위해 필요하지 않다면 뒷자리를 가리세요.',true); }
+      else if(s===4){ simBody.innerHTML=`<div class="result-box"><div class="result-icon">📄</div><h2>${app.data.choice0} 발급 준비 완료</h2><p>본인확인: ${app.data.auth} · 주민번호: ${app.data.choice3}</p><button class="primary-btn" id="certDone">서류 받기</button></div>`; el('certDone').onclick=()=>finishLesson('<p><strong>실전 기억:</strong> 출력된 서류와 신분증, 거스름돈을 모두 챙기세요.</p>'); setGuide('출력된 서류의 이름과 발급 매수를 확인하세요.',true); }
+    }
+
+    function taxiFlow(s){
+      if(s===0){ simBody.innerHTML=phoneShell(`<div class="phone-header"><strong>택시 호출</strong></div><div style="height:360px;background:linear-gradient(135deg,#dcead6,#e8edf7);position:relative"><div style="position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);font-size:3rem">📍</div><div style="position:absolute;left:20px;right:20px;bottom:20px;background:white;padding:15px;border-radius:14px"><strong>현재 위치</strong><br>행복아파트 정문</div></div><div style="padding:14px"><button class="primary-btn" style="width:100%" id="confirmLoc">현재 위치 확인</button></div>`); el('confirmLoc').onclick=()=>next(); setGuide('지도 표시가 실제 서 있는 위치와 맞는지 확인하세요.',true); }
+      else if(s===1){ simBody.innerHTML=phoneShell(`<div class="phone-header"><strong>목적지 입력</strong></div><div style="padding:20px"><div class="field"><label>어디로 가시나요?</label><input id="dest" value="서울역 1번 출구"></div><button class="primary-btn" style="width:100%;margin-top:16px" id="destNext">목적지 확인</button></div>`); el('destNext').onclick=()=>next({destination:el('dest').value}); setGuide('역이나 건물 이름 뒤에 출구나 정확한 위치도 함께 적으면 좋습니다.',true); }
+      else if(s===2){ commonStart('차량 종류를 선택하세요','일반 택시는 가장 기본적인 호출입니다.',[{v:'일반',label:'일반 택시',small:'예상 12,000원'},{v:'대형',label:'대형 택시',small:'예상 19,000원'}]); setGuide('짐이 많지 않다면 일반 택시를 선택하세요.',true); }
+      else if(s===3){ simBody.innerHTML=phoneShell(`<div class="phone-header"><strong>호출 내용 확인</strong></div><div style="padding:20px"><div class="delivery-card"><p><strong>출발:</strong> 행복아파트 정문</p><p><strong>도착:</strong> ${app.data.destination}</p><p><strong>차량:</strong> ${app.data.choice2} 택시</p></div><button class="primary-btn" style="width:100%;margin-top:16px" id="callTaxi">택시 호출 연습</button></div>`); el('callTaxi').onclick=()=>next(); setGuide('호출 버튼을 누르기 전 출발 위치와 목적지를 확인하세요.',true); }
+      else if(s===4){ simBody.innerHTML=phoneShell(`<div class="phone-header"><strong>택시가 오고 있습니다</strong></div><div style="padding:24px;text-align:center"><div style="font-size:5rem">🚕</div><h3>서울 12가 3456</h3><p>흰색 승용차 · 약 3분 후 도착</p><button class="primary-btn" style="width:100%" id="taxiDone">차량번호 확인 완료</button></div>`); el('taxiDone').onclick=()=>finishLesson('<p><strong>실전 기억:</strong> 타기 전에 앱의 차량번호와 실제 차량번호가 같은지 확인하세요.</p>'); setGuide('차량 색상과 번호가 앱에 표시된 정보와 같은지 확인하세요.',true); }
+    }
+
+    // Controls
+    el('startBtn').onclick=()=>el('lessonSection').scrollIntoView({behavior:'smooth'});
+    el('resumeBtn').onclick=()=>{const id=localStorage.getItem('lastLesson'); if(id&&lessons.some(l=>l.id===id)) startLesson(id); else showToast('최근 연습 기록이 없습니다.');};
+    el('homeBrand').onclick=leavePractice;
+    el('quitBtn').onclick=leavePractice;
+    el('restartBtn').onclick=()=>{if(app.lesson)startLesson(app.lesson.id)};
+    el('hintBtn').onclick=()=>{app.hints++; showToast(currentGuide()); speak(currentGuide());};
+    el('repeatBtn').onclick=()=>speak(currentGuide());
+    el('speakBtn').onclick=()=>speak(app.lesson?currentGuide():'생활 속 디지털 일을 천천히 직접 연습해요. 아래에서 원하는 연습을 고르세요.');
+    el('fontUp').onclick=()=>{app.fontSize=Math.min(26,app.fontSize+2);applySettings();showToast('글자를 크게 했습니다.');};
+    el('fontDown').onclick=()=>{app.fontSize=Math.max(17,app.fontSize-2);applySettings();showToast('글자를 작게 했습니다.');};
+    el('contrastBtn').onclick=()=>{app.contrast=!app.contrast;applySettings();showToast(app.contrast?'고대비 화면입니다.':'기본 화면입니다.');};
+
+    applySettings(); renderCategories(); renderLessons();
+  </script>
 </body>
 </html>
