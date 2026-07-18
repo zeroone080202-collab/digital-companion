@@ -506,11 +506,12 @@ function setLauncherInstructions(title) {
 
 function showLauncher() {
   showView("launcherView");
-  state.launcherStage = "home";
   const guide = getEntryGuide();
-  $("#launcherTitle").textContent = `휴대전화에서 ${guide.appName}을 찾아 여세요`;
-  setLauncherInstructions("오른쪽 휴대전화 화면을 아래에서 위로 밀어 앱스 화면을 여세요.");
-  renderGalaxyHome(guide);
+  state.launcherStage = "apps";
+  $("#launcherTitle").textContent = `앱스 화면에서 ${guide.appName}을 찾아 여세요`;
+  // 연습 시작 전에 잠금 해제나 홈 화면 제스처를 요구하지 않습니다.
+  // 실제 연습에 필요한 앱 찾기 단계부터 바로 시작합니다.
+  renderGalaxyApps(guide);
 }
 
 function phoneStatusBar() {
