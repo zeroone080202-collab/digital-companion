@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="고령층을 위한 생활 속 디지털 연습 웹사이트" />
+  <title>디지털 동행</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">본문 바로가기</a>
+
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">고령층 디지털 생활 연습</p>
+      <h1>디지털 동행</h1>
+    </div>
+    <div class="accessibility-tools" aria-label="화면 설정">
+      <button type="button" id="fontDown" class="small-button">글자 작게</button>
+      <button type="button" id="fontUp" class="small-button">글자 크게</button>
+      <button type="button" id="contrastToggle" class="small-button">고대비</button>
+      <button type="button" id="voiceToggle" class="small-button" aria-pressed="false">음성 안내 켜기</button>
+    </div>
+  </header>
+
+  <main id="main" class="container">
+    <section id="homeView" class="view active" aria-labelledby="homeTitle">
+      <div class="hero-card">
+        <p class="badge">천천히, 한 단계씩</p>
+        <h2 id="homeTitle">오늘 무엇을 연습할까요?</h2>
+        <p class="lead">잘못 눌러도 괜찮습니다. 실제 돈이나 개인정보는 사용하지 않습니다.</p>
+      </div>
+
+      <div class="menu-grid" aria-label="연습 메뉴">
+        <button class="menu-card" data-open="kiosk">
+          <span class="menu-icon" aria-hidden="true">🍔</span>
+          <strong>음식 주문 연습</strong>
+          <span>키오스크에서 포장 주문을 연습합니다.</span>
+        </button>
+
+        <button class="menu-card" data-open="smishing">
+          <span class="menu-icon" aria-hidden="true">📱</span>
+          <strong>수상한 문자 구별</strong>
+          <span>스미싱 문자를 안전하게 구별합니다.</span>
+        </button>
+
+        <button class="menu-card" data-open="guide">
+          <span class="menu-icon" aria-hidden="true">🔊</span>
+          <strong>스마트폰 기초</strong>
+          <span>글자 크기와 화면 설정을 배웁니다.</span>
+        </button>
+
+        <button class="menu-card" data-open="results">
+          <span class="menu-icon" aria-hidden="true">📊</span>
+          <strong>나의 연습 기록</strong>
+          <span>완료한 연습과 결과를 확인합니다.</span>
+        </button>
+      </div>
+
+      <section class="safety-box" aria-label="안전 안내">
+        <h3>안심하고 연습하세요</h3>
+        <p>이 웹사이트에서는 실제 결제, 계좌번호, 카드번호, 주민등록번호를 요구하지 않습니다.</p>
+      </section>
+    </section>
+
+    <section id="kioskView" class="view" aria-labelledby="kioskTitle">
+      <div class="section-header">
+        <button type="button" class="back-button" data-home>← 처음으로</button>
+        <div>
+          <p class="eyebrow">생활 연습 1</p>
+          <h2 id="kioskTitle">음식 주문 연습</h2>
+        </div>
+      </div>
+
+      <div class="progress-wrap" aria-label="진행 단계">
+        <div id="kioskProgress" class="progress-bar"></div>
+        <p id="kioskStepText">1단계 / 5단계</p>
+      </div>
+
+      <div id="kioskPanel" class="practice-card" aria-live="polite"></div>
+
+      <div class="help-row">
+        <button type="button" id="kioskHelp" class="help-button">도움이 필요해요</button>
+        <button type="button" id="kioskSpeak" class="secondary-button">🔊 화면 설명 듣기</button>
+      </div>
+    </section>
+
+    <section id="smishingView" class="view" aria-labelledby="smishingTitle">
+      <div class="section-header">
+        <button type="button" class="back-button" data-home>← 처음으로</button>
+        <div>
+          <p class="eyebrow">생활 연습 2</p>
+          <h2 id="smishingTitle">수상한 문자 구별</h2>
+        </div>
+      </div>
+
+      <div class="progress-wrap">
+        <div id="quizProgress" class="progress-bar"></div>
+        <p id="quizStepText">1번 문제 / 5번 문제</p>
+      </div>
+
+      <div id="quizPanel" class="practice-card" aria-live="polite"></div>
+    </section>
+
+    <section id="guideView" class="view" aria-labelledby="guideTitle">
+      <div class="section-header">
+        <button type="button" class="back-button" data-home>← 처음으로</button>
+        <div>
+          <p class="eyebrow">스마트폰 기초</p>
+          <h2 id="guideTitle">화면을 편하게 바꾸는 방법</h2>
+        </div>
+      </div>
+
+      <div class="guide-list">
+        <article class="guide-card">
+          <span class="step-number">1</span>
+          <div>
+            <h3>글자가 작을 때</h3>
+            <p>화면 위의 <strong>글자 크게</strong> 버튼을 누르세요. 여러 번 누르면 더 커집니다.</p>
+          </div>
+        </article>
+        <article class="guide-card">
+          <span class="step-number">2</span>
+          <div>
+            <h3>화면이 잘 안 보일 때</h3>
+            <p><strong>고대비</strong> 버튼을 누르면 검은 배경과 밝은 글자로 바뀝니다.</p>
+          </div>
+        </article>
+        <article class="guide-card">
+          <span class="step-number">3</span>
+          <div>
+            <h3>글을 읽기 어려울 때</h3>
+            <p><strong>음성 안내 켜기</strong>를 누르면 화면 이동과 설명을 소리로 들을 수 있습니다.</p>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="resultsView" class="view" aria-labelledby="resultsTitle">
+      <div class="section-header">
+        <button type="button" class="back-button" data-home>← 처음으로</button>
+        <div>
+          <p class="eyebrow">학습 기록</p>
+          <h2 id="resultsTitle">나의 연습 결과</h2>
+        </div>
+      </div>
+
+      <div id="resultsPanel" class="results-grid"></div>
+      <button type="button" id="resetResults" class="danger-button">연습 기록 모두 지우기</button>
+    </section>
+  </main>
+
+  <footer>
+    <p>디지털 동행 · 대회 시연용 교육 웹사이트</p>
+    <p>실제 금융·결제 기능은 포함하지 않습니다.</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
