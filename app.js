@@ -504,6 +504,30 @@ function getEntryGuide() {
   };
 }
 
+function speakText(text) {
+  const message = String(text || "").replace(/\s+/g, " ").trim();
+  if (!message) return;
+
+  if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
+    toast("이 브라우저에서는 음성 읽기를 사용할 수 없습니다.");
+    return;
+  }
+
+  try {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(message);
+    utterance.lang = "ko-KR";
+    utterance.rate = 0.78;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+    utterance.onerror = () => toast("음성 재생에 실패했습니다. 한 번 더 눌러 주세요.");
+    window.speechSynthesis.speak(utterance);
+  } catch (error) {
+    console.error("음성 안내 오류", error);
+    toast("음성 재생에 실패했습니다. 한 번 더 눌러 주세요.");
+  }
+}
+
 function setLauncherInstructions(title) {
   const mission = $("#launcherMission");
   if (mission) mission.textContent = title;
@@ -782,13 +806,7 @@ function instruction(title, reason = "", steps = []) {
 
   const repeat = $("#repeatInstruction");
   if (repeat) {
-    repeat.onclick = () => {
-      window.speechSynthesis?.cancel();
-      const utterance = new SpeechSynthesisUtterance(command);
-      utterance.lang = "ko-KR";
-      utterance.rate = 0.76;
-      window.speechSynthesis?.speak(utterance);
-    };
+    repeat.onclick = () => speakText(command);
   }
 
   const panel = document.querySelector("#practiceView .mission-panel");
@@ -2017,12 +2035,8 @@ function toast(msg) {
 }
 function speak() {
   const view = $(".view.active");
-  const text = view.innerText.slice(0, 1200);
-  speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = "ko-KR";
-  u.rate = 0.85;
-  speechSynthesis.speak(u);
+  const text = view?.innerText?.slice(0, 1200) || "";
+  speakText(text);
 }
 function renderGoals() {
   const list = $("#goalList");
