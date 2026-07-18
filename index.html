@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0b4d89" />
     <title>디지털 동행 연습관</title>
-    <link rel="stylesheet" href="./style.css?v=20260718-2" />
+    <link rel="stylesheet" href="./style.css?v=20260718-clear-guide" />
   </head>
   <body>
     <a class="skip-link" href="#main">본문으로 바로가기</a>
@@ -131,9 +131,20 @@
         <div class="progress-wrap"><div id="progressBar"></div></div>
         <div class="practice-layout">
           <aside class="mission-panel sticky">
-            <span class="mission-label">지금 할 일</span>
-            <h2 id="currentInstruction"></h2>
-            <p id="currentReason"></p>
+            <span class="mission-label">이번 단계에서 누를 것</span>
+            <div class="command-box">
+              <span class="command-number">1</span>
+              <div>
+                <p class="command-caption">아래 화면에서</p>
+                <h2 id="currentInstruction"></h2>
+              </div>
+            </div>
+            <div id="currentSteps" class="exact-steps" aria-live="polite"></div>
+            <div class="why-box">
+              <b>왜 확인하나요?</b>
+              <p id="currentReason"></p>
+            </div>
+            <p class="practice-tip">파란 테두리나 손가락 표시가 있는 곳을 찾아 누르세요.</p>
             <div class="stat-row">
               <span>실수 <b id="mistakeCount">0</b>회</span
               ><span>힌트 <b id="hintCount">0</b>회</span>
@@ -167,6 +178,6 @@
     </main>
 
     <div id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=12-fixed" defer></script>
+    <script src="app.js?v=20260718-clear-guide" defer></script>
   </body>
 </html>
