@@ -624,8 +624,34 @@ function renderPractice() {
   $("#progressBar").style.width = `${(state.step / m.steps.length) * 100}%`;
   $("#mistakeCount").textContent = state.mistakes;
   $("#hintCount").textContent = state.hints;
+
+  const simulator = $("#simulator");
+  if (simulator) {
+    simulator.innerHTML = '<div class="sim-loading" role="status">연습 화면을 불러오는 중입니다.</div>';
+    simulator.scrollTop = 0;
+  }
+
   const ui = renderers[m.id] || renderGeneric;
-  ui();
+  try {
+    ui();
+  } catch (error) {
+    console.error("연습 화면 렌더링 오류", error);
+    if (simulator) {
+      simulator.innerHTML = `<div class="sim-error"><strong>연습 화면을 불러오지 못했습니다.</strong><p>아래의 [화면 다시 불러오기]를 눌러 주세요.</p><button type="button" id="retrySimulator">화면 다시 불러오기</button></div>`;
+      $("#retrySimulator")?.addEventListener("click", renderPractice, { once: true });
+    }
+  }
+
+  // 단계가 바뀔 때 이전 단계에서 내려간 페이지 위치가 남아 있으면
+  // 오른쪽 실제 화면이 화면 위쪽으로 사라져 빈 공간처럼 보일 수 있습니다.
+  // 매 단계마다 페이지와 두 패널을 시작 위치로 맞춥니다.
+  requestAnimationFrame(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    const panel = document.querySelector("#practiceView .mission-panel");
+    const simPanel = document.querySelector("#practiceView .simulator");
+    if (panel) panel.scrollTop = 0;
+    if (simPanel) simPanel.scrollTop = 0;
+  });
 }
 const detailedGuides = {
   ktx: [
