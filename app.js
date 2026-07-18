@@ -823,18 +823,44 @@ function hint() {
   const message = hints[state.module.id] || "화면의 버튼 글자를 천천히 읽고 현재 단계와 같은 뜻의 메뉴를 찾으세요.";
   toast(state.mode === "field" ? `도움: ${message}` : message);
 }
+function getModuleChecklist(moduleId) {
+  const checks = {
+    ktx: ["출발역·도착역·날짜·시간이 맞는지 확인하세요.", "결제 뒤 승차권의 열차번호·호차·좌석을 확인하세요."],
+    metro: ["목적지와 인원, 보증금이 맞는지 확인하세요.", "발급된 1회용 교통카드는 도착역에서 보증금 환급기에 반납하세요."],
+    gtx: ["GTX-A 도착역과 승객 종류, 운임을 확인하세요.", "발급된 교통카드를 개찰구에 태그하고 목적지까지 보관하세요."],
+    air: ["출발·도착 공항과 여행 날짜를 확인하세요.", "가는 편·오는 편 항공편, 탑승객 이름, 좌석을 결제 전에 다시 확인하세요."],
+    hotel: ["체크인·체크아웃 날짜와 숙박 인원을 확인하세요.", "객실 종류, 취소 조건, 총 결제금액을 예약 전에 확인하세요."],
+    bank: ["받는 사람 이름과 계좌번호를 반드시 확인하세요.", "이체 금액과 수수료를 확인한 뒤 인증하세요."],
+    atm: ["카드와 현금을 모두 회수했는지 확인하세요.", "출금 금액과 수수료가 맞는지 거래 명세를 확인하세요."],
+    gov: ["정부24 주소가 gov.kr인지 확인하세요.", "발급 문서 종류와 수령방법이 ‘온라인발급(본인출력)’인지 확인하세요."],
+    hospital: ["예약 날짜·시간·진료과·신청 내용을 확인하세요.", "병원 도착 후 무인접수기에서 예약 정보를 다시 확인하세요."],
+    chat: ["대화 상대가 ‘딸’인지 확인한 뒤 메시지를 보내세요.", "사진 전송 후 대화방에 사진이 표시됐는지 확인하세요."],
+    video: ["통화 상대가 맞는지 확인한 뒤 영상통화를 거세요.", "통화가 끝나면 빨간 통화 종료 버튼을 눌러 연결이 끊겼는지 확인하세요."],
+    sms: ["발신번호, 링크 주소, 개인정보 요구 여부를 함께 확인하세요.", "수상한 링크는 누르지 말고 문자 앱의 신고·삭제 기능을 사용하세요."],
+    food: ["매장·포장 여부와 메뉴 옵션을 확인하세요.", "결제금액을 확인하고 카드와 영수증을 챙기세요."],
+    delivery: ["배달 주소, 메뉴, 수량, 요청사항을 확인하세요.", "배달방식·쿠폰·결제수단과 총 결제금액을 확인하세요."],
+    shopping: ["상품명, 옵션, 수량, 배송지를 확인하세요.", "배송 예정일과 총 결제금액을 주문 전에 확인하세요."],
+    taxi: ["출발 위치와 목적지가 지도에 정확히 표시됐는지 확인하세요.", "차량번호와 기사 정보를 확인한 뒤 탑승하세요."],
+  };
+  return checks[moduleId] || [
+    "현재 화면의 선택 내용이 연습 목표와 맞는지 확인하세요.",
+    "완료 화면에서 결과가 정상 처리됐는지 확인하세요.",
+  ];
+}
+
 function complete() {
   const sec = Math.max(1, Math.round((Date.now() - state.start) / 1000));
   $("#resultTitle").textContent = `${state.module.title} 연습을 마쳤습니다.`;
   $("#resultSummary").textContent =
     `“${state.module.goal}” 목표를 끝까지 수행했습니다.`;
   const weakSteps = Object.entries(state.stepErrors).filter(([, count]) => count > 0).map(([step]) => state.module.steps[Number(step)]);
+  const [checkOne, checkTwo] = getModuleChecklist(state.module.id);
   const checklist = document.createElement("div");
   checklist.className = "result-checklist";
-  checklist.innerHTML = `<h3>현장에 가기 전 마지막 점검</h3><ul>
-    <li>앱이나 공식 사이트를 다른 사람 도움 없이 찾을 수 있는지 확인하세요.</li>
-    <li>결제·송금 전 이름, 금액, 날짜, 목적지를 다시 읽으세요.</li>
-    <li>${weakSteps.length ? `다시 연습하면 좋은 단계: <b>${weakSteps.join(", ")}</b>` : "실수한 단계가 없습니다. 실전 모드로 한 번 더 연습해 보세요."}</li>
+  checklist.innerHTML = `<h3>${state.module.title} 마지막 점검</h3><ul>
+    <li>${checkOne}</li>
+    <li>${checkTwo}</li>
+    <li>${weakSteps.length ? `다시 연습하면 좋은 단계: <b>${weakSteps.join(", ")}</b>` : "실수한 단계가 없습니다. 같은 연습을 한 번 더 반복해 보세요."}</li>
   </ul>`;
   const resultStats = $(".result-stats");
   $("#resultView .result-checklist")?.remove();
@@ -1935,11 +1961,31 @@ function renderATM() {
 }
 function renderSMS() {
   const s = state.step;
-  if (s < 5) {
-    instruction(
-      `${s + 1}번째 문자를 읽고 수상한지 판단하세요.`,
-      "링크, 개인정보 요구, 급한 행동 유도 여부를 확인하세요.",
+  if (!state.data.smsGuideSeen) {
+    instruction("판별 기준을 먼저 읽고 [판별 시작]을 누르세요.");
+    sim(
+      `<div class="sms-guide-screen">
+        <div class="sms-guide-icon" aria-hidden="true">🛡️</div>
+        <h2>수상한 문자 판별 가이드</h2>
+        <p>아래 항목이 하나라도 보이면 링크를 누르지 마세요.</p>
+        <ul>
+          <li><b>모르는 번호</b>에서 온 문자</li>
+          <li><b>짧거나 낯선 인터넷 주소</b>가 포함된 문자</li>
+          <li>비밀번호·주민번호·카드번호 등 <b>개인정보 입력</b>을 요구하는 문자</li>
+          <li>지금 바로 결제·입력·확인하라며 <b>급하게 재촉</b>하는 문자</li>
+        </ul>
+        <div class="sms-guide-safe">의심되면 링크 대신 공식 앱이나 대표번호로 직접 확인하세요.</div>
+        <button class="big-primary" id="startSmsJudge">판별 시작</button>
+      </div>`,
     );
+    $("#startSmsJudge").onclick = () => {
+      state.data.smsGuideSeen = true;
+      renderPractice();
+    };
+    return;
+  }
+  if (s < 5) {
+    instruction(`${s + 1}번째 문자를 읽고 [안전] 또는 [수상함]을 누르세요.`);
     const suspicious = s % 2 === 0;
     sim(
       simHeader("문자 메시지") +
