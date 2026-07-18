@@ -1,3 +1,12 @@
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 (() => {
 "use strict";
 const modules = [
@@ -701,35 +710,27 @@ function inferGuide(title, reason, steps) {
     caution: reason
   };
 }
-function instruction(title, reason = "화면의 글자를 확인하고 한 번 누르세요.", steps = []) {
+function instruction(title, reason = "", steps = []) {
   const moduleGuides = detailedGuides[state.module?.id];
   const guide = moduleGuides?.[state.step] || inferGuide(title, reason, steps);
+  const command = guide.title || title;
 
-  // 어르신이 한 번에 읽어야 할 내용을 최소화합니다.
-  // 현재 행동, 위치, 행동 후 변화만 보여주며 긴 목록은 표시하지 않습니다.
-  $("#currentInstruction").textContent = guide.title || title;
-  $("#targetWord").textContent = guide.word || "버튼 이름";
-  $("#targetLocation").textContent = guide.location || "오른쪽 화면";
-  $("#targetGesture").textContent = guide.gesture || "한 번 누르기";
-  $("#expectedChange").textContent = guide.after || "다음 화면이 열립니다.";
-  $("#currentReason").textContent = guide.caution || reason;
-
-  const oneAction = (guide.steps && guide.steps[0]) || guide.title || title;
-  $("#currentSteps").innerHTML = `<div class="exact-step active-action"><span>1</span><p>${escapeHtml(oneAction)}</p></div>`;
+  const instructionEl = $("#currentInstruction");
+  if (instructionEl) instructionEl.textContent = command;
 
   const repeat = $("#repeatInstruction");
-  if (repeat) repeat.onclick = () => {
-    speechSynthesis.cancel();
-    const text = `${guide.title || title}. ${oneAction}. 누른 뒤에는 ${guide.after || "다음 화면이 열립니다"}.`;
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = "ko-KR";
-    u.rate = 0.72;
-    speechSynthesis.speak(u);
-  };
+  if (repeat) {
+    repeat.onclick = () => {
+      window.speechSynthesis?.cancel();
+      const utterance = new SpeechSynthesisUtterance(command);
+      utterance.lang = "ko-KR";
+      utterance.rate = 0.72;
+      window.speechSynthesis?.speak(utterance);
+    };
+  }
 
-  // 단계가 바뀔 때마다 안내 패널 맨 위가 보이도록 맞춥니다.
-  const panel = document.querySelector(".mission-panel");
-  panel?.scrollTo({ top: 0, behavior: "smooth" });
+  const panel = document.querySelector("#practiceView .mission-panel");
+  if (panel) panel.scrollTop = 0;
 }
 
 function next(data = {}) {
