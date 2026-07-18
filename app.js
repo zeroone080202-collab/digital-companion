@@ -607,6 +607,11 @@ function openApp(id) {
     renderBrowserSearch();
     return;
   }
+  // 앱을 여는 단계는 휴대전화 홈 화면에서 이미 끝났습니다.
+  // 실제 앱 화면으로 들어갈 때 안내도 반드시 다음 단계로 함께 이동합니다.
+  if (state.step === 0 && state.module.steps[0] && /앱|인터넷|문자/.test(state.module.steps[0])) {
+    state.step = 1;
+  }
   showView("practiceView");
   renderPractice();
 }
@@ -670,31 +675,35 @@ function inferGuide(title, reason, steps) {
     caution: reason
   };
 }
-function instruction(title, reason = "화면의 정보를 천천히 확인한 뒤 선택하세요.", steps = []) {
+function instruction(title, reason = "화면의 글자를 확인하고 한 번 누르세요.", steps = []) {
   const moduleGuides = detailedGuides[state.module?.id];
   const guide = moduleGuides?.[state.step] || inferGuide(title, reason, steps);
-  const fieldMode = state.mode === "field";
-  $("#currentInstruction").textContent = fieldMode ? `현재 단계: ${state.module.steps[state.step]}` : guide.title;
-  $("#currentReason").textContent = fieldMode ? "실제 화면처럼 스스로 찾아 진행합니다. 막히면 [도움 요청]을 누르세요." : (guide.caution || reason);
-  $("#targetWord").textContent = fieldMode ? "스스로 찾기" : guide.word;
-  $("#targetLocation").textContent = fieldMode ? "실제 화면을 천천히 살펴보세요" : guide.location;
-  $("#targetGesture").textContent = fieldMode ? "버튼 글자를 확인한 뒤 누르기" : guide.gesture;
-  $("#expectedChange").textContent = fieldMode ? "선택이 맞으면 다음 단계로 이동합니다" : guide.after;
-  const normalizedSteps = guide.steps?.length ? guide.steps : [guide.title];
-  $("#currentSteps").innerHTML = fieldMode
-    ? `<div class="exact-step active-action"><span>!</span><p>안내 표시 없이 화면에서 필요한 메뉴를 직접 찾아보세요.</p></div>`
-    : normalizedSteps.map((item, index) =>
-      `<div class="exact-step ${index === 0 ? 'active-action' : ''}"><span>${index + 1}</span><p>${item}</p></div>`
-    ).join("");
+
+  // 어르신이 한 번에 읽어야 할 내용을 최소화합니다.
+  // 현재 행동, 위치, 행동 후 변화만 보여주며 긴 목록은 표시하지 않습니다.
+  $("#currentInstruction").textContent = guide.title || title;
+  $("#targetWord").textContent = guide.word || "버튼 이름";
+  $("#targetLocation").textContent = guide.location || "오른쪽 화면";
+  $("#targetGesture").textContent = guide.gesture || "한 번 누르기";
+  $("#expectedChange").textContent = guide.after || "다음 화면이 열립니다.";
+  $("#currentReason").textContent = guide.caution || reason;
+
+  const oneAction = (guide.steps && guide.steps[0]) || guide.title || title;
+  $("#currentSteps").innerHTML = `<div class="exact-step active-action"><span>1</span><p>${escapeHtml(oneAction)}</p></div>`;
+
   const repeat = $("#repeatInstruction");
   if (repeat) repeat.onclick = () => {
     speechSynthesis.cancel();
-    const text = `지금 할 일입니다. ${guide.title}. ${normalizedSteps.join(' ')}. 실전에서 기억하세요. ${guide.caution || reason}`;
+    const text = `${guide.title || title}. ${oneAction}. 누른 뒤에는 ${guide.after || "다음 화면이 열립니다"}.`;
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'ko-KR';
-    u.rate = 0.78;
+    u.lang = "ko-KR";
+    u.rate = 0.72;
     speechSynthesis.speak(u);
   };
+
+  // 단계가 바뀔 때마다 안내 패널 맨 위가 보이도록 맞춥니다.
+  const panel = document.querySelector(".mission-panel");
+  panel?.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function next(data = {}) {
@@ -1512,6 +1521,12 @@ document.addEventListener("click", (e) => {
   const officialResult = e.target.closest("[data-open-official]");
   if (officialResult) {
     e.preventDefault();
+    // 인터넷 실행·검색·공식 사이트 선택까지 완료했으므로
+    // 안내를 실제 사이트 안에서 해야 할 다음 단계로 이동합니다.
+    const firstTwo = state.module?.steps?.slice(0, 2).join(" ") || "";
+    if (/인터넷|공식 사이트|병원 찾기|검색/.test(firstTwo)) {
+      state.step = Math.min(2, state.module.steps.length - 1);
+    }
     showView("practiceView");
     renderPractice();
     return;
