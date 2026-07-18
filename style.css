@@ -2791,3 +2791,158 @@ button { min-height: 46px; touch-action: manipulation; }
 .browser-shell{width:min(920px,100%)!important;height:min(760px,calc(100dvh - 190px))!important;overflow:hidden!important;border-radius:24px!important}.browser-shell .site-page{height:calc(100% - 64px)!important;overflow:auto!important}.browser-bottom{position:sticky!important;bottom:0!important;width:100%!important;box-sizing:border-box!important}.chat-app{width:min(480px,100%)!important;height:min(760px,calc(100dvh - 190px))!important;margin:auto!important;overflow:hidden!important;border-radius:28px!important}.rail-page{width:min(960px,100%)!important;max-height:calc(100dvh - 190px)!important;overflow:auto!important;border-radius:24px!important}.command-box{align-items:flex-start!important}.command-box h2{font-size:clamp(22px,2vw,31px)!important;line-height:1.38!important;max-width:100%!important}
 @media(max-width:999px){#launcherView .launcher-layout,#practiceView .practice-layout{grid-template-columns:1fr!important;height:auto!important}#launcherView .phone-shell{width:min(390px,94vw)!important;height:auto!important;min-height:0!important;aspect-ratio:9/19.5!important}#practiceView .simulator{overflow:visible!important;padding:8px!important}#practiceView .simulator>.release-phone-ui,#practiceView .simulator>.air-app{width:min(430px,96vw)!important;height:min(760px,178vw)!important;min-height:620px!important}.browser-shell,.chat-app{height:min(740px,170vw)!important}.mission-panel{max-width:none!important}.air-content{padding:14px}}
 @media(max-width:430px){#launcherView .phone-shell{width:94vw!important}.air-seat-row{grid-template-columns:24px repeat(3,34px) 34px repeat(3,34px);gap:3px}.air-seat{width:34px;height:34px}.flight-card{grid-template-columns:62px 1fr 62px;padding:12px}.route-card{grid-template-columns:1fr 42px 1fr}.air-content{padding:11px}.command-box h2{font-size:22px!important}}
+
+/* v34: no-clipping release — full device visible, concise aligned instructions */
+#practiceView .practice-layout {
+  height: auto !important;
+  min-height: calc(100dvh - 150px) !important;
+  align-items: start !important;
+}
+#practiceView .mission-panel {
+  position: sticky !important;
+  top: 104px !important;
+  align-self: start !important;
+  max-height: calc(100dvh - 125px) !important;
+  overflow: auto !important;
+}
+#practiceView .simulator {
+  min-height: 820px !important;
+  height: auto !important;
+  overflow: visible !important;
+  padding: 24px !important;
+  align-items: flex-start !important;
+}
+#practiceView .practice-phone {
+  width: min(430px, 100%) !important;
+  height: auto !important;
+  aspect-ratio: 9 / 19.5 !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  flex: 0 0 auto !important;
+  border: 11px solid #111318 !important;
+  border-radius: 46px !important;
+  background: #111318 !important;
+  overflow: hidden !important;
+  box-shadow: 0 22px 58px rgba(20, 38, 62, .24) !important;
+}
+#practiceView .practice-phone-screen {
+  inset: 0 !important;
+  border-radius: 34px !important;
+  overflow: hidden !important;
+}
+#practiceView .practice-phone-camera {
+  top: 8px !important;
+}
+#practiceView .kakao-app,
+#practiceView .chat-app,
+#practiceView .conversation-view,
+#practiceView .call-choice,
+#practiceView .video-call-screen {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: none !important;
+  min-height: 0 !important;
+  border-radius: 0 !important;
+  overflow: hidden !important;
+}
+#practiceView .kakao-chat-list,
+#practiceView .friends-section,
+#practiceView .realistic-chat-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding-bottom: 8px !important;
+}
+#practiceView .kakao-bottom,
+#practiceView .realistic-chat-input {
+  position: relative !important;
+  bottom: auto !important;
+  flex: 0 0 auto !important;
+  z-index: 8 !important;
+}
+#practiceView .kakao-bottom {
+  min-height: 68px !important;
+  padding-bottom: 8px !important;
+}
+#practiceView .kakao-top {
+  padding-top: 22px !important;
+  flex: 0 0 74px !important;
+}
+#practiceView .chat-filter {
+  flex: 0 0 auto !important;
+}
+#practiceView .messenger-row {
+  min-height: 76px !important;
+}
+#practiceView .concise-mission #currentInstruction,
+#practiceView .command-box h2 {
+  font-size: clamp(1.25rem, 1.65vw, 1.72rem) !important;
+  line-height: 1.42 !important;
+  letter-spacing: -0.025em !important;
+  word-break: keep-all !important;
+  overflow-wrap: normal !important;
+}
+#practiceView .command-box {
+  grid-template-columns: 58px minmax(0, 1fr) !important;
+  gap: 16px !important;
+  padding: 22px !important;
+}
+#practiceView .command-number {
+  width: 58px !important;
+  height: 58px !important;
+  flex: 0 0 58px !important;
+}
+/* All simulator cards must fit their own viewport instead of being clipped by the page. */
+#practiceView .simulator > *,
+#practiceView .simulator .browser-shell,
+#practiceView .simulator .rail-page,
+#practiceView .simulator .bank-app,
+#practiceView .simulator .kiosk-stage,
+#practiceView .simulator .air-app {
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+#practiceView .browser-shell,
+#practiceView .rail-page,
+#practiceView .bank-app,
+#practiceView .air-app {
+  max-height: none !important;
+}
+@media (max-width: 999px) {
+  #practiceView .practice-layout {
+    grid-template-columns: 1fr !important;
+    min-height: 0 !important;
+  }
+  #practiceView .mission-panel {
+    position: static !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  #practiceView .simulator {
+    min-height: 0 !important;
+    padding: 16px 8px 34px !important;
+  }
+  #practiceView .practice-phone {
+    width: min(420px, 94vw) !important;
+  }
+}
+@media (max-width: 480px) {
+  #practiceView .practice-phone {
+    width: min(390px, calc(100vw - 18px)) !important;
+    border-width: 9px !important;
+    border-radius: 39px !important;
+  }
+  #practiceView .practice-phone-screen {
+    border-radius: 29px !important;
+  }
+  #practiceView .command-box {
+    grid-template-columns: 48px minmax(0, 1fr) !important;
+    padding: 17px !important;
+  }
+  #practiceView .command-number {
+    width: 48px !important;
+    height: 48px !important;
+    flex-basis: 48px !important;
+  }
+}
