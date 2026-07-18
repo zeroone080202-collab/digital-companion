@@ -1929,3 +1929,18 @@ body.guided-mode .practice-head .eyebrow::after{content:' · 안내 모드';colo
   .messenger-row { grid-template-columns: 52px minmax(0,1fr) 60px; padding: 12px; }
   .messenger-avatar { width: 48px; height: 48px; border-radius: 16px; }
 }
+
+/* v19: 어르신용 간결 안내 패널 */
+.simple-guide { display:grid; gap:10px; margin:16px 0 12px; }
+.simple-guide-row { display:grid; grid-template-columns:92px 1fr; gap:10px; align-items:start; padding:12px 14px; border:1px solid #d7e0ec; border-radius:14px; background:#fff; }
+.simple-guide-row span { color:#50627a; font-weight:800; font-size:.95rem; }
+.simple-guide-row strong { color:#10233f; font-size:1.08rem; line-height:1.45; word-break:keep-all; }
+.compact-steps { margin:10px 0; }
+.compact-steps .exact-step { min-height:auto; padding:12px; }
+.after-box { margin-top:12px; padding:14px 16px; border-radius:14px; background:#eef7ff; border:2px solid #9bc8ee; }
+.after-box b { display:block; color:#174d7a; margin-bottom:6px; }
+.after-box p { margin:0; font-size:1.05rem; line-height:1.5; font-weight:750; }
+.compact-warning { margin-top:12px; padding:12px 14px; }
+.compact-warning p { margin:.35rem 0 0; line-height:1.45; }
+.mission-panel { max-height:calc(100vh - 145px); overflow:auto; scrollbar-width:thin; }
+@media (max-width: 980px) { .mission-panel { max-height:none; overflow:visible; } .simple-guide-row { grid-template-columns:80px 1fr; } }
