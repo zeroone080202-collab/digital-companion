@@ -2615,3 +2615,179 @@ button { min-height: 46px; touch-action: manipulation; }
     font-size: 10px !important;
   }
 }
+
+/* v32: 단계 안내와 실제 화면 동기화 + 세로형 휴대전화 비율 고정 */
+#launcherView .launcher-layout,
+#practiceView .practice-layout {
+  min-width: 0;
+}
+
+#launcherView .phone-shell,
+#practiceView .practice-phone {
+  box-sizing: border-box !important;
+  width: clamp(320px, 25vw, 390px) !important;
+  height: auto !important;
+  aspect-ratio: 9 / 19.5 !important;
+  max-width: min(92vw, 390px) !important;
+  max-height: min(78dvh, 800px) !important;
+  min-width: 0 !important;
+  flex: 0 0 auto !important;
+  align-self: center !important;
+  justify-self: center !important;
+  border-radius: 42px !important;
+  overflow: hidden !important;
+}
+
+#launcherView .phone-screen,
+#practiceView .practice-phone-screen {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  border-radius: 30px !important;
+  overflow: hidden !important;
+}
+
+#launcherView .phone-shell { position: relative !important; }
+#launcherView .phone-screen { position: absolute !important; }
+
+#launcherView .galaxy-apps,
+#launcherView .galaxy-finder {
+  display: flex !important;
+  flex-direction: column !important;
+  background: #f6f7fb !important;
+}
+
+#launcherView .galaxy-status {
+  flex: 0 0 34px !important;
+  min-height: 34px !important;
+  padding: 9px 16px 4px !important;
+  position: relative !important;
+  z-index: 3 !important;
+  background: rgba(246,247,251,.96) !important;
+}
+
+#launcherView .apps-panel {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding: 10px 14px 24px !important;
+  scrollbar-width: thin;
+}
+
+#launcherView .oneui-finder {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 4 !important;
+  width: 100% !important;
+  min-height: 48px !important;
+  margin: 0 0 16px !important;
+  background: rgba(255,255,255,.98) !important;
+  border: 1px solid #d6dce5 !important;
+  box-shadow: 0 5px 16px rgba(31,48,74,.08) !important;
+}
+
+#launcherView .oneui-app-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 18px 10px !important;
+  align-content: start !important;
+}
+
+#launcherView .drawer-app {
+  min-width: 0 !important;
+  width: 100% !important;
+}
+
+#launcherView .drawer-app span {
+  display: block !important;
+  max-width: 100% !important;
+  font-size: .78rem !important;
+  line-height: 1.15 !important;
+  overflow-wrap: anywhere !important;
+  word-break: keep-all !important;
+}
+
+#practiceView .simulator {
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+#practiceView .practice-phone .kakao-app,
+#practiceView .practice-phone .conversation-view,
+#practiceView .practice-phone .call-choice,
+#practiceView .practice-phone .video-call-screen {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+#practiceView .kakao-top,
+#practiceView .conversation-head {
+  min-width: 0 !important;
+}
+
+#practiceView .kakao-bottom {
+  width: 100% !important;
+  max-width: 100% !important;
+  grid-template-columns: repeat(5, minmax(0,1fr)) !important;
+}
+
+#practiceView .kakao-bottom button,
+#practiceView .kakao-top button {
+  min-width: 0 !important;
+}
+
+#practiceView .concise-mission #currentInstruction {
+  font-size: clamp(1.18rem, 1.65vw, 1.62rem) !important;
+  line-height: 1.45 !important;
+  letter-spacing: -0.025em !important;
+  word-break: keep-all !important;
+  overflow-wrap: break-word !important;
+}
+
+@media (max-width: 999px) {
+  #launcherView .phone-shell,
+  #practiceView .practice-phone {
+    width: min(88vw, 380px) !important;
+    max-height: none !important;
+  }
+  #launcherView .launcher-layout,
+  #practiceView .practice-layout {
+    align-items: start !important;
+  }
+  #practiceView .simulator {
+    overflow: visible !important;
+  }
+}
+
+@media (max-width: 430px) {
+  #launcherView .phone-shell,
+  #practiceView .practice-phone {
+    width: min(94vw, 360px) !important;
+  }
+  #launcherView .oneui-app-grid {
+    gap: 15px 7px !important;
+  }
+}
+
+/* v33 release candidate: stable sizing, clipping prevention, production-quality airline flow */
+:root{--phone-w:430px;--phone-h:780px;--ink:#142033;--line:#d8e1eb;--blue:#145ea8;--soft:#f3f7fb}
+#launcherView .launcher-layout,#practiceView .practice-layout{min-width:0}
+#launcherView .phone-shell{width:min(var(--phone-w),42vw)!important;height:min(var(--phone-h),calc(100dvh - 190px))!important;aspect-ratio:9/19.5!important;min-height:600px!important;max-height:780px!important;border:12px solid #151515!important;border-radius:48px!important;overflow:hidden!important;background:#151515!important;padding:0!important;position:relative!important}
+#launcherView .phone-screen{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;border-radius:34px!important;overflow:hidden!important;display:flex!important;flex-direction:column!important}
+#launcherView .realistic-grid,#launcherView .app-icons{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:18px 8px!important;align-content:start!important;overflow-y:auto!important;overflow-x:hidden!important;padding:16px 14px 110px!important;min-width:0!important}
+#launcherView .app-icon{min-width:0!important;max-width:100%!important}.app-icon span{white-space:normal!important;line-height:1.2!important;overflow-wrap:anywhere!important}
+#practiceView .simulator{min-width:0!important;overflow:hidden!important;padding:16px!important;display:flex!important;justify-content:center!important;align-items:center!important}
+#practiceView .simulator>.release-phone-ui,#practiceView .simulator>.air-app{width:min(480px,100%)!important;height:min(780px,calc(100dvh - 190px))!important;min-height:620px!important;border-radius:34px!important;overflow:hidden!important;box-shadow:0 18px 50px rgba(21,46,76,.2)!important;border:10px solid #171717!important;background:#fff!important;position:relative!important}
+.air-app{display:flex;flex-direction:column;color:var(--ink);font-family:inherit}.air-status{height:34px;display:flex;justify-content:space-between;align-items:center;padding:0 18px;font-weight:800;font-size:13px;background:#fff}.air-topbar{height:58px;display:grid;grid-template-columns:44px 1fr 44px;align-items:center;border-bottom:1px solid #e5eaf0;background:#fff}.air-topbar strong{text-align:center;font-size:18px}.air-topbar button{border:0;background:transparent;font-size:25px}.air-content{flex:1;min-height:0;overflow:auto;background:#f4f7fb;padding:18px}.air-hero{padding:6px 2px 16px}.air-hero span{color:#63758b}.air-hero h2{font-size:28px;margin:5px 0}.segmented{display:grid;grid-template-columns:1fr 1fr;background:#e6edf5;padding:4px;border-radius:14px;margin-bottom:14px}.segmented button{border:0;border-radius:11px;padding:12px;background:transparent;font-weight:800}.segmented .active{background:#fff;color:var(--blue);box-shadow:0 2px 10px rgba(0,0,0,.08)}.air-card{background:#fff;border:1px solid var(--line);border-radius:18px;margin-bottom:12px;box-shadow:0 4px 12px rgba(30,60,90,.05)}.route-card{display:grid;grid-template-columns:1fr 50px 1fr;align-items:center;padding:10px}.route-field{border:0;background:transparent;text-align:left;padding:10px;min-width:0}.route-field small,.date-grid small,.passenger-row small{display:block;color:#73839a;margin-bottom:6px}.route-field strong{display:block;font-size:19px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.route-field span{float:right}.swap-air{width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:#f5f8fb;font-size:20px}.date-grid{display:grid;grid-template-columns:1fr 1fr;padding:8px}.date-grid button{border:0;background:transparent;text-align:left;padding:12px}.date-grid button+button{border-left:1px solid var(--line)}.passenger-row{display:flex;align-items:center;justify-content:space-between;padding:16px 18px}.counter{display:flex;gap:8px}.counter button{width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:#fff;font-size:22px}.air-primary{width:100%;border:0;border-radius:15px;background:var(--blue);color:#fff;padding:17px;font-size:18px;font-weight:900;margin-top:8px}.air-modal{position:absolute;inset:34px 0 0;background:#fff;z-index:20;display:flex;flex-direction:column}.air-modal-head{height:58px;display:grid;grid-template-columns:44px 1fr 44px;align-items:center;border-bottom:1px solid var(--line);padding:0 10px}.air-modal-head strong{text-align:center}.air-modal-head button{border:0;background:transparent;font-size:28px}.air-modal>input{margin:14px;border:2px solid #b8c6d5;border-radius:12px;padding:14px;font-size:16px}.airport-list{overflow:auto;padding:0 14px 18px}.airport-list button{width:100%;display:grid;grid-template-columns:60px 1fr;gap:2px 10px;text-align:left;padding:15px;border:0;border-bottom:1px solid #e7ebef;background:#fff}.airport-list b{font-size:20px;color:var(--blue);grid-row:1/3}.airport-list span{font-weight:800}.airport-list small{color:#718096}.air-calendar-title{text-align:center;font-size:18px;font-weight:900;padding:18px}.air-calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;padding:0 14px}.air-calendar span{text-align:center;color:#75869a;font-size:13px}.air-calendar button{aspect-ratio:1;border:0;border-radius:50%;background:#f2f5f8}.air-search-summary{background:#fff;border-radius:16px;padding:16px;margin-bottom:12px;display:flex;flex-direction:column;gap:4px}.air-search-summary span{color:#62748a}.flight-list{display:grid;gap:11px}.flight-card{border:1px solid var(--line);background:#fff;border-radius:18px;padding:15px;display:grid;grid-template-columns:70px 1fr 70px;gap:8px;align-items:center;text-align:left}.flight-card>div{display:flex;flex-direction:column;gap:3px}.flight-card strong{font-size:18px}.flight-card span,.flight-card small{font-size:12px;color:#66788d}.flight-line{text-align:center;align-items:center!important}.flight-line i{width:100%;height:1px;background:#8ea0b5;position:relative}.flight-line i:after{content:'✈';position:absolute;right:-3px;top:-10px;color:#436b99}.flight-price{grid-column:1/-1;display:flex!important;flex-direction:row!important;justify-content:space-between;border-top:1px dashed #d7dee7;padding-top:10px}.flight-price strong{color:#b33a26}.fare-list{display:grid;gap:12px}.fare-card{position:relative;text-align:left;border:1px solid var(--line);background:#fff;border-radius:17px;padding:18px;display:grid;gap:8px}.fare-card strong{font-size:24px}.fare-card small{color:#63758b}.fare-card.recommended{border:3px solid var(--blue)}.fare-card em{position:absolute;right:12px;top:12px;background:var(--blue);color:#fff;border-radius:999px;padding:5px 9px;font-style:normal;font-size:12px}.air-form{display:grid;gap:13px}.air-form label{font-weight:800}.air-form label>span{color:#d33}.air-form input{width:100%;margin-top:7px;border:1px solid #b9c6d5;border-radius:12px;padding:14px;font-size:16px}.check-line{display:flex!important;align-items:flex-start;gap:9px;background:#fff;border:1px solid var(--line);border-radius:13px;padding:13px!important;font-weight:700!important}.check-line input{width:20px!important;height:20px!important;margin:0!important;flex:0 0 auto}.seat-flight-info{background:#fff;border-radius:15px;padding:15px;display:flex;flex-direction:column;gap:4px;margin-bottom:10px}.seat-flight-info span{color:#61738a}.air-seat-legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;margin-bottom:10px}.air-seat-legend span{display:flex;align-items:center;gap:5px}.air-seat-legend i{width:16px;height:16px;border-radius:5px;background:#fff;border:1px solid #9fb0c3}.air-seat-legend .occupied{background:#cfd6de}.air-seat-legend .chosen{background:var(--blue)}.air-seat-map{background:#fff;border-radius:20px;padding:14px 8px 90px;display:grid;gap:8px}.air-seat-row{display:grid;grid-template-columns:28px repeat(3,38px) 42px repeat(3,38px);gap:5px;align-items:center;justify-content:center}.air-seat-row>span{text-align:center;color:#68798e}.air-seat-row>i{text-align:center;font-style:normal;font-size:10px;color:#95a2b1}.air-seat{width:38px;height:38px;border-radius:10px;border:1px solid #9fb0c3;background:#fff}.air-seat.occupied{background:#d7dde4;color:#9aa5b0;pointer-events:none}.air-seat.selected{background:var(--blue);color:#fff;border-color:var(--blue)}.air-seat-bottom{position:sticky;bottom:-18px;background:#fff;border-top:1px solid var(--line);padding:12px 0 0;display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px}.air-seat-bottom button{border:0;background:var(--blue);color:#fff;border-radius:12px;padding:13px;font-weight:900}.air-summary{display:grid;gap:12px}.air-summary section{background:#fff;border:1px solid var(--line);border-radius:16px;padding:15px;display:grid;gap:5px}.air-summary h3{margin:0;color:#415e7f}.air-summary section>span,.air-summary section>small{color:#62748a}.price-summary div{display:flex;justify-content:space-between;padding:5px 0}.price-summary .total{border-top:1px solid var(--line);margin-top:6px;padding-top:12px}.price-summary .total strong{font-size:22px;color:#b33a26}.payment-choice{display:grid;grid-template-columns:1fr 1fr;gap:8px}.payment-choice button{padding:13px;border:1px solid var(--line);border-radius:12px;background:#fff;font-weight:800}.payment-choice .active{border:3px solid var(--blue);color:var(--blue)}
+/* General simulator clipping fixes */
+#practiceView .simulator :is(.browser-shell,.bank-app,.chat-app,.rail-page,.kiosk-wrap,.site-page){max-width:100%;min-width:0;box-sizing:border-box}
+#practiceView .simulator :is(table,.data-table){width:100%;table-layout:fixed}
+#practiceView .simulator :is(td,th,button,input,select,label,strong,span,p){overflow-wrap:anywhere;word-break:keep-all}
+.browser-shell{width:min(920px,100%)!important;height:min(760px,calc(100dvh - 190px))!important;overflow:hidden!important;border-radius:24px!important}.browser-shell .site-page{height:calc(100% - 64px)!important;overflow:auto!important}.browser-bottom{position:sticky!important;bottom:0!important;width:100%!important;box-sizing:border-box!important}.chat-app{width:min(480px,100%)!important;height:min(760px,calc(100dvh - 190px))!important;margin:auto!important;overflow:hidden!important;border-radius:28px!important}.rail-page{width:min(960px,100%)!important;max-height:calc(100dvh - 190px)!important;overflow:auto!important;border-radius:24px!important}.command-box{align-items:flex-start!important}.command-box h2{font-size:clamp(22px,2vw,31px)!important;line-height:1.38!important;max-width:100%!important}
+@media(max-width:999px){#launcherView .launcher-layout,#practiceView .practice-layout{grid-template-columns:1fr!important;height:auto!important}#launcherView .phone-shell{width:min(390px,94vw)!important;height:auto!important;min-height:0!important;aspect-ratio:9/19.5!important}#practiceView .simulator{overflow:visible!important;padding:8px!important}#practiceView .simulator>.release-phone-ui,#practiceView .simulator>.air-app{width:min(430px,96vw)!important;height:min(760px,178vw)!important;min-height:620px!important}.browser-shell,.chat-app{height:min(740px,170vw)!important}.mission-panel{max-width:none!important}.air-content{padding:14px}}
+@media(max-width:430px){#launcherView .phone-shell{width:94vw!important}.air-seat-row{grid-template-columns:24px repeat(3,34px) 34px repeat(3,34px);gap:3px}.air-seat{width:34px;height:34px}.flight-card{grid-template-columns:62px 1fr 62px;padding:12px}.route-card{grid-template-columns:1fr 42px 1fr}.air-content{padding:11px}.command-box h2{font-size:22px!important}}
