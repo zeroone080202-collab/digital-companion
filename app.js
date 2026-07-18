@@ -62,7 +62,7 @@ const modules = [
     desc: "인터넷 또는 앱에서 항공편 검색, 시간·좌석 선택, 예약 확인",
     goal: "인천→제주 왕복 항공권과 통로 좌석 예약",
     entry: "air",
-    steps: ["앱 찾기", "여정 선택", "노선·날짜·인원", "가는 편", "오는 편", "운임 선택", "탑승객 정보", "좌석 선택", "결제·예약 확인"],
+    steps: ["앱 찾기", "여정 검색", "가는 편 선택", "가는 편 운임", "오는 편 선택", "오는 편 운임", "탑승객 정보", "수하물·추가 서비스", "가는 편 좌석", "오는 편 좌석", "결제·예약 확인"],
   },
   {
     id: "hotel",
@@ -1143,26 +1143,38 @@ const renderers = {
         <main class="air-content">${body}</main>
       </div>`;
 
+    const flightCards = (items, selectedId = "") => items.map(([no,dep,arr,price]) => `
+      <button class="flight-card ${selectedId===no?'selected':''}" data-flight="${no}">
+        <div><small>${no}</small><strong>${dep}</strong><span>${s < 4 ? '인천' : '제주'}</span></div>
+        <div class="flight-line"><span>1시간 10분</span><i></i><small>직항</small></div>
+        <div><strong>${arr}</strong><span>${s < 4 ? '제주' : '인천'}</span></div>
+        <div class="flight-price"><strong>${price}원~</strong><small>운임 선택</small></div>
+      </button>`).join('');
+
+    const fareCards = (prefix) => `
+      <div class="fare-list">
+        <button class="fare-card" data-fare="special"><span>특가 운임</span><strong>${prefix==='out'?'89,000':'91,000'}원</strong><small>위탁수하물 없음 · 변경 불가</small></button>
+        <button class="fare-card recommended" id="standardFare" data-fare="standard"><span>일반 운임</span><strong>${prefix==='out'?'102,000':'108,000'}원</strong><small>위탁수하물 15kg · 변경 수수료 있음</small><em>추천</em></button>
+        <button class="fare-card" data-fare="flex"><span>유연 운임</span><strong>${prefix==='out'?'129,000':'135,000'}원</strong><small>위탁수하물 20kg · 일정 변경 가능</small></button>
+      </div>`;
+
     if (s === 1) {
-      instruction("왕복을 선택하고 출발지·도착지·날짜·인원을 입력하세요.");
+      instruction("인천→제주 왕복, 8월 20일~22일, 성인 1명을 입력하고 [항공편 검색]을 누르세요.");
       sim(airlineShell(`
         <section class="air-hero"><span>어디로 떠나시나요?</span><h2>항공권 검색</h2></section>
-        <div class="segmented" role="group" aria-label="여정 종류">
-          <button id="roundTrip" class="active" type="button">왕복</button><button id="oneWay" type="button">편도</button>
-        </div>
+        <div class="segmented" role="group" aria-label="여정 종류"><button id="roundTrip" class="active" type="button">왕복</button><button id="oneWay" type="button">편도</button></div>
         <section class="air-card route-card">
-          <button id="airFrom" class="route-field"><small>출발지</small><strong id="airFromLabel">${escapeHtml(state.data.from || "공항 선택")}</strong><span>›</span></button>
+          <button id="airFrom" class="route-field"><small>출발지</small><strong id="airFromLabel">${escapeHtml(state.data.from ? `${state.data.from} 인천` : "공항 선택")}</strong><span>›</span></button>
           <button id="swapAir" class="swap-air" type="button" aria-label="출발지와 도착지 바꾸기">⇄</button>
-          <button id="airTo" class="route-field"><small>도착지</small><strong id="airToLabel">${escapeHtml(state.data.to || "공항 선택")}</strong><span>›</span></button>
+          <button id="airTo" class="route-field"><small>도착지</small><strong id="airToLabel">${escapeHtml(state.data.to ? `${state.data.to} 제주` : "공항 선택")}</strong><span>›</span></button>
         </section>
         <section class="air-card date-grid">
-          <button id="departDate"><small>가는 날</small><strong id="departDateLabel">${escapeHtml(state.data.departDate || "날짜 선택")}</strong></button>
-          <button id="returnDate"><small>오는 날</small><strong id="returnDateLabel">${escapeHtml(state.data.returnDate || "날짜 선택")}</strong></button>
+          <button id="departDate"><small>가는 날</small><strong id="departDateLabel">${escapeHtml(state.data.departDate ? '8월 20일' : "날짜 선택")}</strong></button>
+          <button id="returnDate"><small>오는 날</small><strong id="returnDateLabel">${escapeHtml(state.data.returnDate ? '8월 22일' : "날짜 선택")}</strong></button>
         </section>
         <section class="air-card passenger-row"><div><small>탑승객</small><strong>성인 <span id="passengerCount">${state.data.passengers}</span>명</strong></div><div class="counter"><button id="passengerMinus" type="button">−</button><button id="passengerPlus" type="button">＋</button></div></section>
         <button class="air-primary" id="searchFlights">항공편 검색</button>
       `));
-
       const airportPicker = (kind) => {
         const root = document.querySelector('.air-app');
         root.insertAdjacentHTML('beforeend', `<div class="air-modal" id="airModal"><div class="air-modal-head"><button id="closeAirModal">‹</button><strong>${kind === 'from' ? '출발 공항' : '도착 공항'} 선택</strong></div><input id="airportSearch" placeholder="도시 또는 공항 검색"><div class="airport-list">${[['ICN','인천','서울/인천'],['GMP','김포','서울/김포'],['CJU','제주','제주'],['PUS','김해','부산'],['TAE','대구','대구']].map(([code,name,city])=>`<button data-airport="${code}" data-name="${name}"><b>${code}</b><span>${city}</span><small>${name}공항</small></button>`).join('')}</div></div>`);
@@ -1177,7 +1189,7 @@ const renderers = {
       $('#departDate').onclick=()=>datePicker('departDate'); $('#returnDate').onclick=()=>datePicker('returnDate');
       $('#passengerMinus').onclick=()=>{state.data.passengers=Math.max(1,state.data.passengers-1);$('#passengerCount').textContent=state.data.passengers};
       $('#passengerPlus').onclick=()=>{state.data.passengers=Math.min(4,state.data.passengers+1);$('#passengerCount').textContent=state.data.passengers};
-      $('#oneWay').onclick=()=>wrong('이번 연습 목표는 왕복 항공권입니다.');
+      $('#oneWay').onclick=()=>wrong('이번 연습은 왕복 항공권입니다.');
       $('#searchFlights').onclick=()=>{
         if(state.data.from!=='ICN') return wrong('출발 공항으로 인천(ICN)을 선택하세요.');
         if(state.data.to!=='CJU') return wrong('도착 공항으로 제주(CJU)를 선택하세요.');
@@ -1187,39 +1199,52 @@ const renderers = {
         next();
       };
     } else if (s === 2) {
-      instruction("가는 편에서 오전 9시 10분 항공편을 선택하세요.");
+      instruction("가는 편에서 오전 9시 10분 HA205편을 선택하세요.");
       const flights=[['HA101','07:30','08:40','89,000'],['HA205','09:10','10:20','102,000'],['HA311','11:25','12:35','96,000']];
-      sim(airlineShell(`<div class="air-search-summary"><b>인천(ICN) → 제주(CJU)</b><span>8월 20일 · 성인 1명</span></div><div class="flight-list">${flights.map(([no,dep,arr,price])=>`<button class="flight-card" data-flight="${no}"><div><small>${no}</small><strong>${dep}</strong><span>인천</span></div><div class="flight-line"><span>1시간 10분</span><i></i><small>직항</small></div><div><strong>${arr}</strong><span>제주</span></div><div class="flight-price"><strong>${price}원</strong><small>일반석</small></div></button>`).join('')}</div>`, '가는 편 선택'));
-      $$('.flight-card').forEach(b=>b.onclick=()=>b.dataset.flight==='HA205'?next({outbound:'HA205',outTime:'09:10'}):wrong('오전 9시 10분에 출발하는 HA205편을 선택하세요.'));
+      sim(airlineShell(`<div class="air-search-summary"><b>인천(ICN) → 제주(CJU)</b><span>8월 20일 · 성인 1명</span></div><div class="flight-list">${flightCards(flights)}</div>`, '가는 편 선택'));
+      $$('.flight-card').forEach(b=>b.onclick=()=>b.dataset.flight==='HA205'?next({outbound:'HA205',outTime:'09:10'}):wrong('오전 9시 10분 HA205편을 선택하세요.'));
     } else if (s === 3) {
-      instruction("오는 편에서 오후 4시 30분 항공편을 선택하세요.");
-      const flights=[['HA402','13:20','14:30','91,000'],['HA518','16:30','17:40','108,000'],['HA626','19:15','20:25','85,000']];
-      sim(airlineShell(`<div class="air-search-summary"><b>제주(CJU) → 인천(ICN)</b><span>8월 22일 · 성인 1명</span></div><div class="flight-list">${flights.map(([no,dep,arr,price])=>`<button class="flight-card" data-flight="${no}"><div><small>${no}</small><strong>${dep}</strong><span>제주</span></div><div class="flight-line"><span>1시간 10분</span><i></i><small>직항</small></div><div><strong>${arr}</strong><span>인천</span></div><div class="flight-price"><strong>${price}원</strong><small>일반석</small></div></button>`).join('')}</div>`, '오는 편 선택'));
-      $$('.flight-card').forEach(b=>b.onclick=()=>b.dataset.flight==='HA518'?next({inbound:'HA518',inTime:'16:30'}):wrong('오후 4시 30분에 출발하는 HA518편을 선택하세요.'));
+      instruction("가는 편의 수하물 조건을 확인하고 [일반 운임]을 선택하세요.");
+      sim(airlineShell(`<div class="selected-flight-mini"><b>HA205 · 09:10</b><span>인천 → 제주</span></div>${fareCards('out')}`, '가는 편 운임'));
+      $('#standardFare').onclick=()=>next({outFare:'일반 운임',outFarePrice:102000});
+      $$('.fare-card:not(#standardFare)').forEach(b=>b.onclick=()=>wrong('이번 연습은 위탁수하물 15kg이 포함된 일반 운임을 선택합니다.'));
     } else if (s === 4) {
-      instruction("무료 위탁수하물과 변경 조건을 확인하고 [일반 운임]을 선택하세요.");
-      sim(airlineShell(`<div class="fare-list"><button class="fare-card"><span>특가 운임</span><strong>174,000원</strong><small>위탁수하물 없음 · 변경 불가</small></button><button class="fare-card recommended" id="standardFare"><span>일반 운임</span><strong>210,000원</strong><small>위탁수하물 15kg · 변경 수수료 있음</small><em>추천</em></button><button class="fare-card"><span>유연 운임</span><strong>258,000원</strong><small>위탁수하물 20kg · 변경 가능</small></button></div>`, '운임 선택'));
-      $('#standardFare').onclick=()=>next({fare:'일반 운임',farePrice:210000});
+      instruction("오는 편에서 오후 4시 30분 HA518편을 선택하세요.");
+      const flights=[['HA402','13:20','14:30','91,000'],['HA518','16:30','17:40','108,000'],['HA626','19:15','20:25','85,000']];
+      sim(airlineShell(`<div class="air-search-summary"><b>제주(CJU) → 인천(ICN)</b><span>8월 22일 · 성인 1명</span></div><div class="flight-list">${flightCards(flights)}</div>`, '오는 편 선택'));
+      $$('.flight-card').forEach(b=>b.onclick=()=>b.dataset.flight==='HA518'?next({inbound:'HA518',inTime:'16:30'}):wrong('오후 4시 30분 HA518편을 선택하세요.'));
     } else if (s === 5) {
-      instruction("탑승객 이름과 생년월일을 입력한 뒤 [다음]을 누르세요.");
-      sim(airlineShell(`<div class="air-form"><label>성<span>*</span><input id="lastName" value="HONG" autocomplete="off"></label><label>이름<span>*</span><input id="firstName" value="GILDONG" autocomplete="off"></label><label>생년월일<span>*</span><input id="birth" value="1960-03-15" inputmode="numeric"></label><label>휴대전화<input id="mobile" value="010-1234-5678" inputmode="tel"></label><label class="check-line"><input type="checkbox" id="nameAgree"> 신분증과 같은 영문 이름인지 확인했습니다.</label><button class="air-primary" id="passengerNext">다음</button></div>`, '탑승객 정보'));
-      $('#passengerNext').onclick=()=>{if(!$('#lastName').value.trim()||!$('#firstName').value.trim())return wrong('탑승객 이름을 입력하세요.');if(!$('#nameAgree').checked)return wrong('신분증과 같은 이름인지 확인한 뒤 체크하세요.');next({passengerName:`${$('#lastName').value.trim()} ${$('#firstName').value.trim()}`});};
+      instruction("오는 편의 수하물 조건을 확인하고 [일반 운임]을 선택하세요.");
+      sim(airlineShell(`<div class="selected-flight-mini"><b>HA518 · 16:30</b><span>제주 → 인천</span></div>${fareCards('in')}`, '오는 편 운임'));
+      $('#standardFare').onclick=()=>next({inFare:'일반 운임',inFarePrice:108000});
+      $$('.fare-card:not(#standardFare)').forEach(b=>b.onclick=()=>wrong('이번 연습은 위탁수하물 15kg이 포함된 일반 운임을 선택합니다.'));
     } else if (s === 6) {
-      instruction("가는 편 12C 통로 좌석을 선택하고 [오는 편 좌석 선택]을 누르세요.");
-      const makeSeats=(selected)=>Array.from({length:8},(_,i)=>{const row=i+9;return `<div class="air-seat-row"><span>${row}</span>${['A','B','C'].map(c=>`<button class="air-seat ${['10A','11B','13C'].includes(`${row}${c}`)?'occupied':''} ${selected===`${row}${c}`?'selected':''}" data-seat="${row}${c}">${c}</button>`).join('')}<i>통로</i>${['D','E','F'].map(c=>`<button class="air-seat ${['9F','12E','14D'].includes(`${row}${c}`)?'occupied':''} ${selected===`${row}${c}`?'selected':''}" data-seat="${row}${c}">${c}</button>`).join('')}</div>`}).join('');
-      sim(airlineShell(`<div class="seat-flight-info"><b>가는 편 · HA205</b><span>인천 09:10 → 제주 10:20</span></div><div class="air-seat-legend"><span><i class="free"></i>선택 가능</span><span><i class="occupied"></i>선택 불가</span><span><i class="chosen"></i>선택 좌석</span></div><div class="air-seat-map">${makeSeats(state.data.outSeat)}</div><div class="air-seat-bottom"><span>선택 좌석 <b id="selectedAirSeat">${escapeHtml(state.data.outSeat||'없음')}</b></span><button id="outSeatNext">오는 편 좌석 선택</button></div>`, '가는 편 좌석'));
-      $$('.air-seat:not(.occupied)').forEach(b=>b.onclick=()=>{$$('.air-seat').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');state.data.outSeat=b.dataset.seat;$('#selectedAirSeat').textContent=b.dataset.seat;});
-      $('#outSeatNext').onclick=()=>state.data.outSeat==='12C'?next():wrong('이번 연습은 12C 통로 좌석을 선택합니다.');
+      instruction("탑승객 영문 이름과 생년월일을 확인하고 [다음]을 누르세요.");
+      sim(airlineShell(`<div class="air-form"><label>성<span>*</span><input id="lastName" value="HONG" autocomplete="off"></label><label>이름<span>*</span><input id="firstName" value="GILDONG" autocomplete="off"></label><label>생년월일<span>*</span><input id="birth" value="1960-03-15" inputmode="numeric"></label><label>휴대전화<input id="mobile" value="010-1234-5678" inputmode="tel"></label><label class="check-line"><input type="checkbox" id="nameAgree"> 신분증과 같은 영문 이름인지 확인했습니다.</label><button class="air-primary" id="passengerNext">다음</button></div>`, '탑승객 정보'));
+      $('#passengerNext').onclick=()=>{if(!$('#lastName').value.trim()||!$('#firstName').value.trim())return wrong('탑승객 이름을 입력하세요.');if(!$('#birth').value.trim())return wrong('생년월일을 입력하세요.');if(!$('#nameAgree').checked)return wrong('신분증과 같은 이름인지 확인한 뒤 체크하세요.');next({passengerName:`${$('#lastName').value.trim()} ${$('#firstName').value.trim()}`});};
     } else if (s === 7) {
-      instruction("오는 편 14D 통로 좌석을 선택하고 [좌석 선택 완료]를 누르세요.");
+      instruction("무료 위탁수하물 15kg을 확인하고 추가 서비스 없이 [좌석 선택]을 누르세요.");
+      sim(airlineShell(`<div class="addon-list"><section><div><b>위탁수하물</b><span>가는 편 15kg · 오는 편 15kg 포함</span></div><strong>포함</strong></section><section><div><b>기내식</b><span>짧은 국내선이라 추가하지 않음</span></div><button class="addon-skip" type="button">추가 안 함</button></section><section><div><b>여행자 보험</b><span>선택 사항</span></div><button class="addon-skip" type="button">가입 안 함</button></section></div><button class="air-primary" id="goSeats">좌석 선택</button>`, '수하물·추가 서비스'));
+      $('#goSeats').onclick=()=>next();
+    } else if (s === 8) {
+      instruction("가는 편 12C 통로 좌석을 선택한 뒤 [오는 편 좌석]을 누르세요.");
+      const makeSeats=(selected)=>Array.from({length:8},(_,i)=>{const row=i+9;return `<div class="air-seat-row"><span>${row}</span>${['A','B','C'].map(c=>`<button class="air-seat ${['10A','11B','13C'].includes(`${row}${c}`)?'occupied':''} ${selected===`${row}${c}`?'selected':''}" data-seat="${row}${c}">${c}</button>`).join('')}<i>통로</i>${['D','E','F'].map(c=>`<button class="air-seat ${['9F','12E','14D'].includes(`${row}${c}`)?'occupied':''} ${selected===`${row}${c}`?'selected':''}" data-seat="${row}${c}">${c}</button>`).join('')}</div>`}).join('');
+      sim(airlineShell(`<div class="seat-flight-info"><b>가는 편 · HA205</b><span>인천 09:10 → 제주 10:20</span></div><div class="air-seat-legend"><span><i class="free"></i>선택 가능</span><span><i class="occupied"></i>선택 불가</span><span><i class="chosen"></i>선택 좌석</span></div><div class="air-seat-map">${makeSeats(state.data.outSeat)}</div><div class="air-seat-bottom"><span>선택 좌석 <b id="selectedAirSeat">${escapeHtml(state.data.outSeat||'없음')}</b></span><button id="outSeatNext">오는 편 좌석</button></div>`, '가는 편 좌석'));
+      $$('.air-seat:not(.occupied)').forEach(b=>b.onclick=()=>{$$('.air-seat').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');state.data.outSeat=b.dataset.seat;$('#selectedAirSeat').textContent=b.dataset.seat;});
+      $('#outSeatNext').onclick=()=>state.data.outSeat==='12C'?next():wrong('12C 통로 좌석을 선택하세요.');
+    } else if (s === 9) {
+      instruction("오는 편 14D 통로 좌석을 선택한 뒤 [선택 완료]를 누르세요.");
       const makeSeats=()=>Array.from({length:8},(_,i)=>{const row=i+9;return `<div class="air-seat-row"><span>${row}</span>${['A','B','C'].map(c=>`<button class="air-seat ${['10A','11B','13C'].includes(`${row}${c}`)?'occupied':''}" data-seat="${row}${c}">${c}</button>`).join('')}<i>통로</i>${['D','E','F'].map(c=>`<button class="air-seat ${['9F','12E'].includes(`${row}${c}`)?'occupied':''}" data-seat="${row}${c}">${c}</button>`).join('')}</div>`}).join('');
-      sim(airlineShell(`<div class="seat-flight-info"><b>오는 편 · HA518</b><span>제주 16:30 → 인천 17:40</span></div><div class="air-seat-map">${makeSeats()}</div><div class="air-seat-bottom"><span>선택 좌석 <b id="selectedAirSeat">없음</b></span><button id="inSeatNext">좌석 선택 완료</button></div>`, '오는 편 좌석'));
+      sim(airlineShell(`<div class="seat-flight-info"><b>오는 편 · HA518</b><span>제주 16:30 → 인천 17:40</span></div><div class="air-seat-legend"><span><i class="free"></i>선택 가능</span><span><i class="occupied"></i>선택 불가</span><span><i class="chosen"></i>선택 좌석</span></div><div class="air-seat-map">${makeSeats()}</div><div class="air-seat-bottom"><span>선택 좌석 <b id="selectedAirSeat">없음</b></span><button id="inSeatNext">선택 완료</button></div>`, '오는 편 좌석'));
       $$('.air-seat:not(.occupied)').forEach(b=>b.onclick=()=>{$$('.air-seat').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');state.data.inSeat=b.dataset.seat;$('#selectedAirSeat').textContent=b.dataset.seat;});
-      $('#inSeatNext').onclick=()=>state.data.inSeat==='14D'?next():wrong('이번 연습은 14D 통로 좌석을 선택합니다.');
+      $('#inSeatNext').onclick=()=>state.data.inSeat==='14D'?next():wrong('14D 통로 좌석을 선택하세요.');
     } else {
-      instruction("여정·좌석·금액을 확인하고 [모의 결제 후 예약]을 누르세요.");
-      sim(airlineShell(`<div class="air-summary"><section><h3>가는 편</h3><b>HA205 · 8월 20일</b><span>인천 09:10 → 제주 10:20</span><small>좌석 ${escapeHtml(state.data.outSeat||'12C')}</small></section><section><h3>오는 편</h3><b>HA518 · 8월 22일</b><span>제주 16:30 → 인천 17:40</span><small>좌석 ${escapeHtml(state.data.inSeat||'14D')}</small></section><section><h3>탑승객</h3><span>${escapeHtml(state.data.passengerName||'HONG GILDONG')} · 성인 1명</span></section><section class="price-summary"><div><span>왕복 항공권</span><b>210,000원</b></div><div><span>좌석 지정</span><b>20,000원</b></div><div class="total"><span>총 결제금액</span><strong>230,000원</strong></div></section><label class="check-line"><input type="checkbox" id="airFinalAgree"> 여정과 탑승객 정보를 확인했습니다.</label><div class="payment-choice"><button class="active">신용·체크카드</button><button>간편결제</button></div><button class="air-primary" id="airPay">모의 결제 후 예약</button></div>`, '예약 내용 확인'));
-      $('#airPay').onclick=()=>$('#airFinalAgree').checked?next():wrong('여정과 탑승객 정보를 확인한 뒤 체크하세요.');
+      instruction("여정·탑승객·좌석·결제금액을 확인하고 결제수단을 선택한 뒤 [예약하기]를 누르세요.");
+      sim(airlineShell(`<div class="air-summary"><section><h3>가는 편</h3><b>HA205 · 8월 20일</b><span>인천 09:10 → 제주 10:20</span><small>일반 운임 · 좌석 ${escapeHtml(state.data.outSeat||'12C')}</small></section><section><h3>오는 편</h3><b>HA518 · 8월 22일</b><span>제주 16:30 → 인천 17:40</span><small>일반 운임 · 좌석 ${escapeHtml(state.data.inSeat||'14D')}</small></section><section><h3>탑승객</h3><span>${escapeHtml(state.data.passengerName||'HONG GILDONG')} · 성인 1명</span><small>위탁수하물 각 15kg 포함</small></section><section class="price-summary"><div><span>가는 편</span><b>102,000원</b></div><div><span>오는 편</span><b>108,000원</b></div><div><span>좌석 지정</span><b>20,000원</b></div><div class="total"><span>총 결제금액</span><strong>230,000원</strong></div></section><div class="payment-choice"><button id="cardPay" class="active">신용·체크카드</button><button id="easyPay">간편결제</button></div><label class="check-line"><input type="checkbox" id="airFinalAgree"> 여정과 탑승객 정보를 확인했습니다.</label><button class="air-primary" id="airPay">예약하기</button></div>`, '결제·예약 확인'));
+      let payment='card';
+      $('#cardPay').onclick=()=>{payment='card';$('#cardPay').classList.add('active');$('#easyPay').classList.remove('active');};
+      $('#easyPay').onclick=()=>{payment='easy';$('#easyPay').classList.add('active');$('#cardPay').classList.remove('active');};
+      $('#airPay').onclick=()=>$('#airFinalAgree').checked?next({payment}):wrong('여정과 탑승객 정보를 확인한 뒤 체크하세요.');
     }
   },
   delivery() {
