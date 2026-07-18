@@ -2946,3 +2946,154 @@ button { min-height: 46px; touch-action: manipulation; }
     flex-basis: 48px !important;
   }
 }
+
+/* v35: 페이지 스크롤 허용 — 화면을 한 뷰포트에 억지로 압축하지 않음 */
+@media (min-width: 1000px) {
+  html,
+  body,
+  body:has(#launcherView.active),
+  body:has(#practiceView.active) {
+    height: auto !important;
+    min-height: 100% !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
+
+  #launcherView.active,
+  #practiceView.active {
+    height: auto !important;
+    min-height: calc(100dvh - 86px) !important;
+    overflow: visible !important;
+    padding: 18px 24px 48px !important;
+  }
+
+  #launcherView .launcher-layout,
+  #practiceView .practice-layout {
+    height: auto !important;
+    min-height: 0 !important;
+    align-items: start !important;
+    overflow: visible !important;
+  }
+
+  #practiceView .practice-layout {
+    grid-template-columns: minmax(300px, 390px) minmax(0, 1fr) !important;
+    gap: 22px !important;
+  }
+
+  #launcherView .mission-panel,
+  #practiceView .mission-panel,
+  #practiceView .mission-panel.sticky,
+  #practiceView .concise-mission {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  #practiceView .mission-panel.sticky,
+  #practiceView .concise-mission {
+    position: sticky !important;
+    top: 104px !important;
+  }
+
+  #practiceView .simulator {
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 760px !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 22px !important;
+    align-items: flex-start !important;
+  }
+
+  #practiceView .simulator > * {
+    width: min(100%, 980px) !important;
+    height: auto !important;
+    max-height: none !important;
+    flex: 0 0 auto !important;
+  }
+
+  #practiceView .practice-phone,
+  #practiceView .release-phone-ui,
+  #practiceView .simulator > .release-phone-ui,
+  #practiceView .simulator > .air-app {
+    width: min(500px, 100%) !important;
+    height: 800px !important;
+    min-height: 800px !important;
+    max-height: none !important;
+    flex: 0 0 auto !important;
+  }
+
+  #practiceView :is(.browser-shell,.browser-phone,.bank-app,.chat-app,.messenger-realistic,.conversation-view) {
+    height: 800px !important;
+    min-height: 800px !important;
+    max-height: none !important;
+  }
+
+  #practiceView :is(.rail-page,.site-page,.kiosk-wrap,.kiosk-stage) {
+    height: auto !important;
+    min-height: 720px !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+}
+
+/* 태블릿·휴대폰: 안내 다음에 연습 화면이 자연스럽게 이어지도록 함 */
+@media (max-width: 999px) {
+  html,
+  body,
+  body:has(#launcherView.active),
+  body:has(#practiceView.active) {
+    height: auto !important;
+    min-height: 100% !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
+
+  #launcherView.active,
+  #practiceView.active {
+    height: auto !important;
+    min-height: 100dvh !important;
+    overflow: visible !important;
+    padding-bottom: 40px !important;
+  }
+
+  #launcherView .launcher-layout,
+  #practiceView .practice-layout,
+  #practiceView .mission-panel,
+  #practiceView .mission-panel.sticky,
+  #practiceView .simulator {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  #practiceView .simulator {
+    min-height: 0 !important;
+    align-items: flex-start !important;
+  }
+
+  #practiceView .practice-phone,
+  #practiceView .release-phone-ui,
+  #practiceView .simulator > .release-phone-ui,
+  #practiceView .simulator > .air-app {
+    width: min(430px, calc(100vw - 24px)) !important;
+    height: min(800px, calc((100vw - 24px) * 1.78)) !important;
+    min-height: 650px !important;
+    max-height: none !important;
+  }
+}
+
+
+/* v36 release-quality visual system */
+.drawn-kiosk-stage{padding:28px;min-height:760px;display:flex;align-items:flex-start;justify-content:center;background:linear-gradient(180deg,#eef4f7,#dce6ec);overflow:visible}
+.drawn-kiosk{width:min(760px,100%);background:linear-gradient(160deg,#38434b,#20282e);border-radius:34px 34px 18px 18px;padding:22px;box-shadow:0 28px 70px rgba(20,35,45,.28),inset 0 0 0 2px rgba(255,255,255,.1)}
+.kiosk-brand-row{height:62px;display:flex;align-items:center;gap:14px;color:#fff;padding:0 14px}.kiosk-brand-mark{display:grid;place-items:center;width:42px;height:42px;border-radius:12px;background:#2f80ed;font-weight:900}.kiosk-brand-row strong{font-size:1.35rem}.kiosk-help{margin-left:auto;font-size:.95rem;color:#d8e6ee}
+.kiosk-display{background:#0b1115;border:10px solid #111;border-radius:16px;padding:12px;box-shadow:inset 0 0 0 2px #59636a}.kiosk-display-inner{min-height:500px;background:#f8fbfd;border-radius:8px;padding:28px;overflow:auto}.kiosk-display-inner h2{font-size:clamp(1.5rem,3vw,2.25rem);text-align:center;margin:14px 0 26px}.kiosk-menu{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.kiosk-menu button{min-height:130px;border:3px solid #226bb0;border-radius:18px;background:#fff;font-size:1.35rem;font-weight:900;box-shadow:0 8px 18px rgba(34,107,176,.12)}
+.kiosk-hardware-panel{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:18px;padding:22px 14px 8px}.hardware-unit{min-height:110px;border:0;border-radius:16px;background:#171e23;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;box-shadow:inset 0 0 0 2px #59636a}.hardware-unit b{font-size:.92rem}.hardware-unit.active-slot{outline:5px solid #ffd43b;box-shadow:0 0 0 9px rgba(255,212,59,.25)}.slot-line,.card-mouth,.cash-mouth{display:block;width:70%;height:12px;border-radius:6px;background:#050708;box-shadow:inset 0 2px 3px #000}.cash-mouth{height:26px;border:4px solid #74808a}.kiosk-base{height:40px;display:flex;justify-content:center;align-items:flex-end}.kiosk-base span{width:48%;height:16px;border-radius:12px;background:#11181d}
+.delivery-phone{--phone-width:390px}.delivery-app{height:100%;background:#f7f7f7;display:flex;flex-direction:column;color:#222;overflow:hidden}.delivery-status{height:30px;padding:7px 16px 3px;display:flex;justify-content:space-between;font-size:.78rem;font-weight:800;background:#fff}.delivery-top{height:54px;background:#fff;display:grid;grid-template-columns:46px 1fr 46px;align-items:center;border-bottom:1px solid #eee}.delivery-top strong{text-align:center;font-size:1.15rem}.delivery-top button{border:0;background:transparent;font-size:1.35rem}.delivery-home,.delivery-list-page,.store-detail,.menu-option-page,.cart-page,.order-page,.delivery-tracking{flex:1;overflow:auto;padding-bottom:78px}.delivery-address{margin:12px 14px 8px;width:calc(100% - 28px);border:0;background:#fff;border-radius:14px;padding:13px 15px;text-align:left;display:grid;grid-template-columns:1fr auto;box-shadow:0 3px 12px rgba(0,0,0,.05)}.delivery-address span,.delivery-address b{grid-column:1}.delivery-address span{font-size:.76rem;color:#666}.delivery-address i{grid-row:1/3;grid-column:2;align-self:center}.delivery-search{margin:8px 14px;background:#fff;border:2px solid #25b8b2;border-radius:14px;display:flex;align-items:center;padding-left:12px;overflow:hidden}.delivery-search input{flex:1;border:0;padding:13px 8px;font-size:.95rem;min-width:0}.delivery-search button{border:0;background:#25b8b2;color:white;padding:14px 16px;font-weight:900}.delivery-banner{margin:12px 14px;padding:18px;border-radius:18px;background:linear-gradient(135deg,#27c4bd,#79ddd7);color:#083b39;display:flex;flex-direction:column;gap:5px}.food-categories{display:grid;grid-template-columns:repeat(4,1fr);gap:14px 8px;padding:14px}.food-categories button{border:0;background:transparent;display:flex;flex-direction:column;align-items:center;gap:7px}.food-categories span{width:54px;height:54px;border-radius:19px;background:white;display:grid;place-items:center;font-size:1.7rem;box-shadow:0 5px 14px rgba(0,0,0,.06)}.food-categories b{font-size:.82rem}.delivery-section{margin:4px 14px 86px;background:#fff;padding:16px;border-radius:16px}.mini-store-row{display:flex;gap:12px;align-items:center}.mini-store-row>span{font-size:2.4rem}.mini-store-row small{display:block;color:#666;margin-top:4px}.delivery-nav{position:absolute;left:0;right:0;bottom:0;height:62px;background:white;border-top:1px solid #ddd;display:grid;grid-template-columns:repeat(5,1fr);z-index:5}.delivery-nav button{border:0;background:transparent;font-size:.72rem}.delivery-nav .active{color:#159b96;font-weight:900}.delivery-filter-row{display:flex;gap:8px;padding:12px 14px;background:white;position:sticky;top:0;z-index:2}.delivery-filter-row button{border:1px solid #ddd;border-radius:18px;background:white;padding:8px 12px}.delivery-filter-row .active{background:#222;color:white}.store-card{width:calc(100% - 28px);margin:10px 14px;border:0;background:white;border-radius:16px;padding:14px;display:grid;grid-template-columns:76px 1fr auto;gap:12px;text-align:left;box-shadow:0 4px 14px rgba(0,0,0,.05)}.store-photo{width:76px;height:76px;border-radius:14px;background:#fff2d7;display:grid;place-items:center;font-size:2.6rem}.store-copy h3{margin:1px 0 5px}.store-copy p,.store-copy small{margin:3px 0;color:#666}.store-copy p b{color:#f07b00}.store-hero{height:150px;background:linear-gradient(135deg,#ffecd0,#ffd58d);display:grid;place-items:center;font-size:5rem}.store-title{background:white;padding:18px}.store-title h2{margin:0}.store-title p{color:#f07b00}.store-title div{display:flex;gap:8px}.store-title div span{font-size:.8rem;padding:5px 8px;background:#f4f4f4;border-radius:7px}.menu-tabs{position:sticky;top:0;background:white;display:flex;border-bottom:1px solid #eee;z-index:2}.menu-tabs button{flex:1;border:0;background:white;padding:13px 5px}.menu-tabs .active{border-bottom:3px solid #24b8b2;font-weight:900}.menu-list{padding:10px 14px}.menu-card{width:100%;border:0;border-bottom:1px solid #eee;background:white;padding:15px;display:grid;grid-template-columns:1fr 80px;text-align:left}.menu-card h3,.menu-card p{margin:0 0 6px}.menu-card p{color:#666;font-size:.87rem}.menu-card>span{display:grid;place-items:center;font-size:2.5rem;background:#fff3dc;border-radius:14px}.option-product{display:flex;gap:14px;align-items:center;padding:18px;background:white}.option-product>span{font-size:3rem}.menu-option-page section{background:white;margin-top:9px;padding:16px}.menu-option-page section h3{display:flex;justify-content:space-between}.menu-option-page section em{font-style:normal;color:#15a39d;font-size:.75rem}.menu-option-page label{display:flex;align-items:center;gap:9px;padding:13px 2px;border-top:1px solid #eee}.menu-option-page label b{margin-left:auto;font-size:.85rem}.quantity-row{background:white;margin-top:9px;padding:16px;display:flex;justify-content:space-between}.quantity-row div{display:flex;align-items:center;gap:16px}.quantity-row button,.cart-qty button{width:32px;height:32px;border:1px solid #ddd;border-radius:50%;background:white}.delivery-main-button{position:sticky;bottom:0;width:calc(100% - 28px);margin:14px;border:0;border-radius:14px;background:#25b8b2;color:#083c39;padding:17px;font-size:1.05rem;font-weight:900;box-shadow:0 -7px 20px rgba(247,247,247,.9)}.cart-page h2,.order-page h2{padding:16px;margin:0;background:white}.cart-store{background:white;padding:14px;border-top:1px solid #eee;display:flex;justify-content:space-between;font-weight:900}.cart-store button{border:1px solid #ddd;background:white;border-radius:8px}.cart-item{background:white;padding:15px;display:grid;grid-template-columns:48px 1fr auto;gap:10px}.cart-item>span{font-size:2.2rem}.cart-item h3,.cart-item p{margin:0 0 5px}.cart-item p{font-size:.82rem;color:#666}.cart-qty{display:flex;align-items:center;gap:7px}.cart-price,.price-detail{margin-top:9px;background:white;padding:16px}.cart-price div,.price-detail div,.summary-line{display:flex;justify-content:space-between;padding:8px 0}.cart-price .total,.price-detail .total{border-top:1px solid #ddd;margin-top:7px;padding-top:14px}.order-section{margin-top:9px;background:white;padding:16px}.order-section h3{margin-top:0}.delivery-type,.payment-option{width:100%;border:1px solid #e3e3e3;background:white;border-radius:14px;margin:8px 0;padding:14px;display:flex;justify-content:space-between;text-align:left}.delivery-type p,.payment-option p{margin:3px 0;color:#666;font-size:.8rem}.payment-option{justify-content:flex-start;gap:12px;align-items:center}.payment-option>span{font-size:1.7rem}.payment-option.selected{border:3px solid #25b8b2;background:#edfffd}.address-card{position:relative;border:1px solid #ddd;border-radius:12px;padding:13px;display:flex;flex-direction:column}.address-card button{position:absolute;right:10px;top:10px}.order-section select{width:100%;padding:13px;border:1px solid #ccc;border-radius:10px}.coupon-section button{width:100%;display:grid;grid-template-columns:1fr auto;gap:4px;text-align:left;border:1px solid #ddd;background:white;border-radius:12px;padding:13px}.coupon-section button i{grid-row:1/3;grid-column:2;align-self:center}.coupon-section button.applied{border:2px solid #25b8b2;background:#edfffd}.order-agree,.hospital-check{display:flex;gap:8px;padding:14px;background:white}.delivery-tracking{text-align:center;padding:34px 20px}.tracking-check,.complete-mark{width:72px;height:72px;border-radius:50%;background:#25b8b2;color:white;display:grid;place-items:center;font-size:2rem;margin:10px auto}.tracking-map{display:flex;align-items:center;justify-content:center;gap:8px;margin:28px 0}.tracking-map i{height:3px;width:44px;background:#25b8b2}.tracking-card{background:white;border-radius:16px;padding:16px;text-align:left}.tracking-card div{display:flex;justify-content:space-between;padding:8px}
+.hospital-web{width:min(1080px,100%);margin:auto;background:#f5f7fa;min-height:720px;border:1px solid #ccd5df;border-radius:16px;overflow:hidden}.hospital-browser{height:50px;background:white;border-bottom:1px solid #ddd;display:grid;grid-template-columns:32px 32px 32px 1fr;align-items:center;padding:0 14px;gap:4px}.hospital-browser div{border:1px solid #bdc6d0;border-radius:22px;padding:8px 14px;font-weight:700}.hospital-web header{background:#134b7f;color:white;padding:22px 30px;display:flex;align-items:center;justify-content:space-between}.hospital-web header b{font-size:1.55rem}.hospital-web header span{display:block;font-size:.8rem;opacity:.85}.hospital-web header nav{display:flex;gap:5px}.hospital-web header nav button{border:0;background:transparent;color:white;padding:9px}.hospital-web main{padding:28px}.hospital-steps{display:grid;grid-template-columns:repeat(4,1fr);background:white;border-radius:12px;overflow:hidden;margin-bottom:20px}.hospital-steps span{padding:14px;text-align:center;border-right:1px solid #eee}.hospital-steps .active{background:#e7f2fc;color:#0b5d9b;font-weight:900}.hospital-card{background:white;border-radius:18px;padding:28px;box-shadow:0 6px 20px rgba(40,60,80,.07)}.department-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}.department-grid button{border:1px solid #ccd5df;background:white;border-radius:14px;padding:20px;text-align:left;display:grid;grid-template-columns:56px 1fr;gap:4px 12px}.department-grid button>span{grid-row:1/3;font-size:2rem}.department-grid small{color:#667}.reason-list{display:grid;gap:12px}.reason-list button{border:1px solid #ccd5df;background:white;border-radius:12px;text-align:left;padding:17px;font-size:1rem}.hospital-calendar{max-width:520px;margin:auto}.calendar-title{display:flex;justify-content:space-between;align-items:center}.calendar-title button{border:0;background:white;font-size:1.5rem}.hospital-days{display:grid;grid-template-columns:repeat(7,1fr);gap:7px;margin-top:12px}.hospital-days span{text-align:center;font-size:.8rem;color:#667}.hospital-days button{border:0;background:#f1f5f8;border-radius:10px;padding:10px}.hospital-days button.today{outline:2px solid #6faee0}.hospital-days button.selected,.time-slots button.selected{background:#1d6ead;color:white}.time-slots{margin-top:22px}.time-slots button{border:1px solid #ccd5df;background:white;border-radius:10px;padding:10px 16px;margin:5px}.hospital-primary{width:100%;margin-top:22px;border:0;border-radius:12px;background:#1d6ead;color:white;padding:16px;font-weight:900;font-size:1rem}.hospital-summary{display:grid;gap:0;border:1px solid #d9e0e7;border-radius:12px;overflow:hidden}.hospital-summary div{display:grid;grid-template-columns:140px 1fr;padding:16px;border-bottom:1px solid #e7ebef}.hospital-summary div:last-child{border:0}.hospital-summary span{color:#667}.hospital-complete{text-align:center}.reservation-number{display:inline-flex;gap:15px;padding:14px 20px;background:#eef6fc;border-radius:12px;margin:14px}.reception-ticket{max-width:360px;margin:15px auto;background:white;border:2px dashed #444;padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:12px;text-align:left}.reception-ticket strong{font-size:1.5rem}.reception-ticket small{grid-column:1/3;text-align:center;border-top:1px dashed #777;padding-top:12px}
+@media(max-width:760px){.drawn-kiosk-stage{padding:10px;min-height:auto}.drawn-kiosk{padding:10px;border-radius:20px}.kiosk-display{padding:7px}.kiosk-display-inner{min-height:430px;padding:16px}.kiosk-hardware-panel{grid-template-columns:1fr;gap:8px}.hardware-unit{min-height:70px}.hospital-web{border-radius:0}.hospital-web header{padding:14px 16px}.hospital-web header nav{display:none}.hospital-web main{padding:12px}.hospital-steps span{font-size:.72rem;padding:10px 4px}.hospital-card{padding:16px}.department-grid{grid-template-columns:1fr}.hospital-summary div{grid-template-columns:1fr;gap:6px}.delivery-phone{--phone-width:min(390px,96vw)}}
+
+.kiosk-category-tabs{display:flex;gap:8px;margin-bottom:18px}.kiosk-category-tabs button{flex:1;border:1px solid #b8c7d4;background:white;border-radius:10px;padding:12px;font-weight:800}.kiosk-category-tabs .active{background:#226bb0;color:white}.kiosk-food-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}.kiosk-food-grid button{border:2px solid #d4e0e9;background:white;border-radius:14px;padding:18px;display:flex;flex-direction:column;align-items:center;gap:7px}.kiosk-food-grid button>span{font-size:3rem}.kiosk-food-grid button b{font-size:1.12rem}.kiosk-option-card{background:white;border:1px solid #d7e0e7;border-radius:14px;padding:15px;margin:12px 0}.kiosk-option-card label{display:flex;justify-content:space-between;padding:13px 4px;border-top:1px solid #eee}.kiosk-order-summary{background:white;border:1px solid #d7e0e7;border-radius:14px;padding:18px}.kiosk-order-summary>div:first-child{display:grid;grid-template-columns:1fr auto}.kiosk-order-summary span{display:block;color:#667}.summary-total{display:flex;justify-content:space-between;border-top:1px solid #ddd;margin-top:15px;padding-top:15px}.kiosk-pay-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}.kiosk-pay-grid button{padding:20px;border:2px solid #226bb0;border-radius:14px;background:white;font-size:1.2rem;font-weight:900}.kiosk-center-copy{text-align:center;font-size:1.1rem}.pin-dots{text-align:center;font-size:2rem;letter-spacing:8px;margin:20px}.kiosk-keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:430px;margin:auto}.kiosk-keypad button{min-height:58px;border:1px solid #bbc8d2;border-radius:10px;background:white;font-size:1.2rem;font-weight:900}.amount-menu{grid-template-columns:repeat(2,1fr)}.atm-recovery{max-width:420px;margin:30px auto;background:#fff;border:2px solid #226bb0;border-radius:16px;padding:24px;display:grid;gap:12px;text-align:center}.atm-recovery b,.atm-recovery span{font-size:1.35rem}.atm-recovery small{color:#667}
