@@ -1069,7 +1069,12 @@ if (searchForm) {
 }
 
 $("#practiceSearchInput")?.addEventListener("input", (event) => {
-  if ($("#clearSearch")) $("#clearSearch").hidden = !event.target.value.trim();
+  const value = event.target.value.trim();
+  if ($("#clearSearch")) $("#clearSearch").hidden = !value;
+  window.clearTimeout(window.__digitalSearchTimer);
+  window.__digitalSearchTimer = window.setTimeout(() => {
+    renderHome("all", value);
+  }, 120);
 });
 
 $("#clearSearch")?.addEventListener("click", clearSearch);
@@ -1118,6 +1123,7 @@ document.addEventListener("click", (e) => {
   if (x === "home") {
     showView("homeView");
     renderHome();
+window.DIGITAL_APP_READY = true;
   }
   if (x === "back-launcher") {
     state.module.entry === "kiosk" ? showView("homeView") : showLauncher();
