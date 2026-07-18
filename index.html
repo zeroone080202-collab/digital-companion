@@ -1,90 +1,168 @@
 <!doctype html>
 <html lang="ko">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#123d78">
-  <meta name="description" content="고령층을 위한 KTX, 서울 지하철, GTX-A 실전형 교통 이용 연습">
-  <title>생활교통 실전연습</title>
-  <link rel="stylesheet" href="style.css">
-  <script src="app.js" defer></script>
-</head>
-<body>
-  <header class="global-header">
-    <button class="home-logo" type="button" data-action="home">
-      <span class="logo-mark">길</span>
-      <span><strong>생활교통 실전연습</strong><small>실제 이용 전에 안전하게 연습하세요</small></span>
-    </button>
-    <div class="access-tools">
-      <button type="button" data-action="font-minus">글자 작게</button>
-      <button type="button" data-action="font-plus">글자 크게</button>
-      <button type="button" data-action="speak">화면 읽기</button>
-      <button type="button" data-action="contrast">고대비</button>
-    </div>
-  </header>
-
-  <main>
-    <section id="home" class="home-page">
-      <div class="hero-simple">
-        <div>
-          <span class="edu-label">교육용 모의 시스템</span>
-          <h1>실제 교통 이용을<br>미리 연습해 보세요</h1>
-          <p>실제 예약·결제는 이루어지지 않습니다. 화면과 조작 순서를 반복해서 익혀보세요.</p>
-        </div>
-        <div class="hero-device" aria-hidden="true">
-          <div class="device-screen"><span>연습 준비</span><strong>화면을 눌러 시작</strong></div>
-          <div class="device-panel"><i></i><i></i><i></i></div>
-        </div>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b4d89" />
+    <title>디지털 생활 실전연습 v9</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">본문으로 바로가기</a>
+    <header class="topbar">
+      <button class="brand" data-action="home" aria-label="처음 화면으로 이동">
+        <span class="brand-mark">온</span>
+        <span
+          ><b>디지털 생활 실전연습</b
+          ><small>천천히, 실제처럼, 반복해서</small></span
+        >
+      </button>
+      <div class="access-tools" aria-label="화면 도움 기능">
+        <button data-action="font-down">가−</button>
+        <button data-action="font-up">가＋</button>
+        <button data-action="contrast">고대비</button>
+        <button data-action="speak">🔊 읽어주기</button>
       </div>
+    </header>
 
-      <section class="select-section">
-        <p class="eyebrow">연습 선택</p>
-        <h2>무엇을 연습하시겠어요?</h2>
-        <div class="select-grid">
-          <button class="select-card" data-start="ktx">
-            <span class="select-icon">🚄</span>
-            <span><strong>KTX 승차권 예매</strong><small>열차 조회, 좌석 선택, 승차권 확인</small></span>
-            <b>시작하기</b>
-          </button>
-          <button class="select-card" data-start="metro">
-            <span class="select-icon">🎫</span>
-            <span><strong>지하철 1회용 교통카드</strong><small>발매기 화면, 목적지 선택, 요금 결제</small></span>
-            <b>시작하기</b>
-          </button>
-          <button class="select-card" data-start="gtx">
-            <span class="select-icon">🚇</span>
-            <span><strong>GTX-A 이용</strong><small>1회용 카드 발급, 개찰구 이용, 환급</small></span>
-            <b>시작하기</b>
-          </button>
+    <main id="main" tabindex="-1">
+      <section id="homeView" class="view active">
+        <div class="hero">
+          <div>
+            <p class="eyebrow">v9 · 생활 속 디지털 격차를 줄이는 연습 공간</p>
+            <h1>오늘 꼭 해낼 일을<br />하나 골라 연습해 보세요.</h1>
+            <p>
+              실제 결제·송금·예약은 일어나지 않습니다. 잘못 눌러도 괜찮습니다.
+            </p>
+          </div>
+          <div class="hero-status">
+            <span>연습 가능</span><strong id="moduleCount">16개</strong>
+            <span>내 완료 기록</span><strong id="completeCount">0개</strong>
+          </div>
+        </div>
+
+        <section class="start-guide" aria-labelledby="guideTitle">
+          <div class="guide-number">1</div>
+          <div>
+            <h2 id="guideTitle">먼저 목표를 정하세요</h2>
+            <p>
+              예: “서울역에서 부산행 KTX 표를 예매하고 창가 좌석을 선택한다.”
+            </p>
+          </div>
+          <button data-action="open-goals">오늘의 목표 보기</button>
+        </section>
+
+        <nav class="category-tabs" aria-label="연습 분야">
+          <button class="active" data-category="all">전체</button>
+          <button data-category="transport">교통·여행</button>
+          <button data-category="money">은행·공공</button>
+          <button data-category="communication">연락·스마트폰</button>
+          <button data-category="life">주문·생활</button>
+        </nav>
+        <section
+          id="moduleGrid"
+          class="module-grid"
+          aria-live="polite"
+        ></section>
+      </section>
+
+      <section id="launcherView" class="view" aria-labelledby="launcherTitle">
+        <div class="practice-head">
+          <button data-action="home" class="back-btn">← 처음으로</button>
+          <div>
+            <p class="eyebrow">1단계 · 앱 또는 사이트 찾기</p>
+            <h1 id="launcherTitle">휴대전화에서 필요한 앱을 찾아보세요</h1>
+          </div>
+          <button class="help-btn" data-action="hint">힌트</button>
+        </div>
+        <div class="launcher-layout">
+          <aside class="mission-panel">
+            <span class="mission-label">이번 연습 목표</span>
+            <h2 id="launcherMission"></h2>
+            <ol id="launcherChecklist"></ol>
+            <div class="safe-box">
+              교육용 화면입니다. 실제 개인정보를 입력하지 마세요.
+            </div>
+          </aside>
+          <div class="phone-shell">
+            <div class="phone-speaker"></div>
+            <div class="phone-screen home-screen">
+              <div class="phone-status">
+                <span>오전 9:41</span><span>▮▮▮ 100%</span>
+              </div>
+              <div class="search-pill">🔍 앱 검색</div>
+              <div id="appIcons" class="app-icons"></div>
+              <div class="phone-dock">
+                <button data-app="phone">☎<span>전화</span></button>
+                <button data-app="message">💬<span>문자</span></button>
+                <button data-app="browser">🌐<span>인터넷</span></button>
+                <button data-app="camera">📷<span>카메라</span></button>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
-    </section>
 
-    <section id="practice" class="practice-page hidden" aria-live="polite">
-      <div class="practice-toolbar">
-        <button type="button" data-action="home">← 연습 선택</button>
-        <div><small id="practice-category"></small><h2 id="practice-title"></h2></div>
-        <button type="button" data-action="restart">처음부터</button>
-      </div>
-      <div class="progress-shell"><div id="progress-bar"></div></div>
-      <p id="progress-text" class="progress-text"></p>
+      <section id="practiceView" class="view" aria-labelledby="practiceTitle">
+        <div class="practice-head">
+          <button data-action="back-launcher" class="back-btn">
+            ← 이전 화면
+          </button>
+          <div>
+            <p id="practiceStep" class="eyebrow"></p>
+            <h1 id="practiceTitle"></h1>
+          </div>
+          <div class="practice-actions">
+            <button data-action="hint" class="help-btn">힌트</button
+            ><button data-action="restart">처음부터</button>
+          </div>
+        </div>
+        <div class="progress-wrap"><div id="progressBar"></div></div>
+        <div class="practice-layout">
+          <aside class="mission-panel sticky">
+            <span class="mission-label">지금 할 일</span>
+            <h2 id="currentInstruction"></h2>
+            <p id="currentReason"></p>
+            <div class="stat-row">
+              <span>실수 <b id="mistakeCount">0</b>회</span
+              ><span>힌트 <b id="hintCount">0</b>회</span>
+            </div>
+          </aside>
+          <section
+            id="simulator"
+            class="simulator"
+            aria-live="polite"
+          ></section>
+        </div>
+      </section>
 
-      <div class="practice-layout">
-        <aside class="guide-panel">
-          <span>지금 할 일</span>
-          <h3 id="guide-title"></h3>
-          <p id="guide-text"></p>
-          <button type="button" data-action="step-speak">🔊 설명 듣기</button>
-          <button type="button" data-action="hint">💡 힌트 보기</button>
-          <div id="hint-box" class="hint-box hidden"></div>
-          <div class="counter-row"><span>실수 <b id="mistakes">0</b>회</span><span>도움 <b id="hints">0</b>회</span></div>
-        </aside>
-        <section class="simulation-stage"><div id="simulator"></div></section>
-      </div>
-    </section>
-  </main>
+      <section id="resultView" class="view result-view">
+        <div class="result-card">
+          <div class="result-check">✓</div>
+          <p class="eyebrow">연습 완료</p>
+          <h1 id="resultTitle"></h1>
+          <p id="resultSummary"></p>
+          <div class="result-stats">
+            <div><span>소요 시간</span><strong id="resultTime"></strong></div>
+            <div><span>실수</span><strong id="resultMistakes"></strong></div>
+            <div><span>힌트</span><strong id="resultHints"></strong></div>
+          </div>
+          <div class="result-actions">
+            <button data-action="repeat" class="primary">다시 연습하기</button
+            ><button data-action="home">다른 연습 고르기</button>
+          </div>
+        </div>
+      </section>
+    </main>
 
-  <div id="toast" class="toast" role="status"></div>
-  <footer>교육용 모의 화면 · 실제 예약·결제·송금이 이루어지지 않습니다</footer>
-</body>
+    <dialog id="goalDialog">
+      <button class="dialog-close" data-action="close-goals" aria-label="닫기">
+        ×
+      </button>
+      <h2>추천 실전 목표</h2>
+      <div id="goalList" class="goal-list"></div>
+    </dialog>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script src="app.js"></script>
+  </body>
 </html>
