@@ -3441,3 +3441,58 @@ button { min-height: 46px; touch-action: manipulation; }
   #practiceView .gov-provider-row { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   #practiceView .gov-login-tabs { grid-template-columns: 1fr !important; }
 }
+
+/* v44: 주민등록등본(정부24) 화면 전용 잘림 제거 */
+#practiceView .simulator:has(.gov-real) {
+  height: auto !important;
+  min-height: 1120px !important;
+  max-height: none !important;
+  overflow: visible !important;
+  align-items: flex-start !important;
+  padding-bottom: 48px !important;
+}
+#practiceView .simulator:has(.gov-real) .browser-shell {
+  width: min(1020px, 100%) !important;
+  height: auto !important;
+  min-height: 1080px !important;
+  max-height: none !important;
+  overflow: visible !important;
+  align-self: flex-start !important;
+}
+#practiceView .simulator:has(.gov-real) .browser-shell .site-page {
+  height: auto !important;
+  min-height: 1000px !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+#practiceView .simulator:has(.gov-real) .gov-real {
+  height: auto !important;
+  min-height: 1000px !important;
+  max-height: none !important;
+  overflow: visible !important;
+  padding-bottom: 56px !important;
+}
+#practiceView .simulator:has(.gov-real) .gov-real main,
+#practiceView .simulator:has(.gov-real) .gov-auth-panel,
+#practiceView .simulator:has(.gov-real) .gov-form-section,
+#practiceView .simulator:has(.gov-real) .gov-method-list,
+#practiceView .simulator:has(.gov-real) .gov-review,
+#practiceView .simulator:has(.gov-real) .gov-history-card {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+#practiceView .simulator:has(.gov-real) .gov-auth-panel {
+  padding-bottom: 30px !important;
+}
+#practiceView .simulator:has(.gov-real) .gov-auth-panel .gov-primary {
+  position: static !important;
+  width: 100% !important;
+  margin: 20px 0 0 !important;
+}
+@media (max-width: 760px) {
+  #practiceView .simulator:has(.gov-real) { min-height: 1260px !important; }
+  #practiceView .simulator:has(.gov-real) .browser-shell { min-height: 1210px !important; }
+  #practiceView .simulator:has(.gov-real) .browser-shell .site-page,
+  #practiceView .simulator:has(.gov-real) .gov-real { min-height: 1130px !important; }
+}
