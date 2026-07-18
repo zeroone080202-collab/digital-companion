@@ -4,17 +4,17 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0b4d89" />
-    <title>디지털 생활 실전연습 v9</title>
-    <link rel="stylesheet" href="style.css" />
+    <title>디지털 동행 연습관</title>
+    <link rel="stylesheet" href="./style.css?v=20260718" />
   </head>
   <body>
     <a class="skip-link" href="#main">본문으로 바로가기</a>
     <header class="topbar">
       <button class="brand" data-action="home" aria-label="처음 화면으로 이동">
-        <span class="brand-mark">온</span>
+        <span class="brand-mark">동행</span>
         <span
-          ><b>디지털 생활 실전연습</b
-          ><small>천천히, 실제처럼, 반복해서</small></span
+          ><b>디지털 동행 연습관</b
+          ><small>생활 속 디지털 사용을 차근차근 연습하세요</small></span
         >
       </button>
       <div class="access-tools" aria-label="화면 도움 기능">
@@ -28,12 +28,26 @@
     <main id="main" tabindex="-1">
       <section id="homeView" class="view active">
         <div class="hero">
-          <div>
-            <p class="eyebrow">v9 · 생활 속 디지털 격차를 줄이는 연습 공간</p>
-            <h1>오늘 꼭 해낼 일을<br />하나 골라 연습해 보세요.</h1>
+          <div class="hero-main">
+            <p class="eyebrow">생활 속 디지털 사용을 직접 연습하는 공간</p>
+            <h1>무엇을 연습하고 싶은지<br />검색해 보세요.</h1>
             <p>
-              실제 결제·송금·예약은 일어나지 않습니다. 잘못 눌러도 괜찮습니다.
+              문장을 정확히 쓰지 않아도 괜찮습니다. 예를 들어 “부산 가는 기차표”,
+              “딸에게 영상통화”, “계좌로 돈 보내기”처럼 입력하세요.
             </p>
+            <form id="practiceSearchForm" class="practice-search" role="search">
+              <label class="sr-only" for="practiceSearchInput">연습 검색</label>
+              <span class="search-icon" aria-hidden="true">⌕</span>
+              <input id="practiceSearchInput" type="search" autocomplete="off" placeholder="예: 기차표 예매, 은행 송금, 병원 접수" />
+              <button type="submit">연습 찾기</button>
+              <button type="button" id="clearSearch" class="search-clear" hidden>지우기</button>
+            </form>
+            <div class="search-examples" aria-label="검색 예시">
+              <button type="button" data-search-example="부산 가는 KTX 표 예매">KTX 표 예매</button>
+              <button type="button" data-search-example="계좌로 돈 보내기">은행 송금</button>
+              <button type="button" data-search-example="딸에게 영상통화 걸기">영상통화</button>
+              <button type="button" data-search-example="지하철 표 뽑기">지하철 승차권</button>
+            </div>
           </div>
           <div class="hero-status">
             <span>연습 가능</span><strong id="moduleCount">16개</strong>
@@ -41,15 +55,12 @@
           </div>
         </div>
 
-        <section class="start-guide" aria-labelledby="guideTitle">
-          <div class="guide-number">1</div>
+        <section class="search-result-head" aria-live="polite">
           <div>
-            <h2 id="guideTitle">먼저 목표를 정하세요</h2>
-            <p>
-              예: “서울역에서 부산행 KTX 표를 예매하고 창가 좌석을 선택한다.”
-            </p>
+            <p class="eyebrow">연습 목록</p>
+            <h2 id="searchResultTitle">원하는 연습을 선택하세요</h2>
+            <p id="searchResultDescription">아래에서 분야를 고르거나 위 검색창에 하고 싶은 일을 입력하세요.</p>
           </div>
-          <button data-action="open-goals">오늘의 목표 보기</button>
         </section>
 
         <nav class="category-tabs" aria-label="연습 분야">
@@ -155,14 +166,7 @@
       </section>
     </main>
 
-    <dialog id="goalDialog">
-      <button class="dialog-close" data-action="close-goals" aria-label="닫기">
-        ×
-      </button>
-      <h2>추천 실전 목표</h2>
-      <div id="goalList" class="goal-list"></div>
-    </dialog>
     <div id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js"></script>
+    <script src="./app.js?v=20260718" defer></script>
   </body>
 </html>
