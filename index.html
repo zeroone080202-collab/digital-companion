@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0b4d89" />
     <title>디지털 생활 길잡이</title>
-    <link rel="stylesheet" href="./style.css?v=20260718-voice-first-step-v46" />
+    <link rel="stylesheet" href="./style.css?v=20260718-combined-challenges-v47" />
   </head>
   <body>
     <a class="skip-link" href="#main">본문으로 바로가기</a>
@@ -74,6 +74,18 @@
           class="module-grid"
           aria-live="polite"
         ></section>
+
+        <section class="challenge-home" aria-labelledby="challengeHomeTitle">
+          <div class="challenge-home-head">
+            <div>
+              <p class="eyebrow">배운 기능을 함께 써 보는 단계</p>
+              <h2 id="challengeHomeTitle">실전 연결 과제</h2>
+              <p>단계별 안내 없이 상황만 읽고, 앞에서 연습한 기능을 스스로 조합해 해결해 보세요.</p>
+            </div>
+            <span class="challenge-count">2개 과제</span>
+          </div>
+          <div id="challengeGrid" class="challenge-grid" aria-live="polite"></div>
+        </section>
       </section>
 
       <section id="launcherView" class="view" aria-labelledby="launcherTitle">
@@ -153,6 +165,31 @@
         </div>
       </section>
 
+      <section id="challengeView" class="view challenge-view" aria-labelledby="challengeTitle">
+        <div class="practice-head challenge-headbar">
+          <button data-action="home" class="back-btn">← 과제 목록</button>
+          <div>
+            <p class="eyebrow">튜토리얼 없는 실전 과제</p>
+            <h1 id="challengeTitle">실전 연결 과제</h1>
+          </div>
+          <div class="challenge-score-mini" aria-live="polite">
+            <span>진행 <b id="challengeProgressText">0 / 0</b></span>
+            <span>실수 <b id="challengeMistakes">0</b></span>
+          </div>
+        </div>
+        <div class="challenge-progress"><div id="challengeProgressBar"></div></div>
+        <div class="challenge-layout">
+          <aside class="challenge-brief-card">
+            <span class="challenge-badge">실전 과제</span>
+            <h2 id="challengeBriefTitle"></h2>
+            <p id="challengeBriefText"></p>
+            <div id="challengeGiven" class="challenge-given"></div>
+            <p class="challenge-rule">화면에서 필요한 메뉴를 스스로 찾아 진행하세요. 정답 위치를 알려주는 노란 테두리와 단계별 음성 안내는 나오지 않습니다.</p>
+          </aside>
+          <section id="challengeSimulator" class="challenge-simulator" aria-live="polite"></section>
+        </div>
+      </section>
+
       <section id="resultView" class="view result-view">
         <div class="result-card">
           <div class="result-check">✓</div>
@@ -173,6 +210,6 @@
     </main>
 
     <div id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260718-voice-first-step-v46" defer></script>
+    <script src="app.js?v=20260718-combined-challenges-v47" defer></script>
   </body>
 </html>
