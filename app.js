@@ -52,7 +52,7 @@ const modules = [
     desc: "노선 찾기, 1회용 카드 발급, 개찰구 태그와 환급",
     goal: "운정중앙역에서 서울역까지 GTX-A 이용",
     entry: "kiosk",
-    steps: ["노선 확인", "목적지", "운임 확인", "카드 발급", "개찰구", "환급"],
+    steps: ["GTX 발매기", "권종 선택", "도착역 선택", "운임·인원", "결제", "카드 수령", "개찰구 태그"],
   },
   {
     id: "air",
@@ -74,11 +74,14 @@ const modules = [
     entry: "browser",
     steps: [
       "인터넷 열기",
-      "검색",
-      "날짜·인원",
-      "객실 선택",
-      "조건 확인",
-      "예약",
+      "공식 예약 사이트",
+      "지역·날짜·인원",
+      "숙소 검색 결과",
+      "숙소 상세",
+      "객실·요금제",
+      "예약자 정보",
+      "결제 확인",
+      "예약 완료",
     ],
   },
   {
@@ -91,11 +94,13 @@ const modules = [
     entry: "bank",
     steps: [
       "은행 앱 찾기",
-      "이체 선택",
-      "계좌 입력",
+      "계좌 홈",
+      "이체 메뉴",
+      "받는 계좌",
       "금액 입력",
       "받는 분 확인",
-      "완료",
+      "인증·최종 확인",
+      "이체 완료",
     ],
   },
   {
@@ -118,11 +123,14 @@ const modules = [
     entry: "browser",
     steps: [
       "인터넷 열기",
-      "공식 사이트 찾기",
-      "민원 검색",
-      "본인 확인",
-      "내용 선택",
-      "발급",
+      "정부24 공식 사이트",
+      "등본 서비스 선택",
+      "로그인·본인인증",
+      "주소·발급 형태",
+      "수령 방법",
+      "민원 신청",
+      "문서 확인",
+      "발급 완료",
     ],
   },
   {
@@ -189,7 +197,7 @@ const modules = [
     icon: "🛵",
     title: "배달 음식 주문",
     desc: "배달 앱 찾기, 가게·메뉴·주소·결제방법 확인",
-    goal: "집 주소로 김밥 2줄을 주문하고 요청사항 입력",
+    goal: "행복치킨에서 후라이드 순살·감자튀김·콜라를 주문하고 27,500원을 결제",
     entry: "delivery",
     steps: ["앱 찾기", "음식 찾기", "가게 비교", "메뉴 선택", "옵션·사이드", "장바구니", "배달 방식", "주소·요청", "쿠폰·결제", "최종 확인", "주문 현황"],
   },
@@ -201,7 +209,7 @@ const modules = [
     desc: "인터넷 쇼핑 앱에서 검색, 옵션·배송지·최종금액 확인",
     goal: "생수 2L 6개를 검색해 배송지 확인 후 주문",
     entry: "shopping",
-    steps: ["앱 찾기", "상품 검색", "옵션", "장바구니", "배송지", "결제 확인"],
+    steps: ["앱 찾기", "상품 검색", "검색 결과 비교", "상품 상세", "옵션·수량", "장바구니", "배송지", "결제수단", "주문 완료"],
   },
   {
     id: "taxi",
@@ -211,7 +219,7 @@ const modules = [
     desc: "지도에서 현재 위치와 목적지를 확인하고 차량 호출",
     goal: "현재 위치에서 서울역까지 일반 택시 호출",
     entry: "taxi",
-    steps: ["앱 찾기", "현재 위치", "목적지", "차종·요금", "호출", "차량 확인"],
+    steps: ["앱 찾기", "택시 서비스", "목적지 검색", "탑승 위치", "차종·예상요금", "결제수단", "호출 확인", "차량 배정"],
   },
 ];
 
@@ -1035,72 +1043,10 @@ const renderers = {
     renderTicketKiosk("서울 지하철", "서울역", "잠실역", 1650);
   },
   gtx() {
-    renderTicketKiosk("GTX-A", "운정중앙", "서울역", 4450);
+    renderGtxKiosk();
   },
   bank() {
-    const s = state.step;
-    if (s === 0) {
-      instruction("첫 화면에서 “이체” 버튼을 누르세요.");
-      sim(
-        simHeader("한빛은행") +
-          `<div class="bank-app"><div class="app-header">한빛은행 홈</div><div class="account-card"><span>입출금통장 123-***-456789</span><strong>1,245,800원</strong></div><div class="sim-body choice-grid"><button class="choice-card" id="transfer">↗ 이체</button><button class="choice-card">조회</button><button class="choice-card">공과금</button><button class="choice-card">카드</button></div></div>`,
-      );
-      $("#transfer").onclick = () => next();
-    } else if (s === 1) {
-      instruction("받는 분 계좌번호를 입력하고 다음을 누르세요.");
-      sim(
-        simHeader("한빛은행 · 계좌이체") +
-          `<div class="bank-app"><div class="app-header">받는 분 계좌</div><div class="sim-body"><div class="field"><label>은행</label><select><option>한빛은행</option><option>국민은행</option><option>농협은행</option></select></div><div class="field"><label>계좌번호</label><input id="account" inputmode="numeric" placeholder="숫자만 입력" value="110245678901"></div><button class="big-primary" id="accountNext">다음</button></div></div>`,
-      );
-      $("#accountNext").onclick = () =>
-        $("#account").value.length >= 10
-          ? next({ account: $("#account").value })
-          : wrong("계좌번호를 다시 확인하세요.");
-    } else if (s === 2) {
-      instruction("송금할 금액 30,000원을 입력하세요.");
-      sim(
-        simHeader("한빛은행 · 금액 입력") +
-          `<div class="bank-app"><div class="app-header">보낼 금액</div><div class="sim-body"><input id="amount" value="" readonly style="width:100%;font-size:2rem;padding:18px;text-align:right"><div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, "00", 0, "←"].map((x) => `<button data-key="${x}">${x}</button>`).join("")}</div><button class="big-primary" id="amountNext">다음</button></div></div>`,
-      );
-      $$("[data-key]").forEach(
-        (b) =>
-          (b.onclick = () => {
-            let v = $("#amount").value;
-            if (b.dataset.key === "←") v = v.slice(0, -1);
-            else v += b.dataset.key;
-            $("#amount").value = v;
-          }),
-      );
-      $("#amountNext").onclick = () =>
-        $("#amount").value === "30000"
-          ? next({ amount: 30000 })
-          : wrong("이번 목표 금액은 30,000원입니다.");
-    } else if (s === 3) {
-      instruction(
-        "받는 분 이름이 “김민수”인지 확인하세요.",
-        "이름이 다르면 절대 송금하지 말고 이전으로 돌아가야 합니다.",
-      );
-      sim(
-        simHeader("받는 분 확인") +
-          `<div class="bank-app"><div class="app-header">계좌 확인 결과</div><div class="sim-body"><div class="account-card"><span>받는 분</span><strong>김민수</strong><p>한빛은행 ${state.data.account}</p></div><button class="big-primary" id="nameOk">김민수님이 맞습니다</button><button class="big-primary" style="background:#777" id="nameNo">아닙니다</button></div></div>`,
-      );
-      $("#nameOk").onclick = () => next();
-      $("#nameNo").onclick = () => wrong("이번 목표의 받는 분은 김민수입니다.");
-    } else if (s === 4) {
-      instruction("모든 내용을 마지막으로 확인하고 이체를 누르세요.");
-      sim(
-        simHeader("이체 최종 확인") +
-          `<div class="bank-app"><div class="app-header">이체 내용</div><div class="sim-body"><table class="data-table"><tr><th>받는 분</th><td>김민수</td></tr><tr><th>계좌</th><td>${state.data.account}</td></tr><tr><th>금액</th><td>30,000원</td></tr><tr><th>수수료</th><td>0원</td></tr></table><button class="big-primary" id="sendMoney">모의 이체하기</button></div></div>`,
-      );
-      $("#sendMoney").onclick = () => next();
-    } else {
-      instruction("이체 결과를 확인하고 끝내세요.");
-      sim(
-        simHeader("이체 완료") +
-          `<div class="bank-app"><div class="app-header">✓ 이체 완료</div><div class="sim-body"><div class="result-check">✓</div><h2 style="text-align:center">김민수님께<br>30,000원을 보냈습니다.</h2><button class="big-primary" id="finishBank">확인</button></div></div>`,
-      );
-      $("#finishBank").onclick = () => next();
-    }
+    renderKbBank();
   },
   chat() {
     renderChat(false);
@@ -1109,20 +1055,10 @@ const renderers = {
     renderChat(true);
   },
   gov() {
-    renderBrowserFlow(
-      "정부24",
-      "주민등록등본 발급",
-      "주민등록표 등본(초본)",
-      "발급하기",
-    );
+    renderGov24Flow();
   },
   hotel() {
-    renderBrowserFlow(
-      "여행숙소",
-      "부산 호텔 1박",
-      "무료 취소 가능한 객실",
-      "예약하기",
-    );
+    renderHotelFlow();
   },
   hospital() {
     renderHospitalFlow();
@@ -1251,10 +1187,10 @@ const renderers = {
     renderDeliveryFlow();
   },
   shopping() {
-    renderCommerce("쿠팡", "생수 2L 6개", "기본 배송지", "상품 주문");
+    renderCoupangFlow();
   },
   taxi() {
-    renderCommerce("카카오 T", "서울역", "현재 위치", "택시 호출");
+    renderKakaoTaxiFlow();
   },
   food() {
     renderFood();
@@ -1266,6 +1202,106 @@ const renderers = {
     renderSMS();
   },
 };
+
+function phoneAppShell(theme, title, body, bottom = "") {
+  return phonePractice(`<div class="real-app ${theme}"><div class="real-status"><span>9:41</span><span>5G ▰ 92%</span></div><header class="real-app-head"><strong>${escapeHtml(title)}</strong><span>⋮</span></header><main class="real-app-body">${body}</main>${bottom}</div>`, `${theme}-phone`);
+}
+
+function renderKbBank() {
+  const s = state.step;
+  state.data.kb ||= {bank:'KB국민은행', account:'', amount:0};
+  const d = state.data.kb;
+  if (s === 1) {
+    instruction("입출금 계좌의 [이체]를 누르세요.");
+    sim(phoneAppShell('kb-ui','KB스타뱅킹',`<section class="kb-greeting"><b>홍길동님</b><span>안녕하세요</span></section><section class="kb-account"><small>KB국민ONE통장</small><strong>1,245,800원</strong><span>123456-01-******</span><div><button>조회</button><button id="kbTransfer">이체</button></div></section><section class="kb-quick"><button>전체계좌</button><button>공과금</button><button>카드</button><button>환전</button></section>`));
+    $('#kbTransfer').onclick=()=>next();
+  } else if (s === 2) {
+    instruction("[계좌번호로 이체]를 누르세요.");
+    sim(phoneAppShell('kb-ui','이체',`<div class="kb-tabs"><button class="active">계좌번호</button><button>연락처</button><button>최근 이체</button></div><button class="kb-transfer-type" id="kbByAccount"><b>계좌번호로 이체</b><span>은행과 계좌번호를 직접 입력합니다 ›</span></button><button class="kb-transfer-type"><b>내 계좌로 이체</b><span>내 명의 계좌 사이에서 이동합니다 ›</span></button>`));
+    $('#kbByAccount').onclick=()=>next();
+  } else if (s === 3) {
+    instruction("받는 은행과 계좌번호를 입력하고 [다음]을 누르세요.");
+    sim(phoneAppShell('kb-ui','받는 분',`<label class="app-field"><span>은행</span><select id="kbBank"><option>KB국민은행</option><option>신한은행</option><option>NH농협은행</option></select></label><label class="app-field"><span>계좌번호</span><input id="kbAccount" inputmode="numeric" value="110245678901"></label><button class="kb-primary" id="kbAccountNext">다음</button>`));
+    $('#kbAccountNext').onclick=()=>$('#kbAccount').value.length>=10?next({kb:{...d,bank:$('#kbBank').value,account:$('#kbAccount').value}}):wrong('계좌번호를 확인하세요.');
+  } else if (s === 4) {
+    instruction("보낼 금액 30,000원을 입력하고 [다음]을 누르세요.");
+    sim(phoneAppShell('kb-ui','얼마를 보낼까요?',`<div class="kb-recipient"><b>김민수</b><span>${escapeHtml(d.bank)} ${escapeHtml(d.account)}</span></div><div class="kb-amount"><input id="kbAmount" inputmode="numeric" value="30000"><span>원</span></div><div class="kb-shortcuts"><button>1만</button><button>3만</button><button>5만</button><button>10만</button></div><button class="kb-primary" id="kbAmountNext">다음</button>`));
+    $('#kbAmountNext').onclick=()=>Number($('#kbAmount').value)===30000?next({kb:{...d,amount:30000}}):wrong('30,000원을 입력하세요.');
+  } else if (s === 5) {
+    instruction("받는 분이 [김민수]인지 확인하고 [확인]을 누르세요.");
+    sim(phoneAppShell('kb-ui','받는 분 확인',`<div class="kb-confirm-person"><span>받는 분</span><strong>김민수</strong><small>${escapeHtml(d.bank)} ${escapeHtml(d.account)}</small></div><button class="kb-primary" id="kbNameOk">확인</button><button class="kb-secondary">아니에요</button>`));
+    $('#kbNameOk').onclick=()=>next();
+  } else if (s === 6) {
+    instruction("이체 내용을 확인하고 간편비밀번호 6자리를 입력하세요.");
+    sim(phoneAppShell('kb-ui','이체 확인',`<table class="app-summary"><tr><th>받는 분</th><td>김민수</td></tr><tr><th>보낼 금액</th><td>30,000원</td></tr><tr><th>수수료</th><td>0원</td></tr></table><p class="kb-pin-title">간편비밀번호</p><div class="pin-dots" id="kbPin">○ ○ ○ ○ ○ ○</div><div class="mini-keypad">${[1,2,3,4,5,6,7,8,9,'지움',0,'확인'].map(x=>`<button data-kbpin="${x}">${x}</button>`).join('')}</div>`));
+    let pin=''; $$('[data-kbpin]').forEach(b=>b.onclick=()=>{const k=b.dataset.kbpin;if(k==='확인'){pin.length===6?next():wrong('간편비밀번호 6자리를 입력하세요.');return;} if(k==='지움')pin=pin.slice(0,-1);else if(pin.length<6)pin+=k;$('#kbPin').textContent='● '.repeat(pin.length)+'○ '.repeat(6-pin.length);});
+  } else {
+    instruction("이체 완료 내역을 확인하고 [확인]을 누르세요.");
+    sim(phoneAppShell('kb-ui','이체 완료',`<div class="success-mark">✓</div><h2 class="center-title">김민수님께<br>30,000원을 보냈어요</h2><div class="receipt-card"><span>출금계좌</span><b>KB국민ONE통장</b><span>거래시간</span><b>오늘 19:08</b></div><button class="kb-primary" id="kbDone">확인</button>`));
+    $('#kbDone').onclick=()=>next();
+  }
+}
+
+function renderCoupangFlow(){
+  const s=state.step; state.data.coupang ||= {qty:1}; const d=state.data.coupang;
+  const nav=`<nav class="coupang-nav"><button>홈</button><button>카테고리</button><button>검색</button><button>장바구니</button><button>마이쿠팡</button></nav>`;
+  if(s===1){instruction("검색창에 [생수 2L 6개]를 입력하고 검색하세요.");sim(phoneAppShell('coupang-ui','쿠팡',`<div class="coupang-search"><input id="cpSearch" value="생수 2L 6개"><button id="cpDoSearch">검색</button></div><div class="coupang-banner">로켓배송 상품을 빠르게 받아보세요</div><div class="coupang-cats">${['식품','생활용품','가전','건강'].map(x=>`<button>${x}</button>`).join('')}</div>`,nav));$('#cpDoSearch').onclick=()=>next();}
+  else if(s===2){instruction("로켓배송 표시와 가격을 비교한 뒤 첫 번째 생수를 누르세요.");sim(phoneAppShell('coupang-ui','검색 결과',`<div class="coupang-search small"><input value="생수 2L 6개"><button>검색</button></div><div class="cp-sort"><button>쿠팡 랭킹순</button><button>낮은가격순</button><button>로켓배송</button></div><div class="cp-results"><button class="cp-item" id="cpTarget"><div class="cp-photo water">💧</div><div><b>맑은샘 생수 2L × 6개</b><span class="rocket">로켓배송</span><strong>5,980원</strong><small>내일 도착 · 리뷰 18,234</small></div></button><button class="cp-item"><div class="cp-photo">🧴</div><div><b>탄산수 500mL × 20개</b><strong>12,900원</strong><small>모레 도착</small></div></button></div>`,nav));$('#cpTarget').onclick=()=>next();}
+  else if(s===3){instruction("상품명·가격·배송일을 확인하고 [구매하기]를 누르세요.");sim(phoneAppShell('coupang-ui','상품 상세',`<div class="cp-detail-photo">💧</div><h2>맑은샘 생수 2L × 6개</h2><div class="cp-rating">★ 4.8 · 상품평 18,234개</div><strong class="cp-price">5,980원</strong><p><span class="rocket">로켓배송</span> 내일 도착 예정</p><div class="cp-fixed-actions"><button id="cpCart">장바구니</button><button id="cpBuy">구매하기</button></div>`,nav));$('#cpBuy').onclick=()=>next();$('#cpCart').onclick=()=>next();}
+  else if(s===4){instruction("수량 1개를 확인하고 [장바구니 담기]를 누르세요.");sim(phoneAppShell('coupang-ui','옵션 선택',`<div class="cp-option"><b>맑은샘 생수 2L × 6개</b><label>수량<select id="cpQty"><option>1</option><option>2</option><option>3</option></select></label><p>상품금액 <strong>5,980원</strong></p></div><button class="cp-primary" id="cpAddCart">장바구니 담기</button>`));$('#cpAddCart').onclick=()=>next({coupang:{...d,qty:Number($('#cpQty').value)}});}
+  else if(s===5){instruction("상품을 선택하고 [구매하기]를 누르세요.");sim(phoneAppShell('coupang-ui','장바구니',`<label class="cp-cart-item"><input type="checkbox" id="cpCheck" checked><div class="cp-photo water">💧</div><div><b>맑은샘 생수 2L × 6개</b><span>수량 ${d.qty}</span><strong>5,980원</strong></div></label><div class="cp-cart-total"><span>총 상품금액</span><strong>5,980원</strong></div><button class="cp-primary" id="cpCheckout">구매하기</button>`));$('#cpCheckout').onclick=()=>$('#cpCheck').checked?next():wrong('주문할 상품을 선택하세요.');}
+  else if(s===6){instruction("배송지 이름과 주소를 확인하고 [이 주소로 배송]을 누르세요.");sim(phoneAppShell('coupang-ui','배송지 선택',`<div class="cp-address"><b>홍길동 · 기본배송지</b><p>경기도 고양시 일산동구 중앙로 123</p><span>010-****-1234</span></div><button class="cp-primary" id="cpAddress">이 주소로 배송</button>`));$('#cpAddress').onclick=()=>next();}
+  else if(s===7){instruction("결제수단과 최종금액을 확인하고 [결제하기]를 누르세요.");sim(phoneAppShell('coupang-ui','주문/결제',`<section class="cp-order-box"><h3>배송 예정</h3><p>내일 도착 · 로켓배송</p></section><section class="cp-order-box"><h3>결제수단</h3><label><input type="radio" name="cppay" checked> 쿠페이 머니</label><label><input type="radio" name="cppay"> 신용·체크카드</label></section><table class="app-summary"><tr><th>상품금액</th><td>5,980원</td></tr><tr><th>배송비</th><td>0원</td></tr><tr><th>총 결제금액</th><td><b>5,980원</b></td></tr></table><button class="cp-primary" id="cpPay">결제하기</button>`));$('#cpPay').onclick=()=>next();}
+  else {instruction("주문 완료와 도착 예정일을 확인하세요.");sim(phoneAppShell('coupang-ui','주문 완료',`<div class="success-mark">✓</div><h2 class="center-title">주문이 완료됐어요</h2><div class="receipt-card"><b>맑은샘 생수 2L × 6개</b><span>내일 도착 예정</span><span>주문번호 20260718-123456</span></div><button class="cp-primary" id="cpDone">주문내역 보기</button>`));$('#cpDone').onclick=()=>next();}
+}
+
+function renderKakaoTaxiFlow(){
+  const s=state.step; state.data.taxi ||= {dest:'서울역',car:'일반 호출',pay:'카카오 T 포인트'}; const d=state.data.taxi;
+  if(s===1){instruction("서비스에서 [택시]를 누르세요.");sim(phoneAppShell('taxi-ui','카카오 T',`<div class="t-map-mini"><span>현재 위치</span><b>고양시 일산동구</b></div><div class="t-services"><button id="tTaxi">🚕<b>택시</b></button><button>🚗<b>대리</b></button><button>🅿<b>주차</b></button><button>🚲<b>바이크</b></button></div><div class="t-recent"><h3>최근 목적지</h3><button>서울역</button><button>일산백병원</button></div>`));$('#tTaxi').onclick=()=>next();}
+  else if(s===2){instruction("목적지 검색창에 [서울역]을 입력하고 결과를 누르세요.");sim(phoneAppShell('taxi-ui','어디로 갈까요?',`<div class="t-search"><input id="tDest" value="서울역"><button id="tSearch">검색</button></div><div class="t-dest-results"><button id="tSeoul"><b>서울역</b><span>서울 용산구 한강대로 405</span></button><button><b>서울역 서부</b><span>서울 용산구 청파로</span></button></div>`));$('#tSearch').onclick=()=>{};$('#tSeoul').onclick=()=>next();}
+  else if(s===3){instruction("지도 핀과 탑승 위치를 확인하고 [여기서 탈게요]를 누르세요.");sim(phoneAppShell('taxi-ui','탑승 위치 확인',`<div class="t-map-large"><span class="map-road r1"></span><span class="map-road r2"></span><i class="pickup-pin">●</i><b>현재 위치</b></div><div class="t-pickup-card"><b>고양시 일산동구 중앙로 123</b><span>건물 정문 앞</span><button id="tPickup">여기서 탈게요</button></div>`));$('#tPickup').onclick=()=>next();}
+  else if(s===4){instruction("차종과 예상요금을 확인하고 [일반 호출]을 선택하세요.");sim(phoneAppShell('taxi-ui','차량 선택',`<div class="t-route-summary"><b>서울역</b><span>약 38분 · 25.4km</span></div><div class="t-car-list"><button id="tNormal"><span>🚕</span><div><b>일반 호출</b><small>가장 가까운 택시</small></div><strong>예상 27,000원</strong></button><button><span>🚐</span><div><b>벤티</b><small>넓은 차량</small></div><strong>예상 36,000원</strong></button><button><span>🚘</span><div><b>블랙</b><small>고급 차량</small></div><strong>예상 52,000원</strong></button></div>`));$('#tNormal').onclick=()=>next();}
+  else if(s===5){instruction("결제수단을 확인하고 [적용]을 누르세요.");sim(phoneAppShell('taxi-ui','결제수단',`<div class="t-pay-list"><label><input type="radio" name="tpay" checked> 카카오 T 포인트</label><label><input type="radio" name="tpay"> 등록 카드 •••• 1234</label><label><input type="radio" name="tpay"> 기사님께 직접 결제</label></div><button class="t-primary" id="tPayApply">적용</button>`));$('#tPayApply').onclick=()=>next();}
+  else if(s===6){instruction("출발지·목적지·차종을 확인하고 [택시 호출하기]를 누르세요.");sim(phoneAppShell('taxi-ui','호출 확인',`<table class="app-summary"><tr><th>출발</th><td>고양시 일산동구 중앙로 123</td></tr><tr><th>도착</th><td>서울역</td></tr><tr><th>차종</th><td>일반 호출</td></tr><tr><th>예상요금</th><td>27,000원</td></tr></table><button class="t-primary" id="tCall">택시 호출하기</button>`));$('#tCall').onclick=()=>next();}
+  else {instruction("차량번호와 도착 예정 시간을 확인하세요.");sim(phoneAppShell('taxi-ui','기사님이 배정됐어요',`<div class="t-map-large assigned"><i class="taxi-pin">🚕</i></div><div class="t-driver"><div class="driver-avatar">🙂</div><div><b>서울31바 1234</b><span>김기사님 · 4.9점</span><strong>약 4분 후 도착</strong></div></div><button class="t-primary" id="tDone">확인</button>`));$('#tDone').onclick=()=>next();}
+}
+
+function renderGov24Flow(){
+  const s=state.step;
+  const shell=(title,body)=>`<div class="gov-ui"><header><b>정부24</b><span>로그인</span></header><nav><span>민원서비스</span><span>보조금24</span><span>정책정보</span></nav><main><h2>${title}</h2>${body}</main></div>`;
+  if(s===2){instruction("[주민등록등본(초본)] 서비스를 누르세요.");sim(site('정부24',shell('자주 찾는 서비스',`<div class="gov-service-grid"><button id="govResident">주민등록등본(초본)</button><button>건축물대장</button><button>토지대장</button><button>납세증명</button></div>`)));$('#govResident').onclick=()=>next();}
+  else if(s===3){instruction("서비스 내용을 확인하고 [발급하기]를 누르세요.");sim(site('정부24',shell('주민등록표 등본(초본) 발급',`<div class="gov-info"><p>신청방법: 인터넷</p><p>처리기간: 즉시</p><p>인터넷 발급 수수료: 무료</p></div><button class="gov-primary" id="govIssue">발급하기</button>`)));$('#govIssue').onclick=()=>next();}
+  else if(s===4){instruction("[간편인증]을 선택하고 본인인증을 완료하세요.");sim(site('정부24',shell('로그인 / 본인인증',`<div class="gov-auth-tabs"><button class="active" id="govSimple">간편인증</button><button>공동·금융인증서</button></div><div class="gov-auth-card"><b>민간 인증서</b><p>이름·휴대전화번호를 확인한 뒤 인증 요청을 진행합니다.</p><button class="gov-primary" id="govAuth">인증 요청</button></div>`)));$('#govAuth').onclick=()=>next();}
+  else if(s===5){instruction("주민등록상 주소와 발급 형태를 확인하고 [다음]을 누르세요.");sim(site('정부24',shell('신청 내용',`<label class="app-field"><span>주민등록상 주소</span><select><option>경기도 고양시 일산동구</option></select></label><div class="gov-radio"><label><input type="radio" checked> 발급</label><label><input type="radio"> 선택발급</label></div><button class="gov-primary" id="govFormNext">다음</button>`)));$('#govFormNext').onclick=()=>next();}
+  else if(s===6){instruction("수령방법에서 [온라인발급(본인출력)]을 선택하세요.");sim(site('정부24',shell('수령방법',`<div class="gov-methods"><label><input type="radio" name="gm" checked> 온라인발급(본인출력)</label><label><input type="radio" name="gm"> 전자문서지갑</label><label><input type="radio" name="gm"> 제3자 제출</label></div><button class="gov-primary" id="govMethodNext">다음</button>`)));$('#govMethodNext').onclick=()=>next();}
+  else if(s===7){instruction("신청 내용을 확인하고 [민원신청하기]를 누르세요.");sim(site('정부24',shell('민원 신청 확인',`<table class="app-summary"><tr><th>민원</th><td>주민등록표 등본</td></tr><tr><th>신청인</th><td>홍길동</td></tr><tr><th>주소</th><td>경기도 고양시 일산동구</td></tr><tr><th>수령방법</th><td>온라인발급(본인출력)</td></tr></table><button class="gov-primary" id="govApply">민원신청하기</button>`)));$('#govApply').onclick=()=>next();}
+  else if(s===8){instruction("처리완료 상태를 확인하고 [문서출력]을 누르세요.");sim(site('정부24',shell('서비스 신청내역',`<div class="gov-application"><b>주민등록표 등본 발급</b><span class="done">처리완료</span><small>신청일: 2026-07-18</small><button class="gov-primary" id="govPrint">문서출력</button></div>`)));$('#govPrint').onclick=()=>next();}
+  else {instruction("발급 문서를 확인하고 연습을 마치세요.");sim(site('정부24',shell('문서 미리보기',`<div class="gov-document"><h3>주민등록표 등본</h3><p>교육용 모의 문서입니다.</p><div class="doc-lines"></div></div><button class="gov-primary" id="govDone">확인</button>`)));$('#govDone').onclick=()=>next();}
+}
+
+function renderHotelFlow(){
+  const s=state.step; state.data.hotel ||= {room:'디럭스 더블',rate:'무료취소'}; const d=state.data.hotel;
+  const shell=(title,body)=>`<div class="hotel-ui"><header><b>STAY</b><span>숙소</span><span>예약내역</span></header><main><h2>${title}</h2>${body}</main></div>`;
+  if(s===2){instruction("부산, 8월 20일~21일, 성인 2명을 선택하고 검색하세요.");sim(site('숙소 예약',shell('숙소 검색',`<label class="hotel-search-row"><span>여행지</span><input value="부산"></label><div class="hotel-dates"><button>8월 20일 체크인</button><button>8월 21일 체크아웃</button></div><button class="hotel-search-row"><span>인원</span><b>성인 2명 · 객실 1개</b></button><button class="hotel-primary" id="hotelSearch">검색</button>`)));$('#hotelSearch').onclick=()=>next();}
+  else if(s===3){instruction("평점·위치·무료 취소 여부를 비교하고 첫 번째 숙소를 누르세요.");sim(site('숙소 예약',shell('부산 숙소 126개',`<div class="hotel-filter"><button>추천순</button><button>무료 취소</button><button>조식 포함</button></div><div class="hotel-results"><button class="hotel-card" id="hotelTarget"><div class="hotel-photo">🌊</div><div><b>부산 오션호텔</b><span>해운대 해수욕장 도보 5분</span><strong>1박 148,000원</strong><small>★ 4.7 · 후기 2,318개 · 무료 취소</small></div></button><button class="hotel-card"><div class="hotel-photo">🏙️</div><div><b>센텀 비즈니스호텔</b><span>센텀시티역 도보 3분</span><strong>1박 129,000원</strong><small>★ 4.4 · 일부 환불 불가</small></div></button></div>`)));$('#hotelTarget').onclick=()=>next();}
+  else if(s===4){instruction("숙소 위치·후기·체크인 시간을 확인하고 [객실 선택]을 누르세요.");sim(site('숙소 예약',shell('부산 오션호텔',`<div class="hotel-hero">🌊</div><div class="hotel-detail"><div><b>★ 4.7</b><span>후기 2,318개</span></div><p>부산 해운대구 해운대로 123</p><p>체크인 15:00 · 체크아웃 11:00</p><p>무료 와이파이 · 금연 객실 · 주차 가능</p></div><button class="hotel-primary" id="hotelRooms">객실 선택</button>`)));$('#hotelRooms').onclick=()=>next();}
+  else if(s===5){instruction("[디럭스 더블 · 무료 취소] 요금제를 선택하세요.");sim(site('숙소 예약',shell('객실과 요금제',`<div class="room-card"><div class="room-photo">🛏️</div><div><b>디럭스 더블</b><span>더블침대 1개 · 성인 2명</span><label><input type="radio" name="rate" value="no"> 129,000원 · 환불 불가</label><label><input type="radio" name="rate" value="free" checked> 148,000원 · 8월 18일까지 무료 취소</label><button class="hotel-primary" id="hotelSelectRate">선택</button></div></div>`)));$('#hotelSelectRate').onclick=()=>next();}
+  else if(s===6){instruction("예약자 이름과 연락처를 확인하고 [다음]을 누르세요.");sim(site('숙소 예약',shell('예약자 정보',`<label class="app-field"><span>예약자 이름</span><input value="홍길동"></label><label class="app-field"><span>휴대전화</span><input value="010-1234-5678"></label><label class="app-field"><span>이메일</span><input value="hong@example.com"></label><button class="hotel-primary" id="hotelGuestNext">다음</button>`)));$('#hotelGuestNext').onclick=()=>next();}
+  else if(s===7){instruction("숙박일·객실·취소 조건·결제금액을 확인하고 예약하세요.");sim(site('숙소 예약',shell('예약 및 결제 확인',`<table class="app-summary"><tr><th>숙소</th><td>부산 오션호텔</td></tr><tr><th>일정</th><td>8월 20일~21일 · 1박</td></tr><tr><th>객실</th><td>디럭스 더블 · 성인 2명</td></tr><tr><th>취소</th><td>8월 18일까지 무료</td></tr><tr><th>결제금액</th><td><b>148,000원</b></td></tr></table><div class="hotel-pay"><label><input type="radio" checked> 신용·체크카드</label><label><input type="radio"> 간편결제</label></div><button class="hotel-primary" id="hotelBook">예약하기</button>`)));$('#hotelBook').onclick=()=>next();}
+  else {instruction("예약번호와 체크인 날짜를 확인하세요.");sim(site('숙소 예약',shell('예약 완료',`<div class="success-mark">✓</div><h2 class="center-title">예약이 완료됐어요</h2><div class="receipt-card"><b>부산 오션호텔</b><span>8월 20일 체크인 · 8월 21일 체크아웃</span><span>예약번호 ST-260718-4821</span></div><button class="hotel-primary" id="hotelDone">예약내역 보기</button>`)));$('#hotelDone').onclick=()=>next();}
+}
+
+function renderGtxKiosk(){
+  const s=state.step; state.data.gtx ||= {type:'adult',dest:'서울역',pay:'card'}; const d=state.data.gtx;
+  if(s===0){instruction("GTX-A 발매기에서 [1회용 교통카드]를 누르세요.");sim(kioskWrap(`<div class="gtx-head"><b>GTX-A</b><span>운정중앙역</span></div><h2>승차권 종류를 선택해 주세요</h2><div class="kiosk-menu"><button id="gtxOnce">1회용 교통카드</button><button>교통카드 충전</button><button>우대권</button><button>직원 호출</button></div>`));$('#gtxOnce').onclick=()=>next();}
+  else if(s===1){instruction("권종에서 [어른]을 누르세요.");sim(kioskWrap(`<div class="gtx-head"><b>GTX-A</b><span>1회용 교통카드</span></div><h2>권종을 선택해 주세요</h2><div class="gtx-types"><button id="gtxAdult">어른</button><button>어린이</button><button>경로</button><button>장애인·유공자</button></div><p class="kiosk-note">GTX-A 1회용 카드는 일반 도시철도 1회용 카드와 구분됩니다.</p>`));$('#gtxAdult').onclick=()=>next();}
+  else if(s===2){instruction("노선도에서 [서울역]을 선택하세요.");sim(kioskWrap(`<div class="gtx-head"><b>GTX-A</b><span>도착역 선택</span></div><div class="gtx-line"><button>운정중앙</button><i></i><button>킨텍스</button><i></i><button>대곡</button><i></i><button>연신내</button><i></i><button id="gtxSeoul">서울역</button></div>`));$('#gtxSeoul').onclick=()=>next();}
+  else if(s===3){instruction("운임과 보증금을 확인하고 [결제]를 누르세요.");sim(kioskWrap(`<h2>운임을 확인해 주세요</h2><table class="data-table"><tr><th>구간</th><td>운정중앙 → 서울역</td></tr><tr><th>1회용 운임</th><td>4,450원</td></tr><tr><th>보증금</th><td>500원</td></tr><tr><th>합계</th><td><b>4,950원</b></td></tr></table><button class="big-primary" id="gtxFare">결제</button>`));$('#gtxFare').onclick=()=>next();}
+  else if(s===4){instruction("카드를 카드 투입구에 넣으세요.");sim(kioskWrap(`<h2>신용카드로 결제해 주세요</h2><div class="fare-screen"><p>결제금액</p><strong>4,950원</strong><span>아래 카드 투입구를 사용하세요.</span></div>`,'card'));$('[data-slot="card"]').onclick=()=>next();}
+  else if(s===5){instruction("발급구에서 GTX-A 1회용 카드를 가져가세요.");sim(kioskWrap(`<h2>발급이 완료되었습니다</h2><div class="gtx-ticket-card"><b>GTX-A 1회용</b><span>운정중앙 → 서울역</span><strong>어른</strong></div>`,'output'));$('[data-slot="output"]').onclick=()=>next();}
+  else {instruction("개찰구의 교통카드 표시 부분에 카드를 대세요.");sim(`<div class="gate-stage"><div class="gtx-gate"><div class="gate-display">운정중앙역<br><b>카드를 대주세요</b></div><button id="gtxTag" class="gate-reader">교통카드<br>대는 곳</button><div class="gate-flaps"><span></span><span></span></div></div></div>`);$('#gtxTag').onclick=()=>next();}
+}
+
 function renderTicketKiosk(label, from, to, fare) {
   const s = state.step;
   if (s === 0) {
@@ -1517,7 +1553,7 @@ function renderDeliveryFlow() {
     sim(deliveryPhone(`<div class="order-page"><h2>할인·결제</h2><section class="order-section coupon-section"><h3>쿠폰</h3><button id="applyCoupon"><span>첫 주문 할인쿠폰</span><b>2,000원 할인</b><i>적용</i></button></section><section class="order-section"><h3>결제수단</h3><button class="payment-option" data-payment="신용·체크카드"><span>💳</span><div><b>신용·체크카드</b><p>카드사 선택 후 결제</p></div></button><button class="payment-option" data-payment="간편결제"><span>Ⓟ</span><div><b>간편결제</b><p>등록된 결제수단</p></div></button><button class="payment-option" data-payment="현장결제"><span>💵</span><div><b>현장결제</b><p>가게에서 지원할 때만 가능</p></div></button></section><button class="delivery-main-button" id="paymentNext">결제 내용 확인</button></div>`, '할인·결제'));
     let payment=''; $('#applyCoupon').onclick=()=>{d.coupon=true;$('#applyCoupon').classList.add('applied');$('#applyCoupon i').textContent='적용됨'}; $$('.payment-option').forEach(b=>b.onclick=()=>{$$('.payment-option').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');payment=b.dataset.payment}); $('#paymentNext').onclick=()=>{if(!d.coupon)return wrong('2,000원 할인쿠폰을 적용하세요.');if(payment!=='신용·체크카드')return wrong('신용·체크카드를 선택하세요.');next({delivery:{...d,payment}})};
   } else if (s === 9) {
-    instruction("주문 내용과 최종 금액을 확인하고 [29,000원 결제하기]를 누르세요.");
+    instruction("주문 내용과 총 결제금액 27,500원을 확인하고 [27,500원 결제하기]를 누르세요.");
     sim(deliveryPhone(`<div class="order-page final-order"><h2>최종 확인</h2><section class="order-section summary-store"><b>행복치킨</b><p>후라이드 치킨 · 순살</p><p>감자튀김 · 콜라 1.25L</p></section><section class="order-section"><div class="summary-line"><span>배달 방식</span><b>알뜰배달</b></div><div class="summary-line"><span>배달 주소</span><b>중앙로 123, 101동 1001호</b></div><div class="summary-line"><span>결제수단</span><b>신용·체크카드</b></div></section><section class="order-section price-detail"><div><span>메뉴 금액</span><b>28,000원</b></div><div><span>배달비</span><b>1,500원</b></div><div><span>쿠폰 할인</span><b>-2,000원</b></div><div class="total"><span>총 결제금액</span><strong>27,500원</strong></div></section><label class="order-agree"><input type="checkbox" id="orderAgree"> 주문 내용과 주소를 확인했습니다.</label><button class="delivery-main-button" id="deliveryPay">27,500원 결제하기</button></div>`, '최종 확인'));
     $('#deliveryPay').onclick=()=>$('#orderAgree').checked?next():wrong('주문 내용과 주소를 확인한 뒤 체크하세요.');
   } else {
