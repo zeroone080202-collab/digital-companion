@@ -455,10 +455,14 @@ function startModule(id) {
     mode: "guided",
     stepErrors: {},
   };
-  document.body.classList.remove("guided-mode", "field-mode");
-  $("#modeTitle").textContent = `${state.module.title} 연습 방법을 선택하세요`;
-  $("#modeGoal").textContent = `오늘의 실전 과제: ${state.module.goal}`;
-  showView("modeView");
+  document.body.classList.remove("field-mode");
+  document.body.classList.add("guided-mode");
+  if (state.module.entry === "kiosk") {
+    showView("practiceView");
+    renderPractice();
+  } else {
+    showLauncher();
+  }
 }
 
 function beginPracticeMode(mode) {
@@ -759,37 +763,63 @@ const renderers = {
     const s = state.step;
     if (s === 0) {
       instruction(
-        "출발역과 도착역을 정한 뒤 [열차 조회]를 누르세요.",
-        "열차 시간표는 선택한 구간과 날짜에 따라 달라집니다.",
+        "출발역·도착역·날짜·인원을 직접 선택한 뒤 [열차 조회]를 누르세요.",
+        "실제 예매에서는 이미 채워진 값을 믿지 말고 각 항목을 직접 열어 확인하는 습관이 중요합니다.",
         [
-          "오른쪽 예매 화면의 [출발] 칸에서 서울을 확인하세요.",
-          "[도착] 칸에서 부산을 확인하세요.",
-          "날짜와 시간을 확인한 뒤 화면 아래의 파란 [열차 조회] 버튼을 누르세요."
+          "[출발]을 눌러 역 목록에서 서울을 선택하세요.",
+          "[도착]을 눌러 역 목록에서 부산을 선택하세요.",
+          "[출발일]을 눌러 달력에서 7월 20일을 선택하세요.",
+          "승객이 어른 1명, 열차 종류가 KTX 전체인지 확인하세요.",
+          "모든 값이 맞으면 [열차 조회]를 누르세요."
         ]
       );
+      state.data.from ||= '';
+      state.data.to ||= '';
+      state.data.date ||= '';
       sim(
-        simHeader("코레일톡 · 승차권 예매 연습", "실제 예약과 결제가 되지 않는 연습 화면") +
-          `<div class="rail-page">
-            <div class="rail-nav"><b>승차권</b><span>여행상품</span><span>이용안내</span><span>나의 승차권</span></div>
-            <div class="rail-tabs"><button class="active">일반 승차권</button><button>할인 승차권</button><button>정기승차권</button></div>
+        simHeader("레일온 · 승차권 예매", "실제 결제는 되지 않는 교육용 모의 화면") +
+          `<div class="rail-page app-real-shell" style="position:relative">
+            <div class="rail-nav"><b>승차권</b><span>관광상품</span><span>여행정보</span><span>마이</span></div>
+            <div class="rail-tabs"><button class="active">일반승차권</button><button>할인승차권</button><button>정기승차권</button></div>
             <div class="rail-search-card">
               <div class="route-row">
-                <button class="station-box target-control"><small>출발</small><strong id="fromLabel">서울</strong><span>역 선택 〉</span></button>
-                <button class="swap-route" type="button" aria-label="출발역과 도착역 바꾸기">⇄</button>
-                <button class="station-box target-control"><small>도착</small><strong id="toLabel">부산</strong><span>역 선택 〉</span></button>
+                <button class="station-box" id="chooseFrom"><small>출발</small><strong id="fromLabel">${state.data.from || '역 선택'}</strong><span>〉</span></button>
+                <button class="swap-route" id="swapRoute" type="button" aria-label="출발역과 도착역 바꾸기">⇄</button>
+                <button class="station-box" id="chooseTo"><small>도착</small><strong id="toLabel">${state.data.to || '역 선택'}</strong><span>〉</span></button>
               </div>
               <div class="booking-grid">
-                <label><span>출발일</span><input id="travelDate" type="date" value="2026-07-20"></label>
-                <label><span>출발시간</span><select id="travelTime"><option>08시 이후</option><option>10시 이후</option><option>12시 이후</option></select></label>
-                <label><span>승객</span><select><option>어른 1명</option><option>어른 2명</option></select></label>
-                <label><span>열차 종류</span><select><option>KTX 전체</option><option>KTX</option><option>KTX-산천</option></select></label>
+                <button class="station-box" id="chooseDate"><small>출발일</small><strong id="dateLabel">${state.data.date || '날짜 선택'}</strong><span>달력 〉</span></button>
+                <label><span>출발시간</span><select id="travelTime"><option value="08">08시 이후</option><option value="09">09시 이후</option><option value="10">10시 이후</option></select></label>
+                <label><span>승객</span><select id="passenger"><option value="1">어른 1명</option><option value="2">어른 2명</option><option value="senior">경로 1명</option></select></label>
+                <label><span>열차 종류</span><select id="trainKind"><option value="all">KTX 전체</option><option value="ktx">KTX</option><option value="sancheon">KTX-산천</option></select></label>
               </div>
-              <button class="rail-search-button target-control" id="searchTrain"><span class="finger">☝</span> 열차 조회</button>
+              <details class="realism-note"><summary>왕복·좌석 방향 등 추가 조건</summary><p>실제 앱에서는 왕복 여부, 직통 여부, 좌석 방향 등을 추가로 설정할 수 있습니다. 이번 과제는 편도 일반승차권입니다.</p></details>
+              <button class="rail-search-button" id="searchTrain">열차 조회</button>
             </div>
-            <div class="rail-notice">※ 실제 예매에서는 출발역, 도착역, 날짜, 인원을 모두 확인한 후 조회합니다.</div>
-          </div>`,
+          </div>`
       );
-      $("#searchTrain").onclick = () => next({ from: "서울", to: "부산", date: $("#travelDate").value });
+      const openStations=(kind)=>{
+        const shell=$('.app-real-shell');
+        shell.insertAdjacentHTML('beforeend',`<div class="station-modal" id="stationModal"><header><button id="closeStation">←</button><b>${kind==='from'?'출발역':'도착역'} 선택</b></header><input class="station-search" id="stationSearch" placeholder="역 이름을 입력하세요"><div class="station-tabs"><button class="active">주요역</button><button>최근역</button><button>가나다</button></div><div class="station-list">${['서울','용산','광명','수원','대전','동대구','부산','울산','경주','천안아산','오송','익산'].map(x=>`<button data-station="${x}">${x}</button>`).join('')}</div></div>`);
+        $('#closeStation').onclick=()=>$('#stationModal').remove();
+        $('#stationSearch').oninput=(e)=>{$$('[data-station]').forEach(b=>b.hidden=!b.dataset.station.includes(e.target.value.trim()));};
+        $$('[data-station]').forEach(b=>b.onclick=()=>{state.data[kind]=b.dataset.station;$(`#${kind==='from'?'fromLabel':'toLabel'}`).textContent=b.dataset.station;$('#stationModal').remove();});
+      };
+      $('#chooseFrom').onclick=()=>openStations('from');
+      $('#chooseTo').onclick=()=>openStations('to');
+      $('#swapRoute').onclick=()=>{[state.data.from,state.data.to]=[state.data.to,state.data.from];$('#fromLabel').textContent=state.data.from||'역 선택';$('#toLabel').textContent=state.data.to||'역 선택';};
+      $('#chooseDate').onclick=()=>{
+        $('.app-real-shell').insertAdjacentHTML('beforeend',`<div class="calendar-modal" id="calendarModal"><header><button id="closeCalendar">←</button><b>출발일 선택</b></header><div class="calendar-head"><button>〈</button><strong>2026년 7월</strong><button>〉</button></div><div class="calendar-grid">${['일','월','화','수','목','금','토'].map(x=>`<span class="weekday">${x}</span>`).join('')}${Array.from({length:31},(_,i)=>`<button data-day="${i+1}" class="${i+1===18?'today':''}">${i+1}</button>`).join('')}</div></div>`);
+        $('#closeCalendar').onclick=()=>$('#calendarModal').remove();
+        $$('[data-day]').forEach(b=>b.onclick=()=>{state.data.date=`2026-07-${String(b.dataset.day).padStart(2,'0')}`;$('#dateLabel').textContent=`7월 ${b.dataset.day}일`;$('#calendarModal').remove();});
+      };
+      $('#searchTrain').onclick=()=>{
+        if(state.data.from!=='서울') return wrong('출발역 목록을 열어 “서울”을 선택하세요.');
+        if(state.data.to!=='부산') return wrong('도착역 목록을 열어 “부산”을 선택하세요.');
+        if(state.data.date!=='2026-07-20') return wrong('달력에서 7월 20일을 선택하세요.');
+        if($('#passenger').value!=='1') return wrong('이번 과제는 어른 1명입니다.');
+        next({from:state.data.from,to:state.data.to,date:state.data.date});
+      };
     } else if (s === 1) {
       instruction(
         "오전 9시에 출발하는 KTX 015편의 [좌석선택]을 누르세요.",
@@ -1041,9 +1071,7 @@ function renderTicketKiosk(label, from, to, fare) {
   const s = state.step;
   if (s === 0) {
     instruction("발매기 화면에서 “1회용 교통카드”를 누르세요.");
-    sim(
-      `<div class="kiosk-stage"><div class="kiosk-sign">교통카드 키오스크 · Ticket Kiosk</div><div class="kiosk-machine"><div class="kiosk-screen"><h2>${label} 승차권 발매</h2><div class="kiosk-menu"><button id="once">1회용<br>교통카드</button><button>교통카드<br>충전</button><button>우대용<br>교통카드</button><button>정기권</button></div></div>${hardware()}</div></div>`,
-    );
+    sim(kioskWrap(`<div class="kiosk-mini-head"><b>${label}</b><small>언어선택 · 도움호출</small></div><h2>원하시는 서비스를 선택해 주세요</h2><div class="kiosk-menu"><button id="once">1회용<br>교통카드</button><button>교통카드<br>충전</button><button>우대용<br>교통카드</button><button>정기권</button></div><div class="kiosk-bottom-nav"><button>처음으로</button><button>직원호출</button><button>English</button></div>`));
     $("#once").onclick = () => next();
   } else if (s === 1) {
     instruction(`목적지 “${to}”를 선택하세요.`);
@@ -1083,28 +1111,18 @@ function renderTicketKiosk(label, from, to, fare) {
         ? "지폐 투입구에 금액을 넣는 연습을 하세요."
         : "신용카드를 카드 투입구에 넣는 연습을 하세요.",
     );
-    sim(
-      kioskWrap(
-        `<h2>${state.data.pay === "cash" ? "현금을 투입해 주세요" : "카드를 투입해 주세요"}</h2><div class="hardware-panel"><button class="hardware" id="insert"><div class="hardware-slot"></div>${state.data.pay === "cash" ? "지폐 투입구" : "신용카드 투입구"}</button><div class="hardware"><div class="hardware-slot"></div>동전 투입구</div><div class="hardware"><div class="hardware-slot"></div>카드 발급구</div></div>`,
-      ),
-    );
-    $("#insert").onclick = () => next();
+    sim(kioskWrap(`<h2>${state.data.pay === "cash" ? "현금을 넣어 주세요" : "카드를 넣어 주세요"}</h2><div class="fare-screen"><p>투입하실 금액</p><strong>${(fare+500).toLocaleString()}원</strong><div class="progress-wait">기기 아래쪽의 ${state.data.pay === "cash" ? "지폐 투입구" : "카드 투입구"}를 사용해 주세요.</div></div>`, state.data.pay === "cash" ? "cash" : "card"));
+    $(`[data-slot="${state.data.pay === "cash" ? "cash" : "card"}"]`).onclick = () => next();
   } else {
     instruction("카드 발급구에서 1회용 교통카드를 가져가세요.");
-    sim(
-      kioskWrap(
-        `<h2>발급이 완료되었습니다</h2><div class="result-check">✓</div><p style="text-align:center;font-size:1.2rem">${from} → ${to}<br>카드를 반드시 가져가세요.</p><button class="big-primary" id="takeCard">카드를 받았습니다</button>`,
-      ),
-    );
-    $("#takeCard").onclick = () => next();
+    sim(kioskWrap(`<h2>발급이 완료되었습니다</h2><div class="result-check">✓</div><p style="text-align:center;font-size:1.05rem">${from} → ${to}<br>화면 아래 발급구에서 카드와 거스름돈을 모두 꺼내세요.</p>`, "output"));
+    $('[data-slot="output"]').onclick = () => next();
   }
 }
-function kioskWrap(content) {
-  return `<div class="kiosk-stage"><div class="kiosk-sign">교통카드 키오스크 · Ticket Kiosk</div><div class="kiosk-machine"><div class="kiosk-screen">${content}</div>${hardware()}</div></div>`;
+function kioskWrap(content, activeSlot = "") {
+  return `<div class="kiosk-stage"><div class="kiosk-photo-stage"><img class="machine-photo" src="assets/metro-kiosk-reference.png" alt="교통카드 발매기 참고 모습"><div class="screen-overlay">${content}</div><button class="hardware-hotspot slot-cash ${activeSlot==='cash'?'active-slot':''}" data-slot="cash" aria-label="지폐 투입구"><span>지폐 투입구</span></button><button class="hardware-hotspot slot-card ${activeSlot==='card'?'active-slot':''}" data-slot="card" aria-label="신용카드 투입구"><span>카드 투입구</span></button><button class="hardware-hotspot slot-output ${activeSlot==='output'?'active-slot':''}" data-slot="output" aria-label="교통카드 발급구"><span>카드·거스름돈 나오는 곳</span></button></div></div>`;
 }
-function hardware() {
-  return `<div class="hardware-panel"><div class="hardware"><div class="hardware-slot"></div>지폐 투입구</div><div class="hardware"><div class="hardware-slot"></div>동전 투입구</div><div class="hardware"><div class="hardware-slot"></div>카드 투입구</div><div class="hardware"><div class="hardware-slot"></div>교통카드 접촉부</div><div class="hardware"><div class="hardware-slot"></div>카드 발급구</div></div>`;
-}
+function hardware() { return ``; }
 function renderChat(video) {
   const s = state.step;
   if (s === 0) {
