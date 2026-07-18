@@ -2058,3 +2058,151 @@ body.guided-mode .practice-head .eyebrow::after{content:' · 안내 모드';colo
     top: 110px;
   }
 }
+
+/* 어르신용 한 화면 완결 레이아웃: 안내와 조작 화면을 스크롤 없이 함께 표시 */
+@media (min-width: 1000px) {
+  body:has(#practiceView.active) {
+    overflow: hidden;
+  }
+
+  #practiceView.active {
+    height: calc(100vh - 88px);
+    overflow: hidden;
+    padding-bottom: 8px;
+  }
+
+  #practiceView .practice-head {
+    min-height: 64px;
+    padding-block: 8px;
+    margin-bottom: 4px;
+  }
+
+  #practiceView .practice-head h1 {
+    font-size: clamp(22px, 1.7vw, 30px);
+    margin: 0;
+  }
+
+  #practiceView .practice-head .eyebrow,
+  #practiceView .field-mission-banner,
+  #practiceView .progress-wrap,
+  #practiceView .compact-stats {
+    display: none !important;
+  }
+
+  #practiceView .practice-layout {
+    height: calc(100vh - 170px);
+    min-height: 0;
+    grid-template-columns: minmax(280px, 350px) minmax(0, 1fr);
+    gap: 14px;
+    align-items: stretch;
+  }
+
+  #practiceView .mission-panel.sticky,
+  #practiceView .simulator {
+    position: static;
+    top: auto;
+    height: 100%;
+    max-height: none;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  #practiceView .concise-mission {
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  #practiceView .concise-mission .mission-label {
+    font-size: 18px;
+    padding: 9px 12px;
+    align-self: flex-start;
+  }
+
+  #practiceView .concise-mission .command-box {
+    min-height: 0;
+    margin-top: 12px;
+    padding: 18px 14px;
+  }
+
+  #practiceView .concise-mission #currentInstruction {
+    font-size: clamp(23px, 1.75vw, 31px);
+    line-height: 1.35;
+  }
+
+  #practiceView .concise-mission .repeat-instruction {
+    min-height: 50px;
+    margin-top: 12px;
+    font-size: 18px;
+  }
+
+  #practiceView .simulator {
+    padding: 8px;
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    background: #eef2f6;
+  }
+
+  #practiceView .simulator > * {
+    width: 100%;
+    max-height: 100%;
+  }
+
+  .sim-header {
+    display: none !important;
+  }
+
+  .messenger-fit-screen,
+  .conversation-view,
+  .chat-app.messenger-realistic {
+    height: 100%;
+    min-height: 0 !important;
+    max-height: 100%;
+    border-radius: 18px;
+    overflow: hidden;
+  }
+
+  .messenger-realistic {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .messenger-list,
+  .realistic-chat-body,
+  .photo-grid-realistic {
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .compact-chat-list .messenger-row {
+    min-height: 78px;
+    padding-block: 9px;
+  }
+
+  .messenger-list-head,
+  .conversation-head {
+    flex: 0 0 72px;
+  }
+
+  .messenger-tabs {
+    flex: 0 0 48px;
+  }
+
+  .messenger-list {
+    flex: 1 1 auto;
+  }
+
+  .messenger-bottom-nav {
+    flex: 0 0 64px;
+  }
+
+  .conversation-view .realistic-chat-body {
+    flex: 1 1 auto;
+  }
+
+  .realistic-chat-input {
+    flex: 0 0 72px;
+  }
+}
