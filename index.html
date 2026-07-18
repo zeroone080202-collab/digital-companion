@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0b4d89" />
-    <title>디지털 동행 실전연습관</title>
-    <link rel="stylesheet" href="./style.css?v=20260718-real-v17" />
+    <title>디지털 생활 길잡이</title>
+    <link rel="stylesheet" href="./style.css?v=20260718-field-v16" />
   </head>
   <body>
     <a class="skip-link" href="#main">본문으로 바로가기</a>
@@ -13,8 +13,8 @@
       <button class="brand" data-action="home" aria-label="처음 화면으로 이동">
         <span class="brand-mark">동행</span>
         <span
-          ><b>디지털 동행 실전연습관</b
-          ><small>앱을 찾는 순간부터 실제 업무 완료까지 연습하세요</small></span
+          ><b>디지털 생활 길잡이</b
+          ><small>실제 화면 순서대로 천천히 연습하세요</small></span
         >
       </button>
       <div class="access-tools" aria-label="화면 도움 기능">
@@ -49,9 +49,8 @@
               <button type="button" data-search-example="지하철 표 뽑기">지하철 승차권</button>
             </div>
           </div>
-          <div class="hero-status">
+          <div class="hero-status single-stat">
             <span>연습 가능</span><strong id="moduleCount">16개</strong>
-            <span>내 완료 기록</span><strong id="completeCount">0개</strong>
           </div>
         </div>
 
@@ -77,6 +76,30 @@
         ></section>
       </section>
 
+
+      <section id="modeView" class="view mode-view" aria-labelledby="modeTitle">
+        <div class="mode-card">
+          <button data-action="home" class="back-btn">← 연습 목록으로</button>
+          <p class="eyebrow">연습 방법 선택</p>
+          <h1 id="modeTitle">어떤 방식으로 연습할까요?</h1>
+          <p id="modeGoal" class="mode-goal"></p>
+          <div class="mode-options">
+            <button type="button" class="mode-option guided" data-practice-mode="guided">
+              <span class="mode-icon">👆</span>
+              <strong>처음 배우기</strong>
+              <p>눌러야 할 위치와 순서를 크게 표시하고 음성으로 안내합니다.</p>
+              <em>처음 해보는 분께 추천</em>
+            </button>
+            <button type="button" class="mode-option field" data-practice-mode="field">
+              <span class="mode-icon">🏁</span>
+              <strong>실전처럼 해보기</strong>
+              <p>노란 표시 없이 실제 화면을 보고 스스로 찾아 진행합니다.</p>
+              <em>배운 뒤 혼자 해보는 연습</em>
+            </button>
+          </div>
+          <div class="mode-note"><b>권장 순서</b><span>처음 배우기 1회 → 실전처럼 해보기 2회</span></div>
+        </div>
+      </section>
 
       <section id="launcherView" class="view" aria-labelledby="launcherTitle">
         <div class="practice-head">
@@ -192,6 +215,6 @@
     </main>
 
     <div id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260718-real-v17" defer></script>
+    <script src="app.js?v=20260718-messenger-realistic" defer></script>
   </body>
 </html>
