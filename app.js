@@ -419,7 +419,6 @@ function renderHome(cat = "all", query = "") {
 
   const completed = readCompletedModules();
   if ($("#moduleCount")) $("#moduleCount").textContent = modules.length + "개";
-  if ($("#completeCount")) $("#completeCount").textContent = completed.length + "개";
 }
 
 function runSearch(query) {
@@ -1125,83 +1124,176 @@ function kioskWrap(content, activeSlot = "") {
 function hardware() { return ``; }
 function renderChat(video) {
   const s = state.step;
+
   if (s === 0) {
-    instruction("검색창에서 가족 이름 “딸”을 찾아 대화방을 여세요.");
+    instruction("대화 목록에서 이름과 최근 메시지를 함께 확인한 뒤 ‘딸’ 대화방을 누르세요.");
     sim(
       simHeader("카카오톡") +
-        `<div class="chat-app"><div class="chat-head"><span>대화</span><span>🔍</span></div><div class="sim-body"><button class="choice-card" id="daughter">👩 딸</button><button class="choice-card">👨 아들</button><button class="choice-card">친구 모임</button></div></div>`,
+        `<div class="chat-app messenger-realistic">
+          <div class="chat-head messenger-list-head">
+            <strong>채팅</strong>
+            <div class="messenger-head-actions" aria-label="채팅 도구">
+              <button type="button" aria-label="검색">⌕</button>
+              <button type="button" aria-label="새 채팅">＋</button>
+              <button type="button" aria-label="설정">⚙</button>
+            </div>
+          </div>
+          <div class="messenger-tabs" aria-label="채팅 목록 구분">
+            <button class="active">전체</button><button>안 읽은 채팅</button><button>오픈채팅</button>
+          </div>
+          <div class="messenger-list" role="list">
+            ${messengerRow({id:"daughter", avatar:"👩", name:"딸", preview:"엄마, 잘 도착했어요?", time:"오후 5:03", unread:4})}
+            ${messengerRow({avatar:"👨", name:"아들", preview:"이번 주말에 찾아뵐게요.", time:"오후 3:31", unread:2})}
+            ${messengerRow({avatar:"👥", name:"가족 모임", preview:"사진을 보냈습니다.", time:"오후 1:58", unread:0})}
+            ${messengerRow({avatar:"🌿", name:"정은", preview:"지금 지도 쓰는 중이야", time:"오전 11:44", unread:0})}
+            ${messengerRow({avatar:"🏫", name:"동창회", preview:"다음 모임 날짜가 정해졌습니다.", time:"어제", unread:12})}
+          </div>
+          <div class="messenger-bottom-nav" aria-label="하단 메뉴">
+            <button>친구</button><button class="active">채팅</button><button>오픈채팅</button><button>쇼핑</button><button>더보기</button>
+          </div>
+        </div>`,
     );
     $("#daughter").onclick = () => next();
-  } else if (video) {
+    return;
+  }
+
+  if (video) {
     if (s === 1) {
-      instruction("오른쪽 위 카메라 모양을 눌러 영상통화를 거세요.");
+      instruction("대화방 오른쪽 위의 영상통화 버튼을 누르세요.");
       sim(
         simHeader("카카오톡 · 딸") +
-          `<div class="chat-app"><div class="chat-head"><span>← 딸</span><button id="videoBtn">📹</button></div><div class="chat-body"><div class="bubble">엄마, 잘 도착했어요?</div></div></div>`,
+          conversationShell(`<div class="message-row incoming"><div class="profile-mini">👩</div><div><div class="sender-name">딸</div><div class="bubble">엄마, 잘 도착했어요?</div></div></div>`, true),
       );
       $("#videoBtn").onclick = () => next();
     } else if (s === 2) {
-      instruction("영상통화 연결 버튼을 누르세요.");
+      instruction("상대방 이름이 ‘딸’인지 확인한 뒤 [영상통화]를 누르세요.");
       sim(
         simHeader("영상통화 확인") +
-          `<div class="chat-app"><div class="video-call"><div><div class="avatar-large">👩</div><h2 style="text-align:center">딸</h2></div><button class="big-primary" id="connectCall" style="position:absolute;bottom:30px;width:80%">영상통화 연결</button></div></div>`,
+          `<div class="chat-app messenger-realistic"><div class="video-confirm-panel"><div class="avatar-large">👩</div><h2>딸</h2><p>영상통화를 시작하시겠습니까?</p><div class="video-confirm-actions"><button type="button" class="secondary-call">취소</button><button type="button" class="primary-call" id="connectCall">영상통화</button></div></div></div>`,
       );
       $("#connectCall").onclick = () => next();
     } else if (s === 3) {
-      instruction("통화 중 카메라 전환 버튼을 눌러보세요.");
+      instruction("통화 화면 아래쪽에서 카메라 전환 버튼을 한 번 눌러보세요.");
       sim(videoUI());
       $("#switchCam").onclick = () => next();
     } else if (s === 4) {
-      instruction("마이크가 켜져 있는지 확인한 뒤 통화를 종료하세요.");
+      instruction("마이크 상태를 확인하고 빨간 통화 종료 버튼을 누르세요.");
       sim(videoUI());
       $("#endCall").onclick = () => next();
     } else {
-      instruction("영상통화가 종료됐는지 확인하세요.");
+      instruction("대화방에 영상통화 기록이 남았는지 확인하세요.");
       sim(
-        simHeader("카카오톡") +
-          `<div class="chat-app"><div class="chat-head">딸</div><div class="chat-body"><div class="bubble me">영상통화 01:12</div></div><button class="big-primary" id="finishVideo" style="position:absolute;bottom:20px;width:90%;left:5%">확인</button></div>`,
+        simHeader("카카오톡 · 딸") +
+          conversationShell(`<div class="system-message">영상통화 01:12</div>`, false, `<button class="chat-finish-button" id="finishVideo">확인</button>`),
       );
       $("#finishVideo").onclick = () => next();
     }
+    return;
+  }
+
+  if (s === 1) {
+    instruction("화면 맨 아래 입력칸을 누르고 ‘잘 도착했다’를 입력한 뒤 전송 버튼을 누르세요.");
+    sim(chatUI());
+    $("#sendChat").onclick = () => {
+      const t = $("#chatText").value.trim();
+      t ? next({ message: t }) : wrong("메시지 입력칸에 내용을 먼저 입력하세요.");
+    };
+  } else if (s === 2) {
+    instruction("입력칸 왼쪽의 + 버튼을 누른 뒤 [사진] 메뉴를 선택하세요.");
+    sim(chatUI(true));
+    $("#addPhoto").onclick = () => next();
+  } else if (s === 3) {
+    instruction("사진 목록에서 한 장을 선택하고 오른쪽 위 [전송] 버튼을 누르세요.");
+    sim(
+      simHeader("카카오톡 · 사진 선택") +
+        `<div class="chat-app messenger-realistic photo-picker">
+          <div class="photo-picker-head"><button type="button">취소</button><strong>사진</strong><button type="button" id="sendPhoto">전송</button></div>
+          <div class="photo-picker-folders"><button class="active">최근 항목</button><button>앨범</button></div>
+          <div class="photo-grid-realistic">
+            <button class="photo-cell selected" aria-label="공원 사진 선택됨"><span>✓</span><div class="photo-art park">🌳</div></button>
+            <button class="photo-cell"><div class="photo-art meal">🍲</div></button>
+            <button class="photo-cell"><div class="photo-art flower">🌸</div></button>
+            <button class="photo-cell"><div class="photo-art sky">🌤️</div></button>
+            <button class="photo-cell"><div class="photo-art family">👨‍👩‍👧</div></button>
+            <button class="photo-cell"><div class="photo-art bus">🚌</div></button>
+          </div>
+          <div class="photo-picker-count">1개 선택됨</div>
+        </div>`,
+    );
+    $("#sendPhoto").onclick = () => next();
+  } else if (s === 4) {
+    instruction("보낸 메시지와 사진이 오른쪽 노란 말풍선으로 표시됐는지 확인하세요.");
+    const body = `
+      <div class="message-date">오늘</div>
+      <div class="message-row incoming"><div class="profile-mini">👩</div><div><div class="sender-name">딸</div><div class="bubble">엄마, 잘 도착했어요?</div></div></div>
+      <div class="message-row outgoing"><div class="message-meta">오후 5:06</div><div class="bubble me">${escapeHtml(state.data.message || "잘 도착했다")}</div></div>
+      <div class="message-row outgoing"><div class="message-meta">오후 5:07</div><div class="photo-message">🌳</div></div>`;
+    sim(
+      simHeader("카카오톡 · 딸") +
+        conversationShell(body, false, `<button class="chat-finish-button" id="chatDone">확인</button>`),
+    );
+    $("#chatDone").onclick = () => next();
   } else {
-    if (s === 1) {
-      instruction("입력창에 “잘 도착했다”고 입력하고 전송하세요.");
-      sim(chatUI());
-      $("#sendChat").onclick = () => {
-        const t = $("#chatText").value.trim();
-        t ? next({ message: t }) : wrong("메시지를 입력하세요.");
-      };
-    } else if (s === 2) {
-      instruction("사진 추가 버튼을 눌러 사진을 선택하세요.");
-      sim(chatUI(true));
-      $("#addPhoto").onclick = () => next();
-    } else if (s === 3) {
-      instruction("선택한 사진을 전송하세요.");
-      sim(
-        simHeader("카카오톡 · 사진 전송") +
-          `<div class="chat-app"><div class="chat-head">← 딸</div><div class="chat-body"><div class="bubble me">${state.data.message}</div><div class="bubble me" style="font-size:4rem">🌳</div></div><button class="big-primary" id="sendPhoto" style="position:absolute;bottom:20px;width:90%;left:5%">사진 전송</button></div>`,
-      );
-      $("#sendPhoto").onclick = () => next();
-    } else if (s === 4) {
-      instruction("보낸 메시지와 사진이 대화방에 표시되는지 확인하세요.");
-      sim(
-        simHeader("카카오톡 · 딸") +
-          `<div class="chat-app"><div class="chat-head">← 딸</div><div class="chat-body"><div class="bubble">엄마, 잘 도착했어요?</div><div class="bubble me">${state.data.message}</div><div class="bubble me" style="font-size:4rem">🌳</div></div><button class="big-primary" id="chatDone" style="position:absolute;bottom:20px;width:90%;left:5%">확인</button></div>`,
-      );
-      $("#chatDone").onclick = () => next();
-    } else next();
+    next();
   }
 }
-function chatUI(photo = false) {
-  return (
-    simHeader("카카오톡 · 딸") +
-    `<div class="chat-app"><div class="chat-head"><span>← 딸</span><span>📞 📹</span></div><div class="chat-body"><div class="bubble">엄마, 잘 도착했어요?</div></div><div class="chat-input"><button id="addPhoto">＋</button><input id="chatText" placeholder="메시지 입력" value="${photo ? state.data.message || "잘 도착했다" : ""}"><button id="sendChat">전송</button></div></div>`
-  );
+
+function messengerRow({id="", avatar, name, preview, time, unread=0}) {
+  return `<button type="button" class="messenger-row" ${id ? `id="${id}"` : ""} role="listitem">
+    <span class="messenger-avatar" aria-hidden="true">${avatar}</span>
+    <span class="messenger-main"><strong>${name}</strong><span>${preview}</span></span>
+    <span class="messenger-side"><time>${time}</time>${unread ? `<span class="unread-badge">${unread}</span>` : ""}</span>
+  </button>`;
 }
+
+function conversationShell(bodyHtml, videoButton=false, footerExtra="") {
+  return `<div class="chat-app messenger-realistic conversation-view">
+    <div class="chat-head conversation-head">
+      <button type="button" class="back-button" aria-label="뒤로 가기">‹</button>
+      <div class="conversation-title"><strong>딸</strong><span>1:1 채팅</span></div>
+      <div class="conversation-actions"><button type="button" aria-label="검색">⌕</button><button type="button" ${videoButton ? 'id="videoBtn"' : ''} aria-label="영상통화">▣</button><button type="button" aria-label="메뉴">☰</button></div>
+    </div>
+    <div class="chat-body realistic-chat-body">${bodyHtml}</div>
+    <div class="chat-input realistic-chat-input">
+      <button id="addPhoto" class="attach-button" type="button" aria-label="첨부">＋</button>
+      <div class="chat-input-box"><input id="chatText" placeholder="메시지를 입력하세요" value=""><button type="button" aria-label="이모티콘">☺</button></div>
+      <button id="sendChat" class="send-chat-button" type="button">전송</button>
+    </div>
+    ${footerExtra}
+  </div>`;
+}
+
+function chatUI(showAttachmentHint = false) {
+  const body = `<div class="message-date">오늘</div><div class="message-row incoming"><div class="profile-mini">👩</div><div><div class="sender-name">딸</div><div class="bubble">엄마, 잘 도착했어요?</div></div></div>`;
+  const value = showAttachmentHint ? escapeHtml(state.data.message || "잘 도착했다") : "";
+  const attachment = showAttachmentHint
+    ? `<div class="attachment-sheet"><button type="button" id="addPhoto"><span>▧</span>사진</button><button type="button"><span>▣</span>카메라</button><button type="button"><span>⌖</span>위치</button></div>`
+    : "";
+  return simHeader("카카오톡 · 딸") + `<div class="chat-app messenger-realistic conversation-view">
+    <div class="chat-head conversation-head">
+      <button type="button" class="back-button" aria-label="뒤로 가기">‹</button>
+      <div class="conversation-title"><strong>딸</strong><span>1:1 채팅</span></div>
+      <div class="conversation-actions"><button type="button" aria-label="검색">⌕</button><button type="button" aria-label="영상통화">▣</button><button type="button" aria-label="메뉴">☰</button></div>
+    </div>
+    <div class="chat-body realistic-chat-body">${body}</div>
+    ${attachment}
+    <div class="chat-input realistic-chat-input">
+      <button id="addPhoto" class="attach-button" type="button" aria-label="첨부">＋</button>
+      <div class="chat-input-box"><input id="chatText" placeholder="메시지를 입력하세요" value="${value}"><button type="button" aria-label="이모티콘">☺</button></div>
+      <button id="sendChat" class="send-chat-button" type="button">전송</button>
+    </div>
+  </div>`;
+}
+
 function videoUI() {
   return (
     simHeader("카카오톡 · 영상통화") +
-    `<div class="chat-app"><div class="video-call"><div><div class="avatar-large">👩</div><h2 style="text-align:center">딸과 통화 중</h2></div><div class="call-controls"><button>🎙️</button><button id="switchCam">🔄</button><button id="endCall" class="call-end">☎</button></div></div></div>`
+    `<div class="chat-app messenger-realistic"><div class="video-call realistic-video-call">
+      <div class="call-top"><button type="button">⌄</button><span>딸</span><button type="button">⋮</button></div>
+      <div class="remote-video"><div class="avatar-large">👩</div><strong>딸과 통화 중</strong><span>00:48</span></div>
+      <div class="local-preview">내 화면</div>
+      <div class="call-controls realistic-call-controls"><button type="button" aria-label="마이크">🎙</button><button type="button" id="switchCam" aria-label="카메라 전환">↻</button><button type="button" aria-label="카메라">▣</button><button type="button" id="endCall" class="call-end" aria-label="통화 종료">☎</button></div>
+    </div></div>`
   );
 }
 function renderBrowserFlow(brand, query, result, finalLabel) {
