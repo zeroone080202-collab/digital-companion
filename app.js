@@ -331,19 +331,18 @@ function saveCompletedModules(value) {
 }
 
 const appCatalog = [
-  ["rail", "🚄", "코레일톡", "#2878b8"],
-  ["air", "✈️", "항공권 예약", "#4b7bec"],
-  ["bank", "🏦", "KB스타뱅킹", "#168074"],
+  ["rail", "🚄", "코레일톡", "#2f6fb2"],
+  ["air", "✈️", "대한항공", "#4b74c9"],
+  ["bank", "★", "KB스타뱅킹", "#665343"],
   ["chat", "💬", "카카오톡", "#fee500"],
-  ["delivery", "🛵", "배달의민족", "#29b66f"],
-  ["shopping", "📦", "쿠팡", "#e85d2a"],
-  ["taxi", "🚕", "카카오 T", "#353535"],
-  ["health", "🏥", "병원 예약", "#e84e5b"],
-  ["gov", "📄", "정부24", "#1769aa"],
-  ["map", "🗺️", "지도", "#45a65a"],
-  ["message", "✉️", "문자", "#5e9bd6"],
-  ["browser", "🌐", "인터넷", "#3078d6"],
-
+  ["delivery", "배달", "배달의민족", "#2ac1bc"],
+  ["shopping", "C", "쿠팡", "#e74b3b"],
+  ["taxi", "T", "카카오 T", "#222222"],
+  ["health", "＋", "똑닥", "#ef5b73"],
+  ["gov", "24", "정부24", "#1769aa"],
+  ["map", "지도", "네이버 지도", "#34a853"],
+  ["message", "✉", "메시지", "#4d8bd8"],
+  ["browser", "🌐", "삼성 인터넷", "#6b5bd2"]
 ];
 
 const entryGuides = {
@@ -370,6 +369,8 @@ let state = {
   data: {},
   lastEntry: null,
   launcherStage: "home",
+  mode: "guided",
+  stepErrors: {},
 };
 const $ = (s) => document.querySelector(s),
   $$ = (s) => [...document.querySelectorAll(s)];
@@ -451,7 +452,20 @@ function startModule(id) {
     data: {},
     lastEntry: null,
     launcherStage: "home",
+    mode: "guided",
+    stepErrors: {},
   };
+  document.body.classList.remove("guided-mode", "field-mode");
+  $("#modeTitle").textContent = `${state.module.title} 연습 방법을 선택하세요`;
+  $("#modeGoal").textContent = `오늘의 실전 과제: ${state.module.goal}`;
+  showView("modeView");
+}
+
+function beginPracticeMode(mode) {
+  state.mode = mode === "field" ? "field" : "guided";
+  state.start = Date.now();
+  document.body.classList.toggle("field-mode", state.mode === "field");
+  document.body.classList.toggle("guided-mode", state.mode === "guided");
   if (state.module.entry === "kiosk") {
     showView("practiceView");
     renderPractice();
@@ -482,10 +496,11 @@ function showLauncher() {
   showView("launcherView");
   state.launcherStage = "home";
   const guide = getEntryGuide();
-  $("#launcherTitle").textContent = `먼저 “${guide.appName}”을 여세요`;
-  setLauncherInstructions(guide.command, [
-    `휴대전화 화면에서 “${guide.appName}”이라는 이름을 찾으세요.`,
-    `찾았으면 그 아이콘을 손가락으로 한 번 누르세요.`,
+  $("#launcherTitle").textContent = state.mode === "field" ? `${state.module.title} · 앱 또는 사이트를 직접 찾아보세요` : `1번: 휴대전화에서 “${guide.appName}”을 찾아 누르세요`;
+  setLauncherInstructions(state.mode === "field" ? `실전 과제: ${state.module.goal}` : guide.command, [
+    `오른쪽 휴대전화 화면에서 아이콘 아래의 글자를 천천히 읽으세요.`,
+    `“${guide.appName}”이라고 적힌 아이콘을 찾으세요.`,
+    `찾았으면 노란 테두리 안쪽을 손가락으로 한 번 누르세요.`,
     guide.mode === "web" ? "인터넷이 열리면 다음 화면에서 검색어를 그대로 입력합니다." : "앱이 열리면 화면 안의 메뉴를 차례대로 연습합니다."
   ], guide.note || (guide.mode === "web" ? "검색 결과에서는 공식 사이트 이름과 주소를 확인해야 합니다." : "앱 이름을 꼭 읽고 누르세요."));
   renderLauncherHome(guide);
@@ -493,81 +508,91 @@ function showLauncher() {
 
 function renderLauncherHome(guide) {
   const screen = $("#launcherView .phone-screen");
-  screen.className = "phone-screen home-screen";
-  screen.innerHTML = `<div class="phone-status"><span>오전 9:41</span><span>▮▮▮ 100%</span></div>
-    <div class="search-pill">🔍 앱 검색  ·  찾을 앱: ${guide.appName}</div>
-    <div id="appIcons" class="app-icons"></div>
-    <div class="phone-dock">
-      <button data-app="phone">☎<span>전화</span></button>
-      <button data-app="message">💬<span>문자</span></button>
-      <button data-app="browser">🌐<span>인터넷</span></button>
-      <button data-app="camera">📷<span>카메라</span></button>
+  screen.className = "phone-screen home-screen one-ui";
+  const exactName = guide.mode === "web" ? "삼성 인터넷" : guide.appName.replace("사용 중인 은행 앱(연습에서는 ", "").replace(")", "");
+  screen.innerHTML = `<div class="phone-status realistic"><span>9:41</span><span>● ● ●  100%</span></div>
+    <div class="weather-widget"><strong>7월 18일 금요일</strong><span>고양시 · 맑음 29°</span></div>
+    <button class="finder-bar" type="button" aria-label="앱 검색"><span>⌕</span><b>앱 검색</b><small>앱 이름을 입력할 수 있습니다</small></button>
+    <div class="launcher-callout">지금 찾을 앱: <b>${exactName}</b></div>
+    <div id="appIcons" class="app-icons realistic-grid"></div>
+    <div class="phone-dock realistic-dock">
+      <button data-app="phone"><i>☎</i><span>전화</span></button>
+      <button data-app="message"><i>✉</i><span>메시지</span></button>
+      <button data-app="browser" class="${guide.appId === 'browser' ? 'expected-app' : ''}"><i>🌐</i><span>삼성 인터넷</span>${guide.appId === 'browser' ? '<em class="tap-badge">① 여기를 누르세요</em>' : ''}</button>
+      <button data-app="camera"><i>📷</i><span>카메라</span></button>
     </div>`;
   const icons = $("#appIcons");
-  appCatalog.forEach(([id, emoji, name, color]) => {
+  appCatalog.filter(([id]) => !["browser","message"].includes(id)).forEach(([id, emoji, name, color]) => {
     const b = document.createElement("button");
     b.className = `app-icon ${id === guide.appId ? "expected-app" : ""}`;
     b.dataset.app = id;
     b.setAttribute("aria-label", `${name} 앱 열기`);
-    b.innerHTML = `<i style="background:${color};color:${id === "chat" ? "#222" : "#fff"}">${emoji}</i><span>${name}</span>${id === guide.appId ? '<em class="tap-badge">여기를 누르세요</em>' : ''}`;
+    b.innerHTML = `<i style="background:${color};color:${id === "chat" ? "#222" : "#fff"}">${emoji}</i><span>${name}</span>${id === guide.appId ? '<em class="tap-badge">① 여기를 누르세요</em>' : ''}`;
     icons.appendChild(b);
   });
 }
-
 function renderBrowserSearch() {
   state.launcherStage = "browser-search";
   const guide = getEntryGuide();
-  $("#launcherTitle").textContent = "인터넷 검색창에 검색어를 입력하세요";
-  setLauncherInstructions(`검색창에 “${guide.query}”라고 입력하세요.`, [
-    "화면 위쪽의 흰색 검색창을 한 번 누르세요.",
-    `키보드로 “${guide.query}”라고 입력하세요.`,
-    "입력을 마쳤으면 파란색 ‘검색’ 버튼을 누르세요."
-  ], "주소창이나 검색창에 개인정보, 계좌 비밀번호를 입력하지 마세요.");
+  $("#launcherTitle").textContent = "삼성 인터넷에서 검색어를 입력하세요";
+  setLauncherInstructions(`검색창에 “${guide.query}”라고 그대로 입력한 뒤 [검색]을 누르세요.`, [
+    "오른쪽 휴대전화 화면 위쪽의 긴 검색창을 한 번 누르세요.",
+    `검색창에 “${guide.query}”라고 입력하세요. 띄어쓰기가 조금 달라도 괜찮습니다.`,
+    "키보드 오른쪽 아래의 파란 [검색] 버튼 또는 화면의 [검색] 버튼을 누르세요."
+  ], "검색창에는 주민번호, 카드번호, 계좌 비밀번호를 절대 입력하지 않습니다.");
   const screen = $("#launcherView .phone-screen");
-  screen.innerHTML = `<div class="phone-status"><span>오전 9:41</span><span>▮▮▮ 100%</span></div>
-    <div class="browser-bar"><button type="button" aria-label="뒤로">←</button><span>인터넷</span><button type="button" aria-label="메뉴">⋮</button></div>
-    <div class="browser-page">
-      <div class="browser-logo">검색</div>
-      <form id="webSearchForm" class="web-search-form">
-        <label for="webSearchInput">검색어 입력</label>
-        <div><input id="webSearchInput" autocomplete="off" placeholder="${guide.query}"/><button type="submit">검색</button></div>
+  screen.className = "phone-screen browser-phone";
+  screen.innerHTML = `<div class="phone-status realistic"><span>9:41</span><span>● ● ● 100%</span></div>
+    <div class="browser-toolbar"><button type="button">←</button><button type="button">→</button><button type="button">⌂</button><span>삼성 인터넷</span><button type="button">☰</button></div>
+    <div class="browser-page realistic-browser">
+      <div class="portal-wordmark">NAVER</div>
+      <form id="webSearchForm" class="web-search-form realistic-search">
+        <label class="sr-only" for="webSearchInput">검색어 입력</label>
+        <div><input id="webSearchInput" autocomplete="off" placeholder="검색어를 입력하세요"/><button type="submit">검색</button></div>
       </form>
-      <div class="type-exact"><b>그대로 입력하세요</b><span>${guide.query}</span></div>
+      <div class="type-exact"><b>입력할 말</b><span>${guide.query}</span></div>
       <div id="webSearchResults" class="web-results"></div>
-    </div>`;
+    </div>
+    <div class="browser-bottom"><button>←</button><button>→</button><button>⌂</button><button>□</button><button>☰</button></div>`;
   $("#webSearchInput").focus();
   $("#webSearchForm").addEventListener("submit", (event) => {
     event.preventDefault();
     const value = $("#webSearchInput").value.trim();
-    if (!value || !normalizeSearchText(value).includes(normalizeSearchText(guide.query).split(" ")[0])) {
-      wrong(`검색창에 “${guide.query}”라고 입력해 보세요.`);
+    if (!value || scoreFreeText(value, guide.query) < 0.25) {
+      wrong(`검색창에 “${guide.query}”와 비슷하게 입력해 보세요.`);
       return;
     }
     renderOfficialSearchResults(guide);
   });
 }
-
+function scoreFreeText(a,b){
+  const aa=compactSearchText(a), bb=compactSearchText(b);
+  if(!aa||!bb) return 0;
+  if(aa.includes(bb)||bb.includes(aa)) return 1;
+  const words=normalizeSearchText(b).split(" ").filter(Boolean);
+  const hit=words.filter(w=>normalizeSearchText(a).includes(w)).length;
+  return hit/Math.max(1,words.length);
+}
 function renderOfficialSearchResults(guide) {
   state.launcherStage = "browser-results";
-  $("#launcherTitle").textContent = "검색 결과에서 공식 사이트를 고르세요";
-  setLauncherInstructions(`“${guide.siteName}” 결과를 누르세요.`, [
-    `검색 결과 제목에서 “${guide.siteName}”을 찾으세요.`,
-    `주소 또는 설명에 “${guide.domainHint}”이 있는지 확인하세요.`,
-    "확인했으면 해당 검색 결과를 한 번 누르세요."
-  ], "광고라고 표시된 결과나 주소가 이상한 사이트는 누르지 않습니다.");
+  $("#launcherTitle").textContent = "검색 결과에서 공식 사이트를 누르세요";
+  setLauncherInstructions(`제목이 “${guide.siteName}”이고 주소에 “${guide.domainHint}”이 보이는 결과를 누르세요.`, [
+    `검색 결과에서 제목 “${guide.siteName}”을 찾으세요.`,
+    `제목 아래 주소에 “${guide.domainHint}”이 포함되어 있는지 확인하세요.`,
+    "‘광고’ 또는 ‘대행’이라고 적힌 결과가 아니라 공식 결과를 한 번 누르세요."
+  ], "공식 사이트 주소를 확인하는 습관이 피싱 피해를 줄입니다.");
   const results = $("#webSearchResults");
-  results.innerHTML = `<p class="result-count">검색 결과</p>
-    <button type="button" class="web-result official-result" data-open-official="true">
-      <small>공식 사이트 · ${guide.domainHint}</small>
-      <strong>${guide.siteName}</strong>
-      <span>${state.module.goal}을 진행할 수 있는 공식 화면입니다.</span>
-      <em>이 결과를 누르세요</em>
+  results.innerHTML = `<div class="search-summary"><b>검색 결과</b><span>${guide.query}</span></div>
+    <button type="button" class="web-result sponsored" data-open-decoy="true">
+      <small>광고 · fast-help.example</small><strong>빠른 예약·발급 대행</strong><span>수수료를 요구하거나 개인정보를 받을 수 있습니다.</span><em>누르지 마세요</em>
+    </button>
+    <button type="button" class="web-result official-result expected-result" data-open-official="true">
+      <small>${guide.domainHint} · 공식</small><strong>${guide.siteName}</strong><span>${state.module.goal} 관련 공식 서비스입니다.</span><em>② 이 결과를 누르세요</em>
     </button>
     <button type="button" class="web-result decoy-result" data-open-decoy="true">
-      <small>광고 · 알 수 없는 주소</small><strong>빠른 예약·발급 대행</strong><span>개인정보 입력을 요구할 수 있습니다.</span>
+      <small>개인 블로그 · blog.example</small><strong>사용 방법 후기</strong><span>설명만 있고 실제 신청은 할 수 없습니다.</span>
     </button>`;
 }
-
 function openApp(id) {
   const guide = getEntryGuide();
   if (id !== guide.appId) {
@@ -594,21 +619,81 @@ function renderPractice() {
   const ui = renderers[m.id] || renderGeneric;
   ui();
 }
-function instruction(
-  title,
-  reason = "화면의 정보를 천천히 확인한 뒤 선택하세요.",
-  steps = [],
-) {
-  $("#currentInstruction").textContent = title;
-  $("#currentReason").textContent = reason;
-  const stepBox = $("#currentSteps");
-  const normalizedSteps = Array.isArray(steps) && steps.length
-    ? steps
-    : [title];
-  stepBox.innerHTML = normalizedSteps
-    .map((item, index) => `<div class="exact-step"><span>${index + 1}</span><p>${item}</p></div>`)
-    .join("");
+const detailedGuides = {
+  ktx: [
+    {word:'열차 조회', location:'코레일톡 승차권 화면의 맨 아래 파란 버튼', gesture:'파란 [열차 조회] 버튼의 가운데를 한 번 누르기', after:'서울→부산 열차 목록이 시간 순서대로 나타납니다.', title:'출발 서울, 도착 부산을 확인하고 [열차 조회]를 누르세요.', steps:['오른쪽 화면 왼쪽의 [출발] 칸에 “서울”이라고 적혀 있는지 읽으세요.','오른쪽 [도착] 칸에 “부산”이라고 적혀 있는지 읽으세요.','출발 날짜와 승객이 어른 1명인지 확인하세요.','화면 맨 아래 파란색 [열차 조회] 버튼을 한 번 누르세요.'], caution:'출발역과 도착역이 바뀌지 않았는지 반드시 다시 읽으세요.'},
+    {word:'KTX 015 · 09:00', location:'열차 조회 결과의 가운데 두 번째 줄', gesture:'해당 줄 오른쪽의 [좌석선택]을 한 번 누르기', after:'5호차 등 호차를 고르는 좌석 화면이 열립니다.', title:'오전 9시 KTX 015편의 [좌석선택]을 누르세요.', steps:['열차번호 열에서 “KTX 015”를 찾으세요.','출발 시간이 “09:00”인지 확인하세요.','도착역이 부산인지 한 번 더 확인하세요.','같은 줄 맨 오른쪽의 [좌석선택]을 누르세요.'], caution:'시간만 보지 말고 열차번호와 도착역도 같이 확인하세요.'},
+    {word:'5호차 · 6A', location:'좌석표의 6번째 줄 왼쪽 창가 자리', gesture:'[6A]를 누른 뒤 아래 [선택 완료] 누르기', after:'선택 좌석에 “6A”가 표시되고 예약 확인 화면으로 이동합니다.', title:'5호차 창가 좌석 [6A]를 선택하세요.', steps:['화면 위쪽에서 파란색으로 표시된 “5호차”를 확인하세요.','좌석표에서 숫자 6이 적힌 줄을 찾으세요.','그 줄 맨 왼쪽의 [6A] 좌석을 한 번 누르세요.','아래 선택한 좌석에 6A가 표시되면 [선택 완료]를 누르세요.'], caution:'A와 D는 창가, B와 C는 통로 쪽 좌석입니다.'},
+    {word:'예약하기', location:'예약 정보 확인 화면의 맨 아래 파란 버튼', gesture:'내용을 위에서 아래로 읽은 뒤 [예약하기] 한 번 누르기', after:'결제수단 확인 화면이 나타납니다.', title:'열차와 좌석 정보를 확인하고 [예약하기]를 누르세요.', steps:['서울→부산이 맞는지 확인하세요.','KTX 015, 출발 09:00인지 확인하세요.','5호차 6A인지 확인하세요.','운임을 확인한 뒤 [예약하기]를 누르세요.'], caution:'실전에서는 결제 전에 날짜·시간·좌석을 마지막으로 다시 확인하세요.'},
+    {word:'결제하기', location:'결제 화면의 맨 아래 큰 파란 버튼', gesture:'결제수단과 금액을 확인한 뒤 한 번 누르기', after:'모바일 승차권이 발권됩니다.', title:'결제 금액을 확인하고 [결제하기]를 누르세요.', steps:['결제 예정 금액을 읽으세요.','선택된 결제수단을 확인하세요.','실제 앱에서는 비밀번호나 인증 절차를 진행합니다.','연습 화면에서는 [결제하기]를 한 번 누르세요.'], caution:'다른 사람이 보낸 링크에서 결제하지 말고 반드시 코레일톡 안에서 진행하세요.'},
+    {word:'승차권 확인', location:'발권된 모바일 승차권의 아래쪽 확인 버튼', gesture:'열차번호·시간·호차·좌석을 읽고 [확인] 누르기', after:'KTX 예매 연습이 완료됩니다.', title:'발권된 모바일 승차권을 확인하세요.', steps:['출발역 서울과 도착역 부산을 읽으세요.','출발시간 09:00을 확인하세요.','5호차 6A 좌석을 확인하세요.','기차에 타기 전 이 화면을 다시 열 수 있다는 점을 기억하고 [확인]을 누르세요.'], caution:'승차권 화면을 캡처한 것보다 앱의 최신 승차권 화면을 보여주는 것이 안전합니다.'}
+  ],
+  metro: [
+    {word:'화면을 눌러주세요', location:'발매기 중앙의 큰 터치 화면', gesture:'화면 가운데를 손가락으로 한 번 누르기', after:'승차권 종류를 고르는 첫 메뉴가 나타납니다.', title:'발매기 화면 가운데를 한 번 누르세요.', steps:['기계 위쪽에 “교통카드 발매기”가 적혀 있는지 확인하세요.','중앙의 밝은 터치 화면을 찾으세요.','화면 가운데를 손가락으로 가볍게 한 번 누르세요.'], caution:'카드 투입구가 아니라 먼저 화면을 눌러 시작합니다.'},
+    {word:'1회용 교통카드', location:'첫 메뉴 화면 왼쪽 위의 큰 버튼', gesture:'[1회용 교통카드]를 한 번 누르기', after:'목적지를 선택하는 화면이 나타납니다.', title:'[1회용 교통카드]를 누르세요.', steps:['화면에 있는 여러 메뉴의 이름을 천천히 읽으세요.','“1회용 교통카드”라고 적힌 버튼을 찾으세요.','찾았으면 버튼 가운데를 한 번 누르세요.'], caution:'교통카드 충전과 1회용 교통카드 발급은 서로 다른 메뉴입니다.'},
+    {word:'잠실', location:'목적지 검색 결과 또는 역 이름 목록', gesture:'검색창에 잠실을 입력하거나 [잠실] 버튼 누르기', after:'서울역→잠실 운임 화면이 나타납니다.', title:'목적지 [잠실]을 선택하세요.', steps:['목적지 검색 칸을 한 번 누르세요.','화면 키보드에서 “잠실”을 입력하세요.','검색 결과의 “잠실” 역을 한 번 누르세요.','출발역 서울역, 도착역 잠실이 맞는지 확인하세요.'], caution:'이름이 비슷한 역이 있을 수 있으니 노선과 역 이름을 함께 확인하세요.'},
+    {word:'성인 1명', location:'인원 선택 화면의 성인 항목', gesture:'성인 수량의 [+] 또는 [1명]을 누르기', after:'운임과 보증금이 합산되어 표시됩니다.', title:'성인 1명을 선택하고 금액을 확인하세요.', steps:['성인 항목을 찾으세요.','인원이 1명인지 확인하세요.','운임과 보증금 500원이 함께 표시되는지 읽으세요.'], caution:'1회용 교통카드는 보증금이 포함되며 도착 후 환급할 수 있습니다.'},
+    {word:'결제', location:'금액 확인 화면 아래의 결제 방법 영역', gesture:'안내된 현금 또는 카드 결제 버튼 누르기', after:'발급 중 화면으로 바뀐 뒤 카드가 나옵니다.', title:'결제 방법을 선택하세요.', steps:['총금액을 읽으세요.','사용할 결제 방법을 선택하세요.','현금이라면 지폐·동전 투입구 위치를 확인하세요.','카드라면 카드 삽입 또는 접촉 안내를 따르세요.'], caution:'기계마다 사용 가능한 결제 방법이 다를 수 있으므로 화면 안내를 먼저 읽으세요.'},
+    {word:'카드 받는 곳', location:'기기 아래쪽 넓은 카드 배출구', gesture:'발급된 1회용 카드를 꺼내기', after:'승차권 발급 연습이 완료됩니다.', title:'아래 카드 발급구에서 카드를 가져가세요.', steps:['화면에 “발급 완료”가 나오는지 기다리세요.','기기 아래쪽의 카드 받는 곳을 찾으세요.','나온 1회용 교통카드를 꺼내세요.','거스름돈이나 영수증이 있는지도 확인하세요.'], caution:'카드를 두고 가면 다시 개찰구를 통과할 수 없으므로 반드시 챙기세요.'}
+  ],
+  bank: [
+    {word:'KB스타뱅킹', location:'휴대전화 홈 화면의 은행 앱 아이콘', gesture:'“KB스타뱅킹” 아이콘을 한 번 누르기', after:'은행 앱 첫 화면이 열립니다.', title:'[KB스타뱅킹] 앱을 찾아 한 번 누르세요.', steps:['앱 아이콘 아래 이름을 천천히 읽으세요.','“KB스타뱅킹”이라고 적힌 앱을 찾으세요.','노란 테두리가 있는 아이콘 가운데를 한 번 누르세요.'], caution:'문자메시지 속 링크로 은행 앱을 열지 말고 홈 화면의 공식 앱을 직접 누르세요.'},
+    {word:'이체', location:'은행 앱 첫 화면의 자주 쓰는 메뉴', gesture:'[이체] 버튼을 한 번 누르기', after:'받는 계좌를 입력하는 화면이 나타납니다.', title:'은행 앱 첫 화면에서 [이체]를 누르세요.', steps:['화면 위쪽의 계좌 잔액을 확인하세요.','메뉴에서 “이체”라고 적힌 버튼을 찾으세요.','[이체] 버튼을 한 번 누르세요.'], caution:'조회·출금·이체는 서로 다른 메뉴이므로 버튼 글자를 반드시 읽으세요.'},
+    {word:'계좌번호', location:'받는 분 계좌 입력 칸', gesture:'숫자 키패드로 계좌번호 입력 후 [다음] 누르기', after:'받는 분 이름 확인 화면이 나타납니다.', title:'받는 분의 은행과 계좌번호를 입력하세요.', steps:['받는 은행을 선택하세요.','계좌번호 입력 칸을 한 번 누르세요.','연습에 제시된 계좌번호를 숫자 키패드로 입력하세요.','입력한 숫자를 다시 읽고 [다음]을 누르세요.'], caution:'계좌번호 한 자리만 틀려도 다른 사람에게 보낼 수 있으므로 다시 확인하세요.'},
+    {word:'30,000원', location:'보낼 금액 입력 칸', gesture:'숫자 3, 0, 0, 0, 0을 누른 뒤 확인', after:'받는 분과 금액 확인 화면이 나타납니다.', title:'송금 금액 [30,000원]을 입력하세요.', steps:['금액 입력 칸을 누르세요.','숫자 키패드로 30000을 입력하세요.','화면에 “30,000원”으로 표시되는지 읽으세요.','[다음]을 누르세요.'], caution:'0을 하나 더 누르면 금액이 10배가 되므로 쉼표가 찍힌 금액을 읽으세요.'},
+    {word:'김민수', location:'최종 확인 화면의 받는 분 이름', gesture:'이름과 금액을 읽은 뒤 체크 또는 [확인] 누르기', after:'최종 이체 버튼이 활성화됩니다.', title:'받는 분 이름이 [김민수]인지 확인하세요.', steps:['받는 분 이름 “김민수”를 소리 내어 읽으세요.','은행과 계좌번호 뒤 네 자리를 확인하세요.','보낼 금액이 30,000원인지 확인하세요.','모두 맞으면 [확인]을 누르세요.'], caution:'이름이 다르면 절대로 보내지 말고 이전 화면으로 돌아가세요.'},
+    {word:'이체하기', location:'최종 확인 화면 맨 아래 큰 버튼', gesture:'모든 내용을 확인한 뒤 한 번 누르기', after:'이체 완료 내역이 표시됩니다.', title:'마지막으로 확인하고 [이체하기]를 누르세요.', steps:['받는 분 이름을 다시 확인하세요.','금액을 다시 확인하세요.','수수료가 있는지 확인하세요.','모두 맞으면 [이체하기]를 누르세요.'], caution:'비밀번호·인증번호는 가족이나 은행 직원에게도 알려주지 마세요.'}
+  ],
+  chat: [
+    {word:'카카오톡', location:'휴대전화 홈 화면의 노란 말풍선 앱', gesture:'[카카오톡] 아이콘을 한 번 누르기', after:'카카오톡 대화 목록이 열립니다.', title:'[카카오톡] 앱을 찾아 한 번 누르세요.', steps:['앱 아래 이름을 읽으세요.','“카카오톡”이라고 적힌 노란 말풍선 앱을 찾으세요.','아이콘 가운데를 한 번 누르세요.'], caution:'이름이 비슷한 다른 앱이 아니라 “카카오톡”인지 확인하세요.'},
+    {word:'딸', location:'대화 목록에서 상대 이름이 적힌 줄', gesture:'“딸” 대화방을 한 번 누르기', after:'딸과의 대화 내용이 열립니다.', title:'대화 목록에서 [딸]을 찾아 누르세요.', steps:['대화 목록을 위에서 아래로 읽으세요.','이름이 “딸”인 줄을 찾으세요.','프로필과 이름을 확인한 뒤 그 줄을 한 번 누르세요.'], caution:'같은 이름이 있다면 프로필 사진과 최근 대화 내용도 확인하세요.'},
+    {word:'메시지 입력', location:'대화방 화면 맨 아래 흰색 입력 칸', gesture:'입력 칸을 누르고 “잘 도착했다” 입력', after:'오른쪽 전송 버튼을 누를 수 있게 됩니다.', title:'메시지 입력 칸에 [잘 도착했다]를 입력하세요.', steps:['화면 맨 아래 “메시지 입력” 칸을 누르세요.','키보드가 나타나면 “잘 도착했다”를 입력하세요.','글자가 맞는지 다시 읽으세요.','오른쪽 [전송] 버튼을 누르세요.'], caution:'보낼 사람의 대화방이 맞는지 입력 전에 다시 확인하세요.'},
+    {word:'＋ 또는 사진', location:'메시지 입력 칸 왼쪽의 더하기 버튼', gesture:'[＋]를 누른 뒤 사진 메뉴 선택', after:'휴대전화 사진 목록이 열립니다.', title:'왼쪽 아래 [＋] 버튼을 누르고 [사진]을 선택하세요.', steps:['입력 칸 왼쪽의 [＋] 버튼을 찾으세요.','[＋]를 한 번 누르세요.','나타난 메뉴에서 “사진”을 누르세요.','사진 목록이 열릴 때까지 기다리세요.'], caution:'카메라 촬영과 기존 사진 선택은 서로 다른 메뉴입니다.'},
+    {word:'사진 1장', location:'사진 목록에서 연습용 사진', gesture:'사진 한 장을 선택하고 [전송] 누르기', after:'대화방에 사진 미리보기가 나타납니다.', title:'보낼 사진 한 장을 선택하고 [전송]을 누르세요.', steps:['사진을 한 번 눌러 체크 표시가 생기는지 보세요.','선택한 사진이 맞는지 크게 확인하세요.','오른쪽 위 또는 아래의 [전송]을 누르세요.'], caution:'신분증·통장·비밀번호가 보이는 사진은 보내지 마세요.'},
+    {word:'보낸 메시지와 사진', location:'대화방 오른쪽 말풍선 영역', gesture:'전송된 내용을 눈으로 확인하고 [확인] 누르기', after:'메신저 연습이 완료됩니다.', title:'메시지와 사진이 전송됐는지 확인하세요.', steps:['오른쪽 말풍선에 “잘 도착했다”가 보이는지 확인하세요.','그 아래 보낸 사진이 보이는지 확인하세요.','전송 실패 표시가 없는지 확인하세요.','모두 보이면 [확인]을 누르세요.'], caution:'시계 모양이나 빨간 느낌표가 보이면 전송되지 않은 것입니다.'}
+  ]
+};
+
+function inferGuide(title, reason, steps) {
+  const quoted = [...String(title).matchAll(/[\[“"]([^\]”"]+)[\]”"]/g)].map(m => m[1]);
+  const word = quoted[0] || String(title).replace(/누르세요|선택하세요|확인하세요|입력하세요|\.|오른쪽 화면에서/g, '').trim();
+  return {
+    word: word || '안내된 글자',
+    location: '오른쪽 연습 화면에서 노란 테두리가 표시된 곳',
+    gesture: '글자와 위치를 확인한 뒤 손가락으로 한 번 누르기',
+    after: '화면이 바뀌고 다음 단계 안내가 나타납니다.',
+    title,
+    steps: Array.isArray(steps) && steps.length ? steps : [title],
+    caution: reason
+  };
 }
+function instruction(title, reason = "화면의 정보를 천천히 확인한 뒤 선택하세요.", steps = []) {
+  const moduleGuides = detailedGuides[state.module?.id];
+  const guide = moduleGuides?.[state.step] || inferGuide(title, reason, steps);
+  const fieldMode = state.mode === "field";
+  $("#currentInstruction").textContent = fieldMode ? `현재 단계: ${state.module.steps[state.step]}` : guide.title;
+  $("#currentReason").textContent = fieldMode ? "실제 화면처럼 스스로 찾아 진행합니다. 막히면 [도움 요청]을 누르세요." : (guide.caution || reason);
+  $("#targetWord").textContent = fieldMode ? "스스로 찾기" : guide.word;
+  $("#targetLocation").textContent = fieldMode ? "실제 화면을 천천히 살펴보세요" : guide.location;
+  $("#targetGesture").textContent = fieldMode ? "버튼 글자를 확인한 뒤 누르기" : guide.gesture;
+  $("#expectedChange").textContent = fieldMode ? "선택이 맞으면 다음 단계로 이동합니다" : guide.after;
+  const normalizedSteps = guide.steps?.length ? guide.steps : [guide.title];
+  $("#currentSteps").innerHTML = fieldMode
+    ? `<div class="exact-step active-action"><span>!</span><p>안내 표시 없이 화면에서 필요한 메뉴를 직접 찾아보세요.</p></div>`
+    : normalizedSteps.map((item, index) =>
+      `<div class="exact-step ${index === 0 ? 'active-action' : ''}"><span>${index + 1}</span><p>${item}</p></div>`
+    ).join("");
+  const repeat = $("#repeatInstruction");
+  if (repeat) repeat.onclick = () => {
+    speechSynthesis.cancel();
+    const text = `지금 할 일입니다. ${guide.title}. ${normalizedSteps.join(' ')}. 실전에서 기억하세요. ${guide.caution || reason}`;
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'ko-KR';
+    u.rate = 0.78;
+    speechSynthesis.speak(u);
+  };
+}
+
 function next(data = {}) {
   Object.assign(state.data, data);
   state.step++;
@@ -618,6 +703,7 @@ function next(data = {}) {
 }
 function wrong(msg) {
   state.mistakes++;
+  state.stepErrors[state.step] = (state.stepErrors[state.step] || 0) + 1;
   $("#mistakeCount").textContent = state.mistakes;
   toast(msg);
 }
@@ -633,16 +719,25 @@ function hint() {
     video: "대화방 오른쪽 위의 카메라 모양 버튼을 찾으세요.",
     gov: "주소가 gov.kr로 끝나는 공식 사이트인지 확인하세요.",
   };
-  toast(
-    hints[state.module.id] ||
-      "왼쪽의 “지금 할 일”을 먼저 읽고, 같은 문구가 있는 버튼을 찾아보세요.",
-  );
+  const message = hints[state.module.id] || "화면의 버튼 글자를 천천히 읽고 현재 단계와 같은 뜻의 메뉴를 찾으세요.";
+  toast(state.mode === "field" ? `도움: ${message}` : message);
 }
 function complete() {
   const sec = Math.max(1, Math.round((Date.now() - state.start) / 1000));
   $("#resultTitle").textContent = `${state.module.title} 연습을 마쳤습니다.`;
   $("#resultSummary").textContent =
     `“${state.module.goal}” 목표를 끝까지 수행했습니다.`;
+  const weakSteps = Object.entries(state.stepErrors).filter(([, count]) => count > 0).map(([step]) => state.module.steps[Number(step)]);
+  const checklist = document.createElement("div");
+  checklist.className = "result-checklist";
+  checklist.innerHTML = `<h3>현장에 가기 전 마지막 점검</h3><ul>
+    <li>앱이나 공식 사이트를 다른 사람 도움 없이 찾을 수 있는지 확인하세요.</li>
+    <li>결제·송금 전 이름, 금액, 날짜, 목적지를 다시 읽으세요.</li>
+    <li>${weakSteps.length ? `다시 연습하면 좋은 단계: <b>${weakSteps.join(", ")}</b>` : "실수한 단계가 없습니다. 실전 모드로 한 번 더 연습해 보세요."}</li>
+  </ul>`;
+  const resultStats = $(".result-stats");
+  $("#resultView .result-checklist")?.remove();
+  resultStats?.insertAdjacentElement("afterend", checklist);
   $("#resultTime").textContent = `${Math.floor(sec / 60)}분 ${sec % 60}초`;
   $("#resultMistakes").textContent = state.mistakes + "회";
   $("#resultHints").textContent = state.hints + "회";
@@ -673,7 +768,7 @@ const renderers = {
         ]
       );
       sim(
-        simHeader("레일온 · 승차권 예매", "실제 예약과 결제가 되지 않는 연습 화면") +
+        simHeader("코레일톡 · 승차권 예매 연습", "실제 예약과 결제가 되지 않는 연습 화면") +
           `<div class="rail-page">
             <div class="rail-nav"><b>승차권</b><span>여행상품</span><span>이용안내</span><span>나의 승차권</span></div>
             <div class="rail-tabs"><button class="active">일반 승차권</button><button>할인 승차권</button><button>정기승차권</button></div>
@@ -893,7 +988,7 @@ const renderers = {
   },
   gov() {
     renderBrowserFlow(
-      "민원24＋",
+      "정부24",
       "주민등록등본 발급",
       "주민등록표 등본(초본)",
       "발급하기",
@@ -924,13 +1019,13 @@ const renderers = {
     );
   },
   delivery() {
-    renderCommerce("바로배달", "김밥 2줄", "우리집 주소", "배달 주문");
+    renderCommerce("배달의민족", "김밥 2줄", "우리집 주소", "배달 주문");
   },
   shopping() {
-    renderCommerce("온쇼핑", "생수 2L 6개", "기본 배송지", "상품 주문");
+    renderCommerce("쿠팡", "생수 2L 6개", "기본 배송지", "상품 주문");
   },
   taxi() {
-    renderCommerce("바로택시", "서울역", "현재 위치", "택시 호출");
+    renderCommerce("카카오 T", "서울역", "현재 위치", "택시 호출");
   },
   food() {
     renderFood();
@@ -1015,7 +1110,7 @@ function renderChat(video) {
   if (s === 0) {
     instruction("검색창에서 가족 이름 “딸”을 찾아 대화방을 여세요.");
     sim(
-      simHeader("모두톡") +
+      simHeader("카카오톡") +
         `<div class="chat-app"><div class="chat-head"><span>대화</span><span>🔍</span></div><div class="sim-body"><button class="choice-card" id="daughter">👩 딸</button><button class="choice-card">👨 아들</button><button class="choice-card">친구 모임</button></div></div>`,
     );
     $("#daughter").onclick = () => next();
@@ -1023,7 +1118,7 @@ function renderChat(video) {
     if (s === 1) {
       instruction("오른쪽 위 카메라 모양을 눌러 영상통화를 거세요.");
       sim(
-        simHeader("모두톡 · 딸") +
+        simHeader("카카오톡 · 딸") +
           `<div class="chat-app"><div class="chat-head"><span>← 딸</span><button id="videoBtn">📹</button></div><div class="chat-body"><div class="bubble">엄마, 잘 도착했어요?</div></div></div>`,
       );
       $("#videoBtn").onclick = () => next();
@@ -1045,7 +1140,7 @@ function renderChat(video) {
     } else {
       instruction("영상통화가 종료됐는지 확인하세요.");
       sim(
-        simHeader("모두톡") +
+        simHeader("카카오톡") +
           `<div class="chat-app"><div class="chat-head">딸</div><div class="chat-body"><div class="bubble me">영상통화 01:12</div></div><button class="big-primary" id="finishVideo" style="position:absolute;bottom:20px;width:90%;left:5%">확인</button></div>`,
       );
       $("#finishVideo").onclick = () => next();
@@ -1065,14 +1160,14 @@ function renderChat(video) {
     } else if (s === 3) {
       instruction("선택한 사진을 전송하세요.");
       sim(
-        simHeader("모두톡 · 사진 전송") +
+        simHeader("카카오톡 · 사진 전송") +
           `<div class="chat-app"><div class="chat-head">← 딸</div><div class="chat-body"><div class="bubble me">${state.data.message}</div><div class="bubble me" style="font-size:4rem">🌳</div></div><button class="big-primary" id="sendPhoto" style="position:absolute;bottom:20px;width:90%;left:5%">사진 전송</button></div>`,
       );
       $("#sendPhoto").onclick = () => next();
     } else if (s === 4) {
       instruction("보낸 메시지와 사진이 대화방에 표시되는지 확인하세요.");
       sim(
-        simHeader("모두톡 · 딸") +
+        simHeader("카카오톡 · 딸") +
           `<div class="chat-app"><div class="chat-head">← 딸</div><div class="chat-body"><div class="bubble">엄마, 잘 도착했어요?</div><div class="bubble me">${state.data.message}</div><div class="bubble me" style="font-size:4rem">🌳</div></div><button class="big-primary" id="chatDone" style="position:absolute;bottom:20px;width:90%;left:5%">확인</button></div>`,
       );
       $("#chatDone").onclick = () => next();
@@ -1081,13 +1176,13 @@ function renderChat(video) {
 }
 function chatUI(photo = false) {
   return (
-    simHeader("모두톡 · 딸") +
+    simHeader("카카오톡 · 딸") +
     `<div class="chat-app"><div class="chat-head"><span>← 딸</span><span>📞 📹</span></div><div class="chat-body"><div class="bubble">엄마, 잘 도착했어요?</div></div><div class="chat-input"><button id="addPhoto">＋</button><input id="chatText" placeholder="메시지 입력" value="${photo ? state.data.message || "잘 도착했다" : ""}"><button id="sendChat">전송</button></div></div>`
   );
 }
 function videoUI() {
   return (
-    simHeader("모두톡 · 영상통화") +
+    simHeader("카카오톡 · 영상통화") +
     `<div class="chat-app"><div class="video-call"><div><div class="avatar-large">👩</div><h2 style="text-align:center">딸과 통화 중</h2></div><div class="call-controls"><button>🎙️</button><button id="switchCam">🔄</button><button id="endCall" class="call-end">☎</button></div></div></div>`
   );
 }
@@ -1284,6 +1379,12 @@ window.addEventListener("error", (event) => {
 });
 
 document.addEventListener("click", (e) => {
+  const modeButton = e.target.closest("[data-practice-mode]");
+  if (modeButton) {
+    e.preventDefault();
+    beginPracticeMode(modeButton.dataset.practiceMode);
+    return;
+  }
   const moduleButton = e.target.closest("[data-module-id]");
   if (moduleButton) {
     e.preventDefault();
@@ -1335,6 +1436,7 @@ document.addEventListener("click", (e) => {
   if (!a) return;
   const x = a.dataset.action;
   if (x === "home") {
+    document.body.classList.remove("guided-mode", "field-mode");
     showView("homeView");
     renderHome();
 window.DIGITAL_APP_READY = true;
