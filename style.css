@@ -2011,3 +2011,50 @@ body.guided-mode .practice-head .eyebrow::after{content:' · 안내 모드';colo
     min-height: 700px;
   }
 }
+
+
+/* v21: 어르신용 안내 패널 단순화 및 화면 안정화 */
+#practiceView .practice-layout {
+  align-items: start;
+}
+#practiceView .concise-mission {
+  overflow: hidden;
+  max-height: none;
+  min-height: 0;
+  padding: 28px;
+}
+#practiceView .concise-mission .command-box {
+  margin-top: 18px;
+  min-height: 170px;
+  display: flex;
+  align-items: center;
+}
+#practiceView .concise-mission #currentInstruction {
+  font-size: clamp(28px, 2.1vw, 40px);
+  line-height: 1.42;
+  margin: 0;
+  word-break: keep-all;
+}
+#practiceView .concise-mission .repeat-instruction {
+  width: 100%;
+  margin-top: 20px;
+  min-height: 62px;
+  font-size: 21px;
+}
+#practiceView .compact-stats {
+  margin-top: 16px;
+  justify-content: center;
+}
+#practiceView .simulator {
+  min-height: calc(100vh - 230px);
+  background: #fff;
+}
+@media (min-width: 1000px) {
+  #practiceView .practice-layout {
+    grid-template-columns: minmax(330px, 420px) minmax(0, 1fr);
+  }
+  #practiceView .concise-mission {
+    position: sticky;
+    top: 110px;
+  }
+}
