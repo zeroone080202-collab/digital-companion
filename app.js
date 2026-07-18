@@ -150,7 +150,7 @@ const modules = [
     desc: "메신저 앱을 찾아 대화방 열기, 문자와 사진 보내기",
     goal: "딸에게 “잘 도착했다”고 보내고 사진 1장 전송",
     entry: "chat",
-    steps: ["앱 찾기", "연락처 찾기", "메시지", "사진 선택", "전송", "확인"],
+    steps: ["앱 찾기", "채팅 탭", "대화방 찾기", "메시지 입력", "사진 메뉴", "사진 전송", "전송 확인"],
   },
   {
     id: "video",
@@ -160,7 +160,7 @@ const modules = [
     desc: "대화방에서 영상통화를 걸고 카메라·마이크 조절",
     goal: "가족에게 영상통화를 걸고 카메라를 한 번 전환",
     entry: "chat",
-    steps: ["앱 찾기", "대화방", "영상통화", "연결", "카메라 전환", "종료"],
+    steps: ["앱 찾기", "채팅 탭", "대화방 찾기", "영상통화 선택", "통화 연결", "카메라 전환", "통화 종료"],
   },
   {
     id: "sms",
@@ -495,54 +495,99 @@ function getEntryGuide() {
   };
 }
 
-function setLauncherInstructions(title, items, note = "") {
-  $("#launcherMission").textContent = title;
-  $("#launcherChecklist").innerHTML = items
-    .map((item, index) => `<li class="launcher-command ${index === 0 ? "current" : ""}"><span>${index + 1}</span><p>${item}</p></li>`)
-    .join("");
-  const safe = $("#launcherView .safe-box");
-  if (safe) safe.innerHTML = note ? `<b>확인하세요</b><br>${note}<br><small>교육용 화면이므로 실제 개인정보는 입력하지 않습니다.</small>` : "교육용 화면입니다. 실제 개인정보를 입력하지 마세요.";
+function setLauncherInstructions(title) {
+  const mission = $("#launcherMission");
+  if (mission) mission.textContent = title;
+  const speakButton = $("#repeatLauncherInstruction");
+  if (speakButton) {
+    speakButton.onclick = () => speakText(title);
+  }
 }
 
 function showLauncher() {
   showView("launcherView");
   state.launcherStage = "home";
   const guide = getEntryGuide();
-  $("#launcherTitle").textContent = state.mode === "field" ? `${state.module.title} · 앱 또는 사이트를 직접 찾아보세요` : `1번: 휴대전화에서 “${guide.appName}”을 찾아 누르세요`;
-  setLauncherInstructions(state.mode === "field" ? `실전 과제: ${state.module.goal}` : guide.command, [
-    `오른쪽 휴대전화 화면에서 아이콘 아래의 글자를 천천히 읽으세요.`,
-    `“${guide.appName}”이라고 적힌 아이콘을 찾으세요.`,
-    `찾았으면 노란 테두리 안쪽을 손가락으로 한 번 누르세요.`,
-    guide.mode === "web" ? "인터넷이 열리면 다음 화면에서 검색어를 그대로 입력합니다." : "앱이 열리면 화면 안의 메뉴를 차례대로 연습합니다."
-  ], guide.note || (guide.mode === "web" ? "검색 결과에서는 공식 사이트 이름과 주소를 확인해야 합니다." : "앱 이름을 꼭 읽고 누르세요."));
-  renderLauncherHome(guide);
+  $("#launcherTitle").textContent = `휴대전화에서 ${guide.appName}을 찾아 여세요`;
+  setLauncherInstructions("오른쪽 휴대전화 화면을 아래에서 위로 밀어 앱스 화면을 여세요.");
+  renderGalaxyHome(guide);
 }
 
-function renderLauncherHome(guide) {
-  const screen = $("#launcherView .phone-screen");
-  screen.className = "phone-screen home-screen one-ui";
-  const exactName = guide.mode === "web" ? "삼성 인터넷" : guide.appName.replace("사용 중인 은행 앱(연습에서는 ", "").replace(")", "");
-  screen.innerHTML = `<div class="phone-status realistic"><span>9:41</span><span>● ● ●  100%</span></div>
-    <div class="weather-widget"><strong>7월 18일 금요일</strong><span>고양시 · 맑음 29°</span></div>
-    <button class="finder-bar" type="button" aria-label="앱 검색"><span>⌕</span><b>앱 검색</b><small>앱 이름을 입력할 수 있습니다</small></button>
-    <div class="launcher-callout">지금 찾을 앱: <b>${exactName}</b></div>
-    <div id="appIcons" class="app-icons realistic-grid"></div>
-    <div class="phone-dock realistic-dock">
-      <button data-app="phone"><i>☎</i><span>전화</span></button>
-      <button data-app="message"><i>✉</i><span>메시지</span></button>
-      <button data-app="browser" class="${guide.appId === 'browser' ? 'expected-app' : ''}"><i>🌐</i><span>삼성 인터넷</span>${guide.appId === 'browser' ? '<em class="tap-badge">① 여기를 누르세요</em>' : ''}</button>
-      <button data-app="camera"><i>📷</i><span>카메라</span></button>
-    </div>`;
-  const icons = $("#appIcons");
-  appCatalog.filter(([id]) => !["browser","message"].includes(id)).forEach(([id, emoji, name, color]) => {
-    const b = document.createElement("button");
-    b.className = `app-icon ${id === guide.appId ? "expected-app" : ""}`;
-    b.dataset.app = id;
-    b.setAttribute("aria-label", `${name} 앱 열기`);
-    b.innerHTML = `<i style="background:${color};color:${id === "chat" ? "#222" : "#fff"}">${emoji}</i><span>${name}</span>${id === guide.appId ? '<em class="tap-badge">① 여기를 누르세요</em>' : ''}`;
-    icons.appendChild(b);
-  });
+function phoneStatusBar() {
+  return `<div class="galaxy-status"><span>9:41</span><span>◉ 5G ▰ 92%</span></div>`;
 }
+
+function renderGalaxyHome(guide) {
+  const screen = $("#launcherView .phone-screen");
+  screen.className = "phone-screen galaxy-home";
+  screen.innerHTML = `${phoneStatusBar()}
+    <div class="galaxy-wallpaper">
+      <div class="galaxy-clock"><strong>9:41</strong><span>7월 18일 금요일</span><small>고양시 29° 맑음</small></div>
+      <div class="home-page-icons">
+        <button type="button"><i>📅</i><span>캘린더</span></button>
+        <button type="button"><i>🖼️</i><span>갤러리</span></button>
+        <button type="button"><i>📷</i><span>카메라</span></button>
+        <button type="button"><i>⚙️</i><span>설정</span></button>
+      </div>
+      <div class="swipe-up-zone" id="swipeUpZone" tabindex="0" role="button" aria-label="위로 밀어 앱스 화면 열기"><span></span></div>
+      <div class="home-dock-real">
+        <button type="button"><i>☎</i></button><button type="button"><i>💬</i></button><button type="button"><i>🌐</i></button><button type="button"><i>📷</i></button>
+      </div>
+    </div>`;
+  let startY = null;
+  const zone = $("#swipeUpZone");
+  const open = () => renderGalaxyApps(guide);
+  zone.addEventListener("pointerdown", e => { startY = e.clientY; zone.setPointerCapture?.(e.pointerId); });
+  zone.addEventListener("pointerup", e => { if (startY === null || startY - e.clientY > 35) open(); else wrong("손가락을 아래에서 위쪽으로 길게 밀어 주세요."); startY = null; });
+  zone.addEventListener("click", open);
+  zone.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") open(); });
+}
+
+function renderGalaxyApps(guide) {
+  state.launcherStage = "apps";
+  setLauncherInstructions("앱스 화면 맨 위의 ‘검색’ 칸을 한 번 누르세요.");
+  const screen = $("#launcherView .phone-screen");
+  screen.className = "phone-screen galaxy-apps";
+  const allApps = [
+    ["calendar","📅","캘린더","#4d82dd"],["gallery","🌄","갤러리","#e96ab5"],["camera","📷","카메라","#6c7785"],["settings","⚙","설정","#8090a5"],
+    ["rail","🚄","코레일톡","#326ab4"],["air","✈","항공예약","#5678dc"],["bank","🏦","KB스타뱅킹","#f1c400"],["chat","💬","카카오톡","#fee500"],
+    ["delivery","🛵","배달의민족","#24b8b2"],["shopping","📦","쿠팡","#e94646"],["taxi","🚕","카카오 T","#30343b"],["hospital","✚","건강예약","#ed6675"],
+    ["gov","📄","정부24","#3974c5"],["map","🗺","지도","#62a75f"],["message","✉","메시지","#6ea3dd"],["browser","🌐","삼성 인터넷","#6b65d8"]
+  ];
+  screen.innerHTML = `${phoneStatusBar()}<div class="apps-panel">
+    <button type="button" id="openFinder" class="oneui-finder"><span>⌕</span><b>검색</b></button>
+    <div class="oneui-app-grid">${allApps.map(a=>`<button type="button" class="drawer-app" data-drawer-app="${a[0]}"><i style="background:${a[3]};${a[0]==='chat'||a[0]==='bank'?'color:#111':''}">${a[1]}</i><span>${a[2]}</span></button>`).join('')}</div>
+    <div class="page-dots"><b></b><i></i></div>
+  </div>`;
+  $("#openFinder").onclick = () => renderGalaxyFinder(guide, allApps);
+  $$("[data-drawer-app]").forEach(btn => btn.onclick = () => openApp(btn.dataset.drawerApp));
+}
+
+function renderGalaxyFinder(guide, allApps) {
+  state.launcherStage = "finder";
+  const exactName = guide.mode === "web" ? "삼성 인터넷" : guide.appName.replace("사용 중인 은행 앱(연습에서는 ", "").replace(")", "");
+  setLauncherInstructions(`검색 칸에 ‘${exactName}’이라고 입력하세요.`);
+  const screen = $("#launcherView .phone-screen");
+  screen.className = "phone-screen galaxy-finder";
+  screen.innerHTML = `${phoneStatusBar()}<div class="finder-screen">
+    <div class="finder-top"><button type="button" id="finderBack">←</button><input id="finderInput" autocomplete="off" placeholder="앱 검색"><button type="button" id="finderClear">×</button></div>
+    <div class="finder-keyword">찾을 앱: <strong>${exactName}</strong></div>
+    <div id="finderResults" class="finder-results"><p>앱 이름을 입력하면 결과가 여기에 나타납니다.</p></div>
+    <div class="mock-keyboard">${['ㅂ','ㅈ','ㄷ','ㄱ','ㅅ','ㅛ','ㅕ','ㅑ','ㅐ','ㅔ','ㅁ','ㄴ','ㅇ','ㄹ','ㅎ','ㅋ','ㅌ','ㅊ','ㅍ','ㅠ','ㅜ','ㅡ'].map(k=>`<span>${k}</span>`).join('')}<b>가나다</b><em>검색</em></div>
+  </div>`;
+  const input=$("#finderInput"), results=$("#finderResults");
+  input.focus();
+  const update=()=>{
+    const q=normalizeSearchText(input.value);
+    const matches=allApps.filter(a=>!q||normalizeSearchText(a[2]).includes(q));
+    results.innerHTML = q ? matches.map(a=>`<button type="button" class="finder-result" data-app="${a[0]}"><i style="background:${a[3]}">${a[1]}</i><span><strong>${a[2]}</strong><small>앱</small></span></button>`).join('') || '<p>검색 결과가 없습니다.</p>' : '<p>앱 이름을 입력하면 결과가 여기에 나타납니다.</p>';
+    $$('[data-app]',results).forEach(btn=>btn.onclick=()=>openApp(btn.dataset.app));
+  };
+  input.addEventListener('input', update);
+  $("#finderClear").onclick=()=>{input.value='';update();input.focus();};
+  $("#finderBack").onclick=()=>renderGalaxyApps(guide);
+}
+
 function renderBrowserSearch() {
   state.launcherStage = "browser-search";
   const guide = getEntryGuide();
@@ -629,7 +674,7 @@ function renderPractice() {
   const m = state.module;
   $("#practiceTitle").textContent = m.title;
   $("#practiceStep").textContent =
-    `${state.step + 1} / ${m.steps.length}단계 · ${m.steps[state.step]}`;
+    `${state.step + 1}단계 / 전체 ${m.steps.length}단계 · ${m.steps[state.step]}`;
   $("#progressBar").style.width = `${(state.step / m.steps.length) * 100}%`;
   $("#mistakeCount").textContent = state.mistakes;
   $("#hintCount").textContent = state.hints;
@@ -711,12 +756,17 @@ function inferGuide(title, reason, steps) {
   };
 }
 function instruction(title, reason = "", steps = []) {
-  const moduleGuides = detailedGuides[state.module?.id];
-  const guide = moduleGuides?.[state.step] || inferGuide(title, reason, steps);
-  const command = guide.title || title;
+  // 실제 오른쪽 화면을 만든 렌더러가 전달한 현재 행동만 사용합니다.
+  // 별도 설명표를 덮어쓰지 않아 화면과 안내가 어긋나지 않습니다.
+  const command = String(title || "오른쪽 화면에서 안내된 항목을 누르세요.")
+    .replace(/\s+/g, " ")
+    .trim();
 
   const instructionEl = $("#currentInstruction");
   if (instructionEl) instructionEl.textContent = command;
+
+  const numberEl = document.querySelector("#practiceView .command-number");
+  if (numberEl) numberEl.textContent = String(state.step + 1);
 
   const repeat = $("#repeatInstruction");
   if (repeat) {
@@ -724,7 +774,7 @@ function instruction(title, reason = "", steps = []) {
       window.speechSynthesis?.cancel();
       const utterance = new SpeechSynthesisUtterance(command);
       utterance.lang = "ko-KR";
-      utterance.rate = 0.72;
+      utterance.rate = 0.76;
       window.speechSynthesis?.speak(utterance);
     };
   }
@@ -791,7 +841,8 @@ function sim(html) {
   $("#simulator").innerHTML = html;
 }
 function simHeader(title, sub = "교육용 모의 화면") {
-  return `<div class="sim-top"><h2>${title}</h2><span class="education-badge">${sub}</span></div>`;
+  // 앱 화면 안에 실제로 존재하지 않는 교육용 파란 제목 띠는 표시하지 않습니다.
+  return "";
 }
 const renderers = {
   ktx() {
@@ -1158,111 +1209,74 @@ function kioskWrap(content, activeSlot = "") {
   return `<div class="kiosk-stage"><div class="kiosk-photo-stage"><img class="machine-photo" src="assets/metro-kiosk-reference.png" alt="교통카드 발매기 참고 모습"><div class="screen-overlay">${content}</div><button class="hardware-hotspot slot-cash ${activeSlot==='cash'?'active-slot':''}" data-slot="cash" aria-label="지폐 투입구"><span>지폐 투입구</span></button><button class="hardware-hotspot slot-card ${activeSlot==='card'?'active-slot':''}" data-slot="card" aria-label="신용카드 투입구"><span>카드 투입구</span></button><button class="hardware-hotspot slot-output ${activeSlot==='output'?'active-slot':''}" data-slot="output" aria-label="교통카드 발급구"><span>카드·거스름돈 나오는 곳</span></button></div></div>`;
 }
 function hardware() { return ``; }
+function phonePractice(content, extraClass = "") {
+  return `<div class="practice-phone ${extraClass}"><div class="practice-phone-camera"></div><div class="practice-phone-screen">${content}</div><div class="practice-phone-homebar"></div></div>`;
+}
+
 function renderChat(video) {
   const s = state.step;
-
-  // 0단계(앱 찾기)는 휴대전화 홈 화면에서 완료됩니다.
-  // 앱을 누른 직후의 1단계에서는 반드시 실제 대화 목록부터 보여 줍니다.
   if (s === 1) {
-    instruction("대화 목록에서 [딸]이라고 적힌 줄을 한 번 누르세요.");
-    sim(
-      simHeader("카카오톡") +
-        `<div class="chat-app messenger-realistic messenger-fit-screen">
-          <div class="chat-head messenger-list-head">
-            <strong>채팅</strong>
-            <div class="messenger-head-actions" aria-label="채팅 도구">
-              <button type="button" aria-label="검색">⌕</button>
-              <button type="button" aria-label="새 채팅">＋</button>
-              <button type="button" aria-label="설정">⚙</button>
-            </div>
-          </div>
-          <div class="messenger-tabs" aria-label="채팅 목록 구분">
-            <button class="active">전체</button><button>안 읽은 채팅</button><button>오픈채팅</button>
-          </div>
-          <div class="messenger-list compact-chat-list" role="list">
-            ${messengerRow({id:"daughter", avatar:"👩", name:"딸", preview:"엄마, 잘 도착했어요?", time:"오후 5:03", unread:4})}
-            ${messengerRow({avatar:"👨", name:"아들", preview:"이번 주말에 찾아뵐게요.", time:"오후 3:31", unread:2})}
-            ${messengerRow({avatar:"👥", name:"가족 모임", preview:"사진을 보냈습니다.", time:"오후 1:58", unread:0})}
-            ${messengerRow({avatar:"🌿", name:"정은", preview:"지금 지도 쓰는 중이야", time:"오전 11:44", unread:0})}
-          </div>
-          <div class="messenger-bottom-nav" aria-label="하단 메뉴">
-            <button>친구</button><button class="active">채팅</button><button>오픈채팅</button><button>쇼핑</button><button>더보기</button>
-          </div>
-        </div>`,
-    );
+    instruction("화면 아래쪽에서 ‘채팅’이라고 적힌 말풍선 메뉴를 누르세요.");
+    const friends = `<div class="kakao-app friends-screen">
+      <div class="kakao-top"><strong>친구</strong><div><button>⌕</button><button>♬</button><button>⚙</button></div></div>
+      <div class="my-profile"><span class="profile-photo">🙂</span><strong>나</strong></div>
+      <div class="friends-section"><small>친구 5</small>${['딸','아들','정은','민수','건강 걷기 친구'].map((n,i)=>`<div class="friend-line"><span>${['👩','👨','👵','👴','🚶'][i]}</span><b>${n}</b></div>`).join('')}</div>
+      <div class="kakao-bottom"><button class="active"><i>👤</i><span>친구</span></button><button id="chatTab"><i>💬</i><span>채팅</span></button><button><i>◉</i><span>오픈채팅</span></button><button><i>▣</i><span>쇼핑</span></button><button><i>•••</i><span>더보기</span></button></div>
+    </div>`;
+    sim(phonePractice(friends));
+    $("#chatTab").onclick = () => next();
+    return;
+  }
+  if (s === 2) {
+    instruction("채팅 목록에서 이름이 ‘딸’인 줄을 찾아 한 번 누르세요.");
+    const list = `<div class="kakao-app chat-list-screen">
+      <div class="kakao-top"><strong>채팅</strong><div><button>⌕</button><button>＋</button><button>⚙</button></div></div>
+      <div class="chat-filter"><button class="active">전체</button><button>안 읽은 채팅</button><button>즐겨찾기</button></div>
+      <div class="kakao-chat-list">${messengerRow({id:"daughter",avatar:"👩",name:"딸",preview:"엄마, 잘 도착했어요?",time:"오후 5:03",unread:4})}${messengerRow({avatar:"👨",name:"아들",preview:"이번 주말에 찾아뵐게요.",time:"오후 3:31",unread:2})}${messengerRow({avatar:"👥",name:"가족 모임",preview:"사진을 보냈습니다.",time:"오후 1:58"})}${messengerRow({avatar:"🌿",name:"정은",preview:"지금 지도 쓰는 중이야",time:"오전 11:44"})}${messengerRow({avatar:"🏌",name:"동네 골프 모임",preview:"내일 8시에 만나요",time:"어제"})}</div>
+      <div class="kakao-bottom"><button><i>👤</i><span>친구</span></button><button class="active"><i>💬</i><span>채팅</span></button><button><i>◉</i><span>오픈채팅</span></button><button><i>▣</i><span>쇼핑</span></button><button><i>•••</i><span>더보기</span></button></div>
+    </div>`;
+    sim(phonePractice(list));
     $("#daughter").onclick = () => next();
     return;
   }
-
   if (video) {
-    if (s === 2) {
-      instruction("딸 대화방 오른쪽 위의 영상통화 모양 버튼을 누르세요.");
-      sim(
-        simHeader("카카오톡 · 딸") +
-          conversationShell(`<div class="message-row incoming"><div class="profile-mini">👩</div><div><div class="sender-name">딸</div><div class="bubble">엄마, 잘 도착했어요?</div></div></div>`, true),
-      );
+    if (s === 3) {
+      instruction("딸 대화방 오른쪽 위의 전화 모양 버튼을 누르세요.");
+      sim(phonePractice(conversationShell(`<div class="message-date">오늘</div><div class="message-row incoming"><div class="profile-mini">👩</div><div><div class="sender-name">딸</div><div class="bubble">엄마, 잘 도착했어요?</div></div></div>`, true)));
       $("#videoBtn").onclick = () => next();
-    } else if (s === 3) {
-      instruction("상대방 이름이 [딸]인지 확인하고 [영상통화]를 누르세요.");
-      sim(
-        simHeader("영상통화 확인") +
-          `<div class="chat-app messenger-realistic messenger-fit-screen"><div class="video-confirm-panel"><div class="avatar-large">👩</div><h2>딸</h2><p>영상통화를 시작하시겠습니까?</p><div class="video-confirm-actions"><button type="button" class="secondary-call">취소</button><button type="button" class="primary-call" id="connectCall">영상통화</button></div></div></div>`,
-      );
-      $("#connectCall").onclick = () => next();
     } else if (s === 4) {
-      instruction("통화 화면 아래의 카메라 전환 버튼을 한 번 누르세요.");
-      sim(videoUI());
-      $("#switchCam").onclick = () => next();
+      instruction("화면 아래의 ‘영상통화’ 버튼을 누르세요.");
+      sim(phonePractice(`<div class="call-choice"><div class="call-choice-head"><button>×</button><strong>딸</strong></div><div class="call-profile">👩</div><h2>통화 방법을 선택하세요</h2><button class="voice-choice">☎ 음성통화</button><button class="video-choice" id="connectCall">▣ 영상통화</button></div>`));
+      $("#connectCall").onclick = () => next();
     } else if (s === 5) {
-      instruction("빨간색 통화 종료 버튼을 누르세요.");
-      sim(videoUI());
+      instruction("통화 화면 아래의 카메라 전환 버튼을 한 번 누르세요.");
+      sim(phonePractice(videoUI(),"video-phone"));
+      $("#switchCam").onclick = () => next();
+    } else if (s === 6) {
+      instruction("통화를 마치려면 화면 아래의 빨간 종료 버튼을 누르세요.");
+      sim(phonePractice(videoUI(),"video-phone"));
       $("#endCall").onclick = () => next();
     }
     return;
   }
-
-  if (s === 2) {
-    instruction("화면 맨 아래 입력칸에 [잘 도착했다]를 쓰고 [전송]을 누르세요.");
-    sim(chatUI());
-    $("#sendChat").onclick = () => {
-      const t = $("#chatText").value.trim();
-      t ? next({ message: t }) : wrong("메시지 입력칸에 내용을 먼저 입력하세요.");
-    };
-  } else if (s === 3) {
-    instruction("입력칸 왼쪽의 [+] 버튼을 누른 뒤 [사진]을 누르세요.");
-    sim(chatUI(true));
-    $("#addPhoto").onclick = () => next();
+  if (s === 3) {
+    instruction("화면 맨 아래 입력칸을 누르고 ‘잘 도착했다’를 입력한 뒤 전송을 누르세요.");
+    sim(phonePractice(chatUI()));
+    $("#sendChat").onclick = () => { const t=$("#chatText").value.trim(); t ? next({message:t}) : wrong("메시지를 먼저 입력하세요."); };
   } else if (s === 4) {
-    instruction("사진 한 장을 선택하고 오른쪽 위 [전송]을 누르세요.");
-    sim(
-      simHeader("카카오톡 · 사진 선택") +
-        `<div class="chat-app messenger-realistic photo-picker messenger-fit-screen">
-          <div class="photo-picker-head"><button type="button">취소</button><strong>사진</strong><button type="button" id="sendPhoto">전송</button></div>
-          <div class="photo-picker-folders"><button class="active">최근 항목</button><button>앨범</button></div>
-          <div class="photo-grid-realistic">
-            <button class="photo-cell selected" aria-label="공원 사진 선택됨"><span>✓</span><div class="photo-art park">🌳</div></button>
-            <button class="photo-cell"><div class="photo-art meal">🍲</div></button>
-            <button class="photo-cell"><div class="photo-art flower">🌸</div></button>
-            <button class="photo-cell"><div class="photo-art sky">🌤️</div></button>
-            <button class="photo-cell"><div class="photo-art family">👨‍👩‍👧</div></button>
-            <button class="photo-cell"><div class="photo-art bus">🚌</div></button>
-          </div>
-          <div class="photo-picker-count">1개 선택됨</div>
-        </div>`,
-    );
-    $("#sendPhoto").onclick = () => next();
+    instruction("입력칸 왼쪽의 ＋ 버튼을 누르고 ‘앨범’을 선택하세요.");
+    sim(phonePractice(chatUI(true)));
+    $("#addPhoto").onclick = () => next();
   } else if (s === 5) {
-    instruction("보낸 글과 사진이 대화방 오른쪽에 표시됐는지 확인하세요.");
-    const body = `
-      <div class="message-date">오늘</div>
-      <div class="message-row incoming"><div class="profile-mini">👩</div><div><div class="sender-name">딸</div><div class="bubble">엄마, 잘 도착했어요?</div></div></div>
-      <div class="message-row outgoing"><div class="message-meta">오후 5:06</div><div class="bubble me">${escapeHtml(state.data.message || "잘 도착했다")}</div></div>
-      <div class="message-row outgoing"><div class="message-meta">오후 5:07</div><div class="photo-message">🌳</div></div>`;
-    sim(
-      simHeader("카카오톡 · 딸") +
-        conversationShell(body, false, `<button class="chat-finish-button" id="chatDone">확인</button>`),
-    );
-    $("#chatDone").onclick = () => next();
+    instruction("사진 한 장을 선택한 뒤 오른쪽 위 ‘전송’을 누르세요.");
+    const picker=`<div class="kakao-app photo-picker"><div class="photo-picker-head"><button>취소</button><strong>앨범</strong><button id="sendPhoto">전송</button></div><div class="photo-picker-folders"><button class="active">최근 항목</button><button>앨범</button></div><div class="photo-grid-realistic">${['🌳','🍲','🌸','🌤️','👨‍👩‍👧','🚌','🏞️','☕','🐕'].map((x,i)=>`<button class="photo-cell ${i===0?'selected':''}">${i===0?'<span>1</span>':''}<div class="photo-art">${x}</div></button>`).join('')}</div><div class="photo-picker-count">1개 선택됨</div></div>`;
+    sim(phonePractice(picker));
+    $("#sendPhoto").onclick=()=>next();
+  } else if (s === 6) {
+    instruction("보낸 글과 사진이 딸 대화방 오른쪽에 보이는지 확인하세요.");
+    const body=`<div class="message-date">오늘</div><div class="message-row incoming"><div class="profile-mini">👩</div><div><div class="sender-name">딸</div><div class="bubble">엄마, 잘 도착했어요?</div></div></div><div class="message-row outgoing"><div class="message-meta">오후 5:06</div><div class="bubble me">${escapeHtml(state.data.message||'잘 도착했다')}</div></div><div class="message-row outgoing"><div class="message-meta">오후 5:07</div><div class="photo-message">🌳</div></div>`;
+    sim(phonePractice(conversationShell(body,false,`<button class="chat-finish-button" id="chatDone">확인</button>`)));
+    $("#chatDone").onclick=()=>next();
   }
 }
 
@@ -1279,7 +1293,7 @@ function conversationShell(bodyHtml, videoButton=false, footerExtra="") {
     <div class="chat-head conversation-head">
       <button type="button" class="back-button" aria-label="뒤로 가기">‹</button>
       <div class="conversation-title"><strong>딸</strong><span>1:1 채팅</span></div>
-      <div class="conversation-actions"><button type="button" aria-label="검색">⌕</button><button type="button" ${videoButton ? 'id="videoBtn"' : ''} aria-label="영상통화">▣</button><button type="button" aria-label="메뉴">☰</button></div>
+      <div class="conversation-actions"><button type="button" aria-label="검색"><span>⌕</span><small>검색</small></button><button type="button" ${videoButton ? 'id="videoBtn"' : ''} aria-label="영상통화"><span>▣</span><small>영상통화</small></button><button type="button" aria-label="메뉴"><span>☰</span><small>메뉴</small></button></div>
     </div>
     <div class="chat-body realistic-chat-body">${bodyHtml}</div>
     <div class="chat-input realistic-chat-input">
@@ -1301,7 +1315,7 @@ function chatUI(showAttachmentHint = false) {
     <div class="chat-head conversation-head">
       <button type="button" class="back-button" aria-label="뒤로 가기">‹</button>
       <div class="conversation-title"><strong>딸</strong><span>1:1 채팅</span></div>
-      <div class="conversation-actions"><button type="button" aria-label="검색">⌕</button><button type="button" aria-label="영상통화">▣</button><button type="button" aria-label="메뉴">☰</button></div>
+      <div class="conversation-actions"><button type="button" aria-label="검색"><span>⌕</span><small>검색</small></button><button type="button" aria-label="영상통화"><span>▣</span><small>영상통화</small></button><button type="button" aria-label="메뉴"><span>☰</span><small>메뉴</small></button></div>
     </div>
     <div class="chat-body realistic-chat-body">${body}</div>
     ${attachment}
@@ -1320,7 +1334,7 @@ function videoUI() {
       <div class="call-top"><button type="button">⌄</button><span>딸</span><button type="button">⋮</button></div>
       <div class="remote-video"><div class="avatar-large">👩</div><strong>딸과 통화 중</strong><span>00:48</span></div>
       <div class="local-preview">내 화면</div>
-      <div class="call-controls realistic-call-controls"><button type="button" aria-label="마이크">🎙</button><button type="button" id="switchCam" aria-label="카메라 전환">↻</button><button type="button" aria-label="카메라">▣</button><button type="button" id="endCall" class="call-end" aria-label="통화 종료">☎</button></div>
+      <div class="call-controls realistic-call-controls"><button type="button" aria-label="마이크"><span>🎙</span><small>마이크</small></button><button type="button" id="switchCam" aria-label="카메라 전환"><span>↻</span><small>카메라 전환</small></button><button type="button" aria-label="카메라"><span>▣</span><small>카메라 끄기</small></button><button type="button" id="endCall" class="call-end" aria-label="통화 종료"><span>☎</span><small>통화 종료</small></button></div>
     </div></div>`
   );
 }
