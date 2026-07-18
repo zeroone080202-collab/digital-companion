@@ -487,9 +487,17 @@ function renderPractice() {
 function instruction(
   title,
   reason = "화면의 정보를 천천히 확인한 뒤 선택하세요.",
+  steps = [],
 ) {
   $("#currentInstruction").textContent = title;
   $("#currentReason").textContent = reason;
+  const stepBox = $("#currentSteps");
+  const normalizedSteps = Array.isArray(steps) && steps.length
+    ? steps
+    : [title];
+  stepBox.innerHTML = normalizedSteps
+    .map((item, index) => `<div class="exact-step"><span>${index + 1}</span><p>${item}</p></div>`)
+    .join("");
 }
 function next(data = {}) {
   Object.assign(state.data, data);
@@ -546,75 +554,154 @@ const renderers = {
     const s = state.step;
     if (s === 0) {
       instruction(
-        "출발역·도착역과 날짜를 선택한 뒤 열차를 조회하세요.",
-        "실제 예매에서도 가장 먼저 여정과 시간을 정합니다.",
+        "출발역과 도착역을 정한 뒤 [열차 조회]를 누르세요.",
+        "열차 시간표는 선택한 구간과 날짜에 따라 달라집니다.",
+        [
+          "오른쪽 예매 화면의 [출발] 칸에서 서울을 확인하세요.",
+          "[도착] 칸에서 부산을 확인하세요.",
+          "날짜와 시간을 확인한 뒤 화면 아래의 파란 [열차 조회] 버튼을 누르세요."
+        ]
       );
       sim(
-        simHeader("기차예매 · 승차권 예매") +
-          `<div class="sim-body"><div class="form-grid"><div class="field"><label>출발역</label><select id="from"><option>서울</option><option>용산</option><option>광명</option></select></div><div class="field"><label>도착역</label><select id="to"><option>부산</option><option>대전</option><option>동대구</option></select></div><div class="field"><label>출발일</label><input type="date" value="2026-07-20"></div><div class="field"><label>출발시간</label><select><option>08시 이후</option><option>10시 이후</option></select></div></div><button class="big-primary" id="searchTrain">열차 조회하기</button></div>`,
+        simHeader("레일온 · 승차권 예매", "실제 예약과 결제가 되지 않는 연습 화면") +
+          `<div class="rail-page">
+            <div class="rail-nav"><b>승차권</b><span>여행상품</span><span>이용안내</span><span>나의 승차권</span></div>
+            <div class="rail-tabs"><button class="active">일반 승차권</button><button>할인 승차권</button><button>정기승차권</button></div>
+            <div class="rail-search-card">
+              <div class="route-row">
+                <button class="station-box target-control"><small>출발</small><strong id="fromLabel">서울</strong><span>역 선택 〉</span></button>
+                <button class="swap-route" type="button" aria-label="출발역과 도착역 바꾸기">⇄</button>
+                <button class="station-box target-control"><small>도착</small><strong id="toLabel">부산</strong><span>역 선택 〉</span></button>
+              </div>
+              <div class="booking-grid">
+                <label><span>출발일</span><input id="travelDate" type="date" value="2026-07-20"></label>
+                <label><span>출발시간</span><select id="travelTime"><option>08시 이후</option><option>10시 이후</option><option>12시 이후</option></select></label>
+                <label><span>승객</span><select><option>어른 1명</option><option>어른 2명</option></select></label>
+                <label><span>열차 종류</span><select><option>KTX 전체</option><option>KTX</option><option>KTX-산천</option></select></label>
+              </div>
+              <button class="rail-search-button target-control" id="searchTrain"><span class="finger">☝</span> 열차 조회</button>
+            </div>
+            <div class="rail-notice">※ 실제 예매에서는 출발역, 도착역, 날짜, 인원을 모두 확인한 후 조회합니다.</div>
+          </div>`,
       );
-      $("#searchTrain").onclick = () =>
-        next({ from: $("#from").value, to: $("#to").value });
+      $("#searchTrain").onclick = () => next({ from: "서울", to: "부산", date: $("#travelDate").value });
     } else if (s === 1) {
-      instruction("원하는 출발시간의 KTX 열차에서 “좌석선택”을 누르세요.");
+      instruction(
+        "오전 9시에 출발하는 KTX 015편의 [좌석선택]을 누르세요.",
+        "같은 구간이라도 출발시각과 도착시각이 다르므로 열차번호와 시간을 함께 확인해야 합니다.",
+        [
+          "표에서 출발시각이 09:00인 줄을 찾으세요.",
+          "그 줄의 열차번호가 KTX 015인지 확인하세요.",
+          "가장 오른쪽 파란 [좌석선택] 버튼을 누르세요."
+        ]
+      );
       sim(
-        simHeader(`${state.data.from} → ${state.data.to} 열차 조회`) +
-          `<div class="sim-body"><table class="data-table"><thead><tr><th>열차</th><th>출발</th><th>도착</th><th>일반실</th><th>선택</th></tr></thead><tbody><tr><td>KTX 011</td><td>08:27</td><td>11:02</td><td>59,800원</td><td><button data-train="KTX 011">좌석선택</button></td></tr><tr><td>KTX 015</td><td>09:00</td><td>11:41</td><td>59,800원</td><td><button data-train="KTX 015">좌석선택</button></td></tr><tr><td>KTX 019</td><td>09:32</td><td>12:08</td><td>59,800원</td><td><button data-train="KTX 019">좌석선택</button></td></tr></tbody></table></div>`,
+        simHeader(`${state.data.from} → ${state.data.to} 열차 조회`, "조회 결과 연습 화면") +
+          `<div class="rail-page">
+            <div class="result-route"><b>${state.data.from}</b><span>→</span><b>${state.data.to}</b><small>${state.data.date || "2026-07-20"} · 어른 1명</small></div>
+            <div class="result-legend"><span>일반실</span><span>직통</span><span>잔여석 표시</span></div>
+            <div class="train-list">
+              <div class="train-card"><div><b>KTX 011</b><small>직통</small></div><div><strong>08:27</strong><small>서울</small></div><div class="journey-line"><span>2시간 35분</span></div><div><strong>11:02</strong><small>부산</small></div><div><b>59,800원</b><small>일반실 가능</small></div><button data-train="KTX 011">좌석선택</button></div>
+              <div class="train-card target-row"><div><b>KTX 015</b><small>직통</small></div><div><strong>09:00</strong><small>서울</small></div><div class="journey-line"><span>2시간 41분</span></div><div><strong>11:41</strong><small>부산</small></div><div><b>59,800원</b><small>일반실 가능</small></div><button class="target-control" data-train="KTX 015"><span class="finger">☝</span> 좌석선택</button></div>
+              <div class="train-card"><div><b>KTX 019</b><small>직통</small></div><div><strong>09:32</strong><small>서울</small></div><div class="journey-line"><span>2시간 36분</span></div><div><strong>12:08</strong><small>부산</small></div><div><b>59,800원</b><small>일반실 가능</small></div><button data-train="KTX 019">좌석선택</button></div>
+            </div>
+          </div>`,
       );
-      $$("[data-train]").forEach(
-        (b) =>
-          (b.onclick = () =>
-            next({
-              train: b.dataset.train,
-              time: b.closest("tr").children[1].textContent,
-            })),
-      );
+      $$('[data-train]').forEach((b) => b.onclick = () => {
+        if (b.dataset.train !== 'KTX 015') return wrong('이번 연습에서는 오전 9시 출발 KTX 015편을 선택하세요.');
+        next({ train: 'KTX 015', time: '09:00', arrival: '11:41' });
+      });
     } else if (s === 2) {
       instruction(
-        "5호차에서 창가 좌석을 하나 선택하세요.",
-        "A와 D가 창가 좌석입니다. 회색은 이미 예약된 좌석입니다.",
+        "5호차의 창가 좌석 6A를 선택한 뒤 [선택 완료]를 누르세요.",
+        "KTX 일반실은 A와 D가 창가, B와 C가 통로 쪽입니다. 회색 좌석은 이미 예약된 좌석입니다.",
+        [
+          "화면 위쪽 호차 목록에서 5호차가 선택되어 있는지 확인하세요.",
+          "좌석표에서 6번째 줄의 왼쪽 창가 좌석 [6A]를 누르세요.",
+          "좌석이 파란색으로 바뀌면 아래 [선택 완료]를 누르세요."
+        ]
       );
-      let rows = "";
-      for (let r = 1; r <= 8; r++) {
-        rows += `<div class="seat-row"><button class="seat ${r === 2 ? "booked" : ""}" data-seat="${r}A">${r}A</button><button class="seat" data-seat="${r}B">${r}B</button><span class="aisle">통로</span><button class="seat ${r === 4 ? "booked" : ""}" data-seat="${r}C">${r}C</button><button class="seat" data-seat="${r}D">${r}D</button></div>`;
+      let rows = '';
+      for (let r = 1; r <= 10; r++) {
+        const seat = (letter) => {
+          const code = `${r}${letter}`;
+          const booked = ['2A','2D','4C','7B','9D'].includes(code);
+          const target = code === '6A';
+          return `<button class="seat ${booked ? 'booked' : ''} ${target ? 'target-control' : ''}" data-seat="${code}" ${booked ? 'disabled' : ''}>${target ? '<span class="finger">☝</span>' : ''}${code}</button>`;
+        };
+        rows += `<div class="seat-row"><span class="row-number">${r}</span>${seat('A')}${seat('B')}<span class="aisle">통로</span>${seat('C')}${seat('D')}</div>`;
       }
       sim(
-        simHeader(`${state.data.train} · 5호차 좌석선택`) +
-          `<div class="sim-body"><div class="seat-map">${rows}</div><button class="big-primary" id="seatNext">선택한 좌석으로 계속</button></div>`,
+        simHeader(`${state.data.train} · 좌석 선택`, "5호차 일반실") +
+          `<div class="rail-page seat-page">
+            <div class="car-tabs"><button>3호차</button><button>4호차</button><button class="active">5호차</button><button>6호차</button><button>7호차</button></div>
+            <div class="seat-guide"><span class="available-box"></span>선택 가능 <span class="selected-box"></span>선택한 좌석 <span class="booked-box"></span>예약 완료</div>
+            <div class="direction">열차 진행 방향 ↑</div>
+            <div class="seat-map">${rows}</div>
+            <div class="selected-seat-bar"><span>선택한 좌석</span><strong id="selectedSeatText">없음</strong><button class="rail-search-button" id="seatNext">선택 완료</button></div>
+          </div>`,
       );
-      $$(".seat:not(.booked)").forEach(
-        (b) =>
-          (b.onclick = () => {
-            $$(".seat").forEach((x) => x.classList.remove("selected"));
-            b.classList.add("selected");
-            state.data.seat = b.dataset.seat;
-          }),
-      );
-      $("#seatNext").onclick = () =>
-        state.data.seat ? next() : wrong("좌석을 먼저 선택하세요.");
+      $$('.seat:not(.booked)').forEach((b) => b.onclick = () => {
+        $$('.seat').forEach((x) => x.classList.remove('selected'));
+        b.classList.add('selected');
+        state.data.seat = b.dataset.seat;
+        $('#selectedSeatText').textContent = `5호차 ${b.dataset.seat}`;
+      });
+      $('#seatNext').onclick = () => {
+        if (!state.data.seat) return wrong('좌석표에서 6A 좌석을 먼저 누르세요.');
+        if (state.data.seat !== '6A') return wrong('이번 목표 좌석은 5호차 6A 창가 좌석입니다.');
+        next();
+      };
     } else if (s === 3) {
-      instruction("출발역·도착역·열차·좌석을 확인하고 예약을 진행하세요.");
-      sim(
-        simHeader("예약 내용 확인") +
-          `<div class="sim-body"><div class="ticket"><div class="ticket-head">기차 승차권 예약 확인</div><div class="ticket-grid"><div><span>구간</span><b>${state.data.from} → ${state.data.to}</b></div><div><span>열차</span><b>${state.data.train}</b></div><div><span>출발</span><b>${state.data.time}</b></div><div><span>호차</span><b>5호차</b></div><div><span>좌석</span><b>${state.data.seat}</b></div><div><span>운임</span><b>59,800원</b></div></div></div><button class="big-primary" id="confirmTrain">위 내용으로 예약하기</button></div>`,
+      instruction(
+        "예약 정보를 한 줄씩 확인한 뒤 [결제하기]를 누르세요.",
+        "출발역, 시간, 호차 또는 좌석이 잘못되면 실제 탑승 때 큰 불편이 생길 수 있습니다.",
+        [
+          "구간이 서울 → 부산인지 확인하세요.",
+          "열차가 KTX 015, 출발시각이 09:00인지 확인하세요.",
+          "좌석이 5호차 6A인지 확인한 뒤 [결제하기]를 누르세요."
+        ]
       );
-      $("#confirmTrain").onclick = () => next();
+      sim(
+        simHeader("예약 내용 확인", "결제 전 마지막 확인") +
+          `<div class="rail-page"><div class="booking-summary">
+            <div class="summary-title"><b>${state.data.from}</b><span>→</span><b>${state.data.to}</b></div>
+            <dl><div><dt>출발일</dt><dd>${state.data.date || '2026-07-20'}</dd></div><div><dt>열차</dt><dd>${state.data.train}</dd></div><div><dt>출발·도착</dt><dd>${state.data.time} → ${state.data.arrival}</dd></div><div><dt>승객</dt><dd>어른 1명</dd></div><div><dt>좌석</dt><dd>5호차 ${state.data.seat}</dd></div><div><dt>결제금액</dt><dd class="price">59,800원</dd></div></dl>
+            <label class="agreement"><input type="checkbox" id="agreeCheck"> 승차권 예약 내용을 확인했습니다.</label>
+            <button class="rail-search-button target-control" id="confirmTrain"><span class="finger">☝</span> 결제하기</button>
+          </div></div>`,
+      );
+      $('#confirmTrain').onclick = () => $('#agreeCheck').checked ? next() : wrong('예약 내용을 확인한 뒤 확인 체크칸을 먼저 누르세요.');
     } else if (s === 4) {
       instruction(
-        "결제 전에 금액을 마지막으로 확인하고 “모의 결제”를 누르세요.",
+        "결제 예정 금액을 확인하고 [모의 결제]를 누르세요.",
+        "이 연습에서는 실제 카드번호나 비밀번호를 입력하지 않습니다.",
+        [
+          "결제 예정 금액이 59,800원인지 확인하세요.",
+          "실제 카드정보를 입력하지 않는 연습 화면임을 확인하세요.",
+          "파란 [모의 결제] 버튼을 누르세요."
+        ]
       );
       sim(
-        simHeader("결제하기") +
-          `<div class="sim-body"><div class="account-card"><span>결제 예정 금액</span><strong>59,800원</strong><p>실제 카드정보는 입력하지 않습니다.</p></div><button class="big-primary" id="payTrain">모의 결제</button></div>`,
+        simHeader("결제", "안전한 모의 결제") +
+          `<div class="rail-page"><div class="payment-panel"><div class="payment-method active"><span>신용·체크카드</span><b>선택됨</b></div><div class="payment-total"><span>총 결제금액</span><strong>59,800원</strong></div><div class="safe-payment">🔒 실제 카드정보를 입력하지 않습니다.</div><button class="rail-search-button target-control" id="payTrain"><span class="finger">☝</span> 모의 결제</button></div></div>`,
       );
-      $("#payTrain").onclick = () => next();
+      $('#payTrain').onclick = () => next();
     } else {
-      instruction("승차권에서 출발시간과 좌석을 다시 확인하세요.");
-      sim(
-        simHeader("모바일 승차권") +
-          `<div class="sim-body"><div class="ticket"><div class="ticket-head">승차권 · 발권 완료</div><div class="ticket-grid"><div><span>출발</span><b>${state.data.from} ${state.data.time}</b></div><div><span>도착</span><b>${state.data.to}</b></div><div><span>열차</span><b>${state.data.train}</b></div><div><span>호차</span><b>5호차</b></div><div><span>좌석</span><b>${state.data.seat}</b></div><div><span>QR 승차권</span><b>▦ ▦ ▦</b></div></div></div><button class="big-primary" id="finishTrain">확인했습니다</button></div>`,
+      instruction(
+        "승차권의 출발시각과 좌석을 소리 내어 확인한 뒤 [연습 끝내기]를 누르세요.",
+        "실제 역에서는 승차권의 열차번호, 출발시각, 호차, 좌석을 확인하고 승강장으로 이동합니다.",
+        [
+          "열차번호 KTX 015를 확인하세요.",
+          "서울 09:00 출발과 부산 11:41 도착을 확인하세요.",
+          "5호차 6A를 확인한 뒤 [연습 끝내기]를 누르세요."
+        ]
       );
-      $("#finishTrain").onclick = () => next();
+      sim(
+        simHeader("모바일 승차권", "발권 완료") +
+          `<div class="rail-page"><div class="mobile-ticket"><div class="ticket-brand">레일온 승차권</div><div class="ticket-route"><div><small>출발</small><strong>${state.data.from}</strong><b>${state.data.time}</b></div><span>→</span><div><small>도착</small><strong>${state.data.to}</strong><b>${state.data.arrival}</b></div></div><div class="ticket-details"><span>${state.data.train}</span><strong>5호차 ${state.data.seat}</strong><span>어른 1명</span></div><div class="qr-sim">▦▦▦<br>▦▦▦</div><p>열차 출발 전 승차권 화면을 준비하세요.</p></div><button class="rail-search-button target-control" id="finishTrain"><span class="finger">☝</span> 연습 끝내기</button></div>`,
+      );
+      $('#finishTrain').onclick = () => next();
     }
   },
   metro() {
