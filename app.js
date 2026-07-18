@@ -62,7 +62,7 @@ const modules = [
     desc: "인터넷 또는 앱에서 항공편 검색, 시간·좌석 선택, 예약 확인",
     goal: "인천→제주 왕복 항공권과 통로 좌석 예약",
     entry: "air",
-    steps: ["앱 찾기", "여정 입력", "항공편", "승객 정보", "좌석", "예약 확인"],
+    steps: ["앱 찾기", "여정 선택", "노선·날짜·인원", "가는 편", "오는 편", "운임 선택", "탑승객 정보", "좌석 선택", "결제·예약 확인"],
   },
   {
     id: "hotel",
@@ -508,7 +508,7 @@ function showLauncher() {
   showView("launcherView");
   const guide = getEntryGuide();
   state.launcherStage = "apps";
-  $("#launcherTitle").textContent = `앱스 화면에서 ${guide.appName}을 찾아 여세요`;
+  $("#launcherTitle").textContent = `앱스 화면에서 ${guide.appName}을 찾아 누르세요`;
   // 연습 시작 전에 잠금 해제나 홈 화면 제스처를 요구하지 않습니다.
   // 실제 연습에 필요한 앱 찾기 단계부터 바로 시작합니다.
   renderGalaxyApps(guide);
@@ -546,7 +546,7 @@ function renderGalaxyHome(guide) {
 
 function renderGalaxyApps(guide) {
   state.launcherStage = "apps";
-  setLauncherInstructions("앱스 화면 맨 위의 ‘검색’ 칸을 한 번 누르세요.");
+  setLauncherInstructions(`앱스 화면에서 “${guide.appName}”을 찾아 누르세요. 보이지 않으면 위쪽 [검색]을 누르세요.`);
   const screen = $("#launcherView .phone-screen");
   screen.className = "phone-screen galaxy-apps";
   const allApps = [
@@ -664,7 +664,7 @@ function openApp(id) {
   }
   // 앱을 여는 단계는 휴대전화 홈 화면에서 이미 끝났습니다.
   // 실제 앱 화면으로 들어갈 때 안내도 반드시 다음 단계로 함께 이동합니다.
-  if (state.step === 0 && state.module.steps[0] && /앱|인터넷|문자/.test(state.module.steps[0])) {
+  if (state.step === 0 && state.module.steps[0] && /앱|인터넷|문자|병원 찾기/.test(state.module.steps[0])) {
     state.step = 1;
   }
   showView("practiceView");
@@ -674,8 +674,10 @@ function openApp(id) {
 function renderPractice() {
   const m = state.module;
   $("#practiceTitle").textContent = m.title;
+  const visibleStep = Math.min(state.step + 1, m.steps.length);
+  const visibleLabel = m.steps[state.step] || m.steps[m.steps.length - 1] || "현재 단계";
   $("#practiceStep").textContent =
-    `${state.step + 1}단계 / 전체 ${m.steps.length}단계 · ${m.steps[state.step]}`;
+    `${visibleStep}단계 / 전체 ${m.steps.length}단계 · ${visibleLabel}`;
   $("#progressBar").style.width = `${(state.step / m.steps.length) * 100}%`;
   $("#mistakeCount").textContent = state.mistakes;
   $("#hintCount").textContent = state.hints;
@@ -767,7 +769,7 @@ function instruction(title, reason = "", steps = []) {
   if (instructionEl) instructionEl.textContent = command;
 
   const numberEl = document.querySelector("#practiceView .command-number");
-  if (numberEl) numberEl.textContent = String(state.step + 1);
+  if (numberEl) numberEl.textContent = String(Math.min(state.step + 1, state.module?.steps?.length || state.step + 1));
 
   const repeat = $("#repeatInstruction");
   if (repeat) {
@@ -839,7 +841,9 @@ function complete() {
   showView("resultView");
 }
 function sim(html) {
-  $("#simulator").innerHTML = html;
+  const safeMarkup = String(html ?? "")
+    .replace(/\b(?:undefined|unfinded|null)\b/gi, "정보 없음");
+  $("#simulator").innerHTML = safeMarkup;
 }
 function simHeader(title, sub = "교육용 모의 화면") {
   // 앱 화면 안에 실제로 존재하지 않는 교육용 파란 제목 띠는 표시하지 않습니다.
@@ -1128,12 +1132,99 @@ const renderers = {
     );
   },
   air() {
-    renderBrowserFlow(
-      "하늘항공",
-      "인천 → 제주 왕복",
-      "오전편 · 통로 좌석",
-      "항공권 예약",
-    );
+    const s = state.step;
+    state.data.tripType ||= "round";
+    state.data.from ||= "";
+    state.data.to ||= "";
+    state.data.departDate ||= "";
+    state.data.returnDate ||= "";
+    state.data.passengers ||= 1;
+
+    const airlineShell = (body, title = "항공권 예약") => `
+      <div class="air-app release-phone-ui">
+        <div class="air-status"><span>9:41</span><span>5G ▰ 92%</span></div>
+        <header class="air-topbar"><button type="button" aria-label="뒤로가기">‹</button><strong>${escapeHtml(title)}</strong><button type="button" aria-label="메뉴">☰</button></header>
+        <main class="air-content">${body}</main>
+      </div>`;
+
+    if (s === 1) {
+      instruction("왕복을 선택하고 출발지·도착지·날짜·인원을 입력하세요.");
+      sim(airlineShell(`
+        <section class="air-hero"><span>어디로 떠나시나요?</span><h2>항공권 검색</h2></section>
+        <div class="segmented" role="group" aria-label="여정 종류">
+          <button id="roundTrip" class="active" type="button">왕복</button><button id="oneWay" type="button">편도</button>
+        </div>
+        <section class="air-card route-card">
+          <button id="airFrom" class="route-field"><small>출발지</small><strong id="airFromLabel">${escapeHtml(state.data.from || "공항 선택")}</strong><span>›</span></button>
+          <button id="swapAir" class="swap-air" type="button" aria-label="출발지와 도착지 바꾸기">⇄</button>
+          <button id="airTo" class="route-field"><small>도착지</small><strong id="airToLabel">${escapeHtml(state.data.to || "공항 선택")}</strong><span>›</span></button>
+        </section>
+        <section class="air-card date-grid">
+          <button id="departDate"><small>가는 날</small><strong id="departDateLabel">${escapeHtml(state.data.departDate || "날짜 선택")}</strong></button>
+          <button id="returnDate"><small>오는 날</small><strong id="returnDateLabel">${escapeHtml(state.data.returnDate || "날짜 선택")}</strong></button>
+        </section>
+        <section class="air-card passenger-row"><div><small>탑승객</small><strong>성인 <span id="passengerCount">${state.data.passengers}</span>명</strong></div><div class="counter"><button id="passengerMinus" type="button">−</button><button id="passengerPlus" type="button">＋</button></div></section>
+        <button class="air-primary" id="searchFlights">항공편 검색</button>
+      `));
+
+      const airportPicker = (kind) => {
+        const root = document.querySelector('.air-app');
+        root.insertAdjacentHTML('beforeend', `<div class="air-modal" id="airModal"><div class="air-modal-head"><button id="closeAirModal">‹</button><strong>${kind === 'from' ? '출발 공항' : '도착 공항'} 선택</strong></div><input id="airportSearch" placeholder="도시 또는 공항 검색"><div class="airport-list">${[['ICN','인천','서울/인천'],['GMP','김포','서울/김포'],['CJU','제주','제주'],['PUS','김해','부산'],['TAE','대구','대구']].map(([code,name,city])=>`<button data-airport="${code}" data-name="${name}"><b>${code}</b><span>${city}</span><small>${name}공항</small></button>`).join('')}</div></div>`);
+        $('#closeAirModal').onclick = () => $('#airModal').remove();
+        $('#airportSearch').oninput = e => { const q=e.target.value.trim().toLowerCase(); $$('.airport-list button').forEach(b=>b.hidden=!`${b.dataset.airport} ${b.dataset.name}`.toLowerCase().includes(q)); };
+        $$('.airport-list button').forEach(b=>b.onclick=()=>{ state.data[kind]=b.dataset.airport; $(`#air${kind==='from'?'From':'To'}Label`).textContent=`${b.dataset.airport} ${b.dataset.name}`; $('#airModal').remove(); });
+      };
+      $('#airFrom').onclick=()=>airportPicker('from');
+      $('#airTo').onclick=()=>airportPicker('to');
+      $('#swapAir').onclick=()=>{ [state.data.from,state.data.to]=[state.data.to,state.data.from]; $('#airFromLabel').textContent=state.data.from||'공항 선택'; $('#airToLabel').textContent=state.data.to||'공항 선택'; };
+      const datePicker=(kind)=>{ const root=document.querySelector('.air-app'); root.insertAdjacentHTML('beforeend', `<div class="air-modal" id="airModal"><div class="air-modal-head"><button id="closeAirModal">‹</button><strong>${kind==='departDate'?'가는 날':'오는 날'} 선택</strong></div><div class="air-calendar-title">2026년 8월</div><div class="air-calendar">${['일','월','화','수','목','금','토'].map(d=>`<span>${d}</span>`).join('')}${Array.from({length:31},(_,i)=>`<button data-date="2026-08-${String(i+1).padStart(2,'0')}">${i+1}</button>`).join('')}</div></div>`); $('#closeAirModal').onclick=()=>$('#airModal').remove(); $$('.air-calendar button').forEach(b=>b.onclick=()=>{state.data[kind]=b.dataset.date; $(`#${kind}Label`).textContent=`8월 ${Number(b.dataset.date.slice(-2))}일`; $('#airModal').remove();}); };
+      $('#departDate').onclick=()=>datePicker('departDate'); $('#returnDate').onclick=()=>datePicker('returnDate');
+      $('#passengerMinus').onclick=()=>{state.data.passengers=Math.max(1,state.data.passengers-1);$('#passengerCount').textContent=state.data.passengers};
+      $('#passengerPlus').onclick=()=>{state.data.passengers=Math.min(4,state.data.passengers+1);$('#passengerCount').textContent=state.data.passengers};
+      $('#oneWay').onclick=()=>wrong('이번 연습 목표는 왕복 항공권입니다.');
+      $('#searchFlights').onclick=()=>{
+        if(state.data.from!=='ICN') return wrong('출발 공항으로 인천(ICN)을 선택하세요.');
+        if(state.data.to!=='CJU') return wrong('도착 공항으로 제주(CJU)를 선택하세요.');
+        if(state.data.departDate!=='2026-08-20') return wrong('가는 날은 8월 20일입니다.');
+        if(state.data.returnDate!=='2026-08-22') return wrong('오는 날은 8월 22일입니다.');
+        if(state.data.passengers!==1) return wrong('이번 연습은 성인 1명입니다.');
+        next();
+      };
+    } else if (s === 2) {
+      instruction("가는 편에서 오전 9시 10분 항공편을 선택하세요.");
+      const flights=[['HA101','07:30','08:40','89,000'],['HA205','09:10','10:20','102,000'],['HA311','11:25','12:35','96,000']];
+      sim(airlineShell(`<div class="air-search-summary"><b>인천(ICN) → 제주(CJU)</b><span>8월 20일 · 성인 1명</span></div><div class="flight-list">${flights.map(([no,dep,arr,price])=>`<button class="flight-card" data-flight="${no}"><div><small>${no}</small><strong>${dep}</strong><span>인천</span></div><div class="flight-line"><span>1시간 10분</span><i></i><small>직항</small></div><div><strong>${arr}</strong><span>제주</span></div><div class="flight-price"><strong>${price}원</strong><small>일반석</small></div></button>`).join('')}</div>`, '가는 편 선택'));
+      $$('.flight-card').forEach(b=>b.onclick=()=>b.dataset.flight==='HA205'?next({outbound:'HA205',outTime:'09:10'}):wrong('오전 9시 10분에 출발하는 HA205편을 선택하세요.'));
+    } else if (s === 3) {
+      instruction("오는 편에서 오후 4시 30분 항공편을 선택하세요.");
+      const flights=[['HA402','13:20','14:30','91,000'],['HA518','16:30','17:40','108,000'],['HA626','19:15','20:25','85,000']];
+      sim(airlineShell(`<div class="air-search-summary"><b>제주(CJU) → 인천(ICN)</b><span>8월 22일 · 성인 1명</span></div><div class="flight-list">${flights.map(([no,dep,arr,price])=>`<button class="flight-card" data-flight="${no}"><div><small>${no}</small><strong>${dep}</strong><span>제주</span></div><div class="flight-line"><span>1시간 10분</span><i></i><small>직항</small></div><div><strong>${arr}</strong><span>인천</span></div><div class="flight-price"><strong>${price}원</strong><small>일반석</small></div></button>`).join('')}</div>`, '오는 편 선택'));
+      $$('.flight-card').forEach(b=>b.onclick=()=>b.dataset.flight==='HA518'?next({inbound:'HA518',inTime:'16:30'}):wrong('오후 4시 30분에 출발하는 HA518편을 선택하세요.'));
+    } else if (s === 4) {
+      instruction("무료 위탁수하물과 변경 조건을 확인하고 [일반 운임]을 선택하세요.");
+      sim(airlineShell(`<div class="fare-list"><button class="fare-card"><span>특가 운임</span><strong>174,000원</strong><small>위탁수하물 없음 · 변경 불가</small></button><button class="fare-card recommended" id="standardFare"><span>일반 운임</span><strong>210,000원</strong><small>위탁수하물 15kg · 변경 수수료 있음</small><em>추천</em></button><button class="fare-card"><span>유연 운임</span><strong>258,000원</strong><small>위탁수하물 20kg · 변경 가능</small></button></div>`, '운임 선택'));
+      $('#standardFare').onclick=()=>next({fare:'일반 운임',farePrice:210000});
+    } else if (s === 5) {
+      instruction("탑승객 이름과 생년월일을 입력한 뒤 [다음]을 누르세요.");
+      sim(airlineShell(`<div class="air-form"><label>성<span>*</span><input id="lastName" value="HONG" autocomplete="off"></label><label>이름<span>*</span><input id="firstName" value="GILDONG" autocomplete="off"></label><label>생년월일<span>*</span><input id="birth" value="1960-03-15" inputmode="numeric"></label><label>휴대전화<input id="mobile" value="010-1234-5678" inputmode="tel"></label><label class="check-line"><input type="checkbox" id="nameAgree"> 신분증과 같은 영문 이름인지 확인했습니다.</label><button class="air-primary" id="passengerNext">다음</button></div>`, '탑승객 정보'));
+      $('#passengerNext').onclick=()=>{if(!$('#lastName').value.trim()||!$('#firstName').value.trim())return wrong('탑승객 이름을 입력하세요.');if(!$('#nameAgree').checked)return wrong('신분증과 같은 이름인지 확인한 뒤 체크하세요.');next({passengerName:`${$('#lastName').value.trim()} ${$('#firstName').value.trim()}`});};
+    } else if (s === 6) {
+      instruction("가는 편 12C 통로 좌석을 선택하고 [오는 편 좌석 선택]을 누르세요.");
+      const makeSeats=(selected)=>Array.from({length:8},(_,i)=>{const row=i+9;return `<div class="air-seat-row"><span>${row}</span>${['A','B','C'].map(c=>`<button class="air-seat ${['10A','11B','13C'].includes(`${row}${c}`)?'occupied':''} ${selected===`${row}${c}`?'selected':''}" data-seat="${row}${c}">${c}</button>`).join('')}<i>통로</i>${['D','E','F'].map(c=>`<button class="air-seat ${['9F','12E','14D'].includes(`${row}${c}`)?'occupied':''} ${selected===`${row}${c}`?'selected':''}" data-seat="${row}${c}">${c}</button>`).join('')}</div>`}).join('');
+      sim(airlineShell(`<div class="seat-flight-info"><b>가는 편 · HA205</b><span>인천 09:10 → 제주 10:20</span></div><div class="air-seat-legend"><span><i class="free"></i>선택 가능</span><span><i class="occupied"></i>선택 불가</span><span><i class="chosen"></i>선택 좌석</span></div><div class="air-seat-map">${makeSeats(state.data.outSeat)}</div><div class="air-seat-bottom"><span>선택 좌석 <b id="selectedAirSeat">${escapeHtml(state.data.outSeat||'없음')}</b></span><button id="outSeatNext">오는 편 좌석 선택</button></div>`, '가는 편 좌석'));
+      $$('.air-seat:not(.occupied)').forEach(b=>b.onclick=()=>{$$('.air-seat').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');state.data.outSeat=b.dataset.seat;$('#selectedAirSeat').textContent=b.dataset.seat;});
+      $('#outSeatNext').onclick=()=>state.data.outSeat==='12C'?next():wrong('이번 연습은 12C 통로 좌석을 선택합니다.');
+    } else if (s === 7) {
+      instruction("오는 편 14D 통로 좌석을 선택하고 [좌석 선택 완료]를 누르세요.");
+      const makeSeats=()=>Array.from({length:8},(_,i)=>{const row=i+9;return `<div class="air-seat-row"><span>${row}</span>${['A','B','C'].map(c=>`<button class="air-seat ${['10A','11B','13C'].includes(`${row}${c}`)?'occupied':''}" data-seat="${row}${c}">${c}</button>`).join('')}<i>통로</i>${['D','E','F'].map(c=>`<button class="air-seat ${['9F','12E'].includes(`${row}${c}`)?'occupied':''}" data-seat="${row}${c}">${c}</button>`).join('')}</div>`}).join('');
+      sim(airlineShell(`<div class="seat-flight-info"><b>오는 편 · HA518</b><span>제주 16:30 → 인천 17:40</span></div><div class="air-seat-map">${makeSeats()}</div><div class="air-seat-bottom"><span>선택 좌석 <b id="selectedAirSeat">없음</b></span><button id="inSeatNext">좌석 선택 완료</button></div>`, '오는 편 좌석'));
+      $$('.air-seat:not(.occupied)').forEach(b=>b.onclick=()=>{$$('.air-seat').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');state.data.inSeat=b.dataset.seat;$('#selectedAirSeat').textContent=b.dataset.seat;});
+      $('#inSeatNext').onclick=()=>state.data.inSeat==='14D'?next():wrong('이번 연습은 14D 통로 좌석을 선택합니다.');
+    } else {
+      instruction("여정·좌석·금액을 확인하고 [모의 결제 후 예약]을 누르세요.");
+      sim(airlineShell(`<div class="air-summary"><section><h3>가는 편</h3><b>HA205 · 8월 20일</b><span>인천 09:10 → 제주 10:20</span><small>좌석 ${escapeHtml(state.data.outSeat||'12C')}</small></section><section><h3>오는 편</h3><b>HA518 · 8월 22일</b><span>제주 16:30 → 인천 17:40</span><small>좌석 ${escapeHtml(state.data.inSeat||'14D')}</small></section><section><h3>탑승객</h3><span>${escapeHtml(state.data.passengerName||'HONG GILDONG')} · 성인 1명</span></section><section class="price-summary"><div><span>왕복 항공권</span><b>210,000원</b></div><div><span>좌석 지정</span><b>20,000원</b></div><div class="total"><span>총 결제금액</span><strong>230,000원</strong></div></section><label class="check-line"><input type="checkbox" id="airFinalAgree"> 여정과 탑승객 정보를 확인했습니다.</label><div class="payment-choice"><button class="active">신용·체크카드</button><button>간편결제</button></div><button class="air-primary" id="airPay">모의 결제 후 예약</button></div>`, '예약 내용 확인'));
+      $('#airPay').onclick=()=>$('#airFinalAgree').checked?next():wrong('여정과 탑승객 정보를 확인한 뒤 체크하세요.');
+    }
   },
   delivery() {
     renderCommerce("배달의민족", "김밥 2줄", "우리집 주소", "배달 주문");
