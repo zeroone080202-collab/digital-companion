@@ -2472,3 +2472,146 @@ button { min-height: 46px; touch-action: manipulation; }
   #practiceView .simulator { overflow: visible !important; min-height: 0 !important; }
   .practice-phone { width: min(100%, 390px); height: auto !important; aspect-ratio: 9/19.5; }
 }
+
+/* ===== v31: 잠금/홈 제스처 제거 + 휴대전화 크기와 잘림 보정 ===== */
+/* 앱 찾기 화면은 잠금 해제나 홈 화면 밀기 없이 앱스 화면부터 시작한다. */
+#launcherView .galaxy-apps,
+#launcherView .galaxy-finder {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+#launcherView .apps-panel,
+#launcherView .finder-screen {
+  min-height: 0;
+  overflow: hidden;
+}
+#launcherView .oneui-app-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 2px 2px 18px;
+  align-content: start;
+}
+#launcherView .drawer-app,
+#launcherView .home-page-icons button {
+  min-width: 0;
+  width: 100%;
+}
+#launcherView .drawer-app span,
+#launcherView .home-page-icons span {
+  width: 100%;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+@media (min-width: 1000px) {
+  body:has(#launcherView.active) {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+  #launcherView.active {
+    height: auto !important;
+    min-height: calc(100dvh - 78px);
+    overflow: visible !important;
+    padding: 8px 20px 22px !important;
+  }
+  #launcherView .practice-head {
+    min-height: 50px !important;
+    height: auto !important;
+    margin-bottom: 6px !important;
+  }
+  #launcherView .practice-head h1 {
+    font-size: clamp(1.25rem, 1.8vw, 1.8rem) !important;
+    margin: 2px 0 !important;
+  }
+  #launcherView .launcher-layout {
+    grid-template-columns: minmax(330px, 390px) minmax(400px, 1fr) !important;
+    min-height: 690px !important;
+    height: auto !important;
+    align-items: center !important;
+    gap: 24px !important;
+  }
+  #launcherView .mission-panel {
+    height: auto !important;
+    min-height: 430px !important;
+    align-self: center !important;
+    padding: 26px !important;
+  }
+  #launcherView .phone-shell {
+    width: 340px !important;
+    height: 736px !important;
+    max-width: none !important;
+    max-height: none !important;
+    aspect-ratio: 9 / 19.5 !important;
+    justify-self: center !important;
+    align-self: center !important;
+    flex: 0 0 auto !important;
+  }
+  #launcherView .phone-screen {
+    width: 100% !important;
+    height: 100% !important;
+  }
+  #launcherView .oneui-app-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 20px 8px !important;
+  }
+  #launcherView .drawer-app i {
+    width: 54px !important;
+    height: 54px !important;
+  }
+}
+
+@media (max-width: 999px) {
+  #launcherView.active {
+    height: auto !important;
+    min-height: 100dvh;
+    overflow: visible !important;
+  }
+  #launcherView .launcher-layout {
+    grid-template-columns: 1fr !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+  #launcherView .mission-panel {
+    min-height: 0 !important;
+    height: auto !important;
+    padding: 16px !important;
+  }
+  #launcherView .launcher-brief h2 {
+    font-size: clamp(1.15rem, 5vw, 1.5rem) !important;
+    line-height: 1.45 !important;
+    margin: 12px 0 !important;
+  }
+  #launcherView .phone-shell {
+    width: min(92vw, 380px) !important;
+    height: auto !important;
+    aspect-ratio: 9 / 19.5 !important;
+    max-width: 380px !important;
+    max-height: none !important;
+    margin: 0 auto 24px !important;
+  }
+  #launcherView .oneui-app-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 18px 6px !important;
+  }
+}
+
+@media (max-width: 390px) {
+  #launcherView .phone-shell {
+    width: calc(100vw - 24px) !important;
+  }
+  #launcherView .oneui-app-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 14px 4px !important;
+  }
+  #launcherView .drawer-app i {
+    width: 48px !important;
+    height: 48px !important;
+    font-size: 24px !important;
+  }
+  #launcherView .drawer-app span {
+    font-size: 10px !important;
+  }
+}
