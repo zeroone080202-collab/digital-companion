@@ -1,3 +1,5 @@
+(() => {
+"use strict";
 const modules = [
   {
     id: "ktx",
@@ -536,7 +538,7 @@ function complete() {
 function sim(html) {
   $("#simulator").innerHTML = html;
 }
-function top(title, sub = "교육용 모의 화면") {
+function simHeader(title, sub = "교육용 모의 화면") {
   return `<div class="sim-top"><h2>${title}</h2><span class="education-badge">${sub}</span></div>`;
 }
 const renderers = {
@@ -548,7 +550,7 @@ const renderers = {
         "실제 예매에서도 가장 먼저 여정과 시간을 정합니다.",
       );
       sim(
-        top("기차예매 · 승차권 예매") +
+        simHeader("기차예매 · 승차권 예매") +
           `<div class="sim-body"><div class="form-grid"><div class="field"><label>출발역</label><select id="from"><option>서울</option><option>용산</option><option>광명</option></select></div><div class="field"><label>도착역</label><select id="to"><option>부산</option><option>대전</option><option>동대구</option></select></div><div class="field"><label>출발일</label><input type="date" value="2026-07-20"></div><div class="field"><label>출발시간</label><select><option>08시 이후</option><option>10시 이후</option></select></div></div><button class="big-primary" id="searchTrain">열차 조회하기</button></div>`,
       );
       $("#searchTrain").onclick = () =>
@@ -556,7 +558,7 @@ const renderers = {
     } else if (s === 1) {
       instruction("원하는 출발시간의 KTX 열차에서 “좌석선택”을 누르세요.");
       sim(
-        top(`${state.data.from} → ${state.data.to} 열차 조회`) +
+        simHeader(`${state.data.from} → ${state.data.to} 열차 조회`) +
           `<div class="sim-body"><table class="data-table"><thead><tr><th>열차</th><th>출발</th><th>도착</th><th>일반실</th><th>선택</th></tr></thead><tbody><tr><td>KTX 011</td><td>08:27</td><td>11:02</td><td>59,800원</td><td><button data-train="KTX 011">좌석선택</button></td></tr><tr><td>KTX 015</td><td>09:00</td><td>11:41</td><td>59,800원</td><td><button data-train="KTX 015">좌석선택</button></td></tr><tr><td>KTX 019</td><td>09:32</td><td>12:08</td><td>59,800원</td><td><button data-train="KTX 019">좌석선택</button></td></tr></tbody></table></div>`,
       );
       $$("[data-train]").forEach(
@@ -577,7 +579,7 @@ const renderers = {
         rows += `<div class="seat-row"><button class="seat ${r === 2 ? "booked" : ""}" data-seat="${r}A">${r}A</button><button class="seat" data-seat="${r}B">${r}B</button><span class="aisle">통로</span><button class="seat ${r === 4 ? "booked" : ""}" data-seat="${r}C">${r}C</button><button class="seat" data-seat="${r}D">${r}D</button></div>`;
       }
       sim(
-        top(`${state.data.train} · 5호차 좌석선택`) +
+        simHeader(`${state.data.train} · 5호차 좌석선택`) +
           `<div class="sim-body"><div class="seat-map">${rows}</div><button class="big-primary" id="seatNext">선택한 좌석으로 계속</button></div>`,
       );
       $$(".seat:not(.booked)").forEach(
@@ -593,7 +595,7 @@ const renderers = {
     } else if (s === 3) {
       instruction("출발역·도착역·열차·좌석을 확인하고 예약을 진행하세요.");
       sim(
-        top("예약 내용 확인") +
+        simHeader("예약 내용 확인") +
           `<div class="sim-body"><div class="ticket"><div class="ticket-head">기차 승차권 예약 확인</div><div class="ticket-grid"><div><span>구간</span><b>${state.data.from} → ${state.data.to}</b></div><div><span>열차</span><b>${state.data.train}</b></div><div><span>출발</span><b>${state.data.time}</b></div><div><span>호차</span><b>5호차</b></div><div><span>좌석</span><b>${state.data.seat}</b></div><div><span>운임</span><b>59,800원</b></div></div></div><button class="big-primary" id="confirmTrain">위 내용으로 예약하기</button></div>`,
       );
       $("#confirmTrain").onclick = () => next();
@@ -602,14 +604,14 @@ const renderers = {
         "결제 전에 금액을 마지막으로 확인하고 “모의 결제”를 누르세요.",
       );
       sim(
-        top("결제하기") +
+        simHeader("결제하기") +
           `<div class="sim-body"><div class="account-card"><span>결제 예정 금액</span><strong>59,800원</strong><p>실제 카드정보는 입력하지 않습니다.</p></div><button class="big-primary" id="payTrain">모의 결제</button></div>`,
       );
       $("#payTrain").onclick = () => next();
     } else {
       instruction("승차권에서 출발시간과 좌석을 다시 확인하세요.");
       sim(
-        top("모바일 승차권") +
+        simHeader("모바일 승차권") +
           `<div class="sim-body"><div class="ticket"><div class="ticket-head">승차권 · 발권 완료</div><div class="ticket-grid"><div><span>출발</span><b>${state.data.from} ${state.data.time}</b></div><div><span>도착</span><b>${state.data.to}</b></div><div><span>열차</span><b>${state.data.train}</b></div><div><span>호차</span><b>5호차</b></div><div><span>좌석</span><b>${state.data.seat}</b></div><div><span>QR 승차권</span><b>▦ ▦ ▦</b></div></div></div><button class="big-primary" id="finishTrain">확인했습니다</button></div>`,
       );
       $("#finishTrain").onclick = () => next();
@@ -626,14 +628,14 @@ const renderers = {
     if (s === 0) {
       instruction("첫 화면에서 “이체” 버튼을 누르세요.");
       sim(
-        top("한빛은행") +
+        simHeader("한빛은행") +
           `<div class="bank-app"><div class="app-header">한빛은행 홈</div><div class="account-card"><span>입출금통장 123-***-456789</span><strong>1,245,800원</strong></div><div class="sim-body choice-grid"><button class="choice-card" id="transfer">↗ 이체</button><button class="choice-card">조회</button><button class="choice-card">공과금</button><button class="choice-card">카드</button></div></div>`,
       );
       $("#transfer").onclick = () => next();
     } else if (s === 1) {
       instruction("받는 분 계좌번호를 입력하고 다음을 누르세요.");
       sim(
-        top("한빛은행 · 계좌이체") +
+        simHeader("한빛은행 · 계좌이체") +
           `<div class="bank-app"><div class="app-header">받는 분 계좌</div><div class="sim-body"><div class="field"><label>은행</label><select><option>한빛은행</option><option>국민은행</option><option>농협은행</option></select></div><div class="field"><label>계좌번호</label><input id="account" inputmode="numeric" placeholder="숫자만 입력" value="110245678901"></div><button class="big-primary" id="accountNext">다음</button></div></div>`,
       );
       $("#accountNext").onclick = () =>
@@ -643,7 +645,7 @@ const renderers = {
     } else if (s === 2) {
       instruction("송금할 금액 30,000원을 입력하세요.");
       sim(
-        top("한빛은행 · 금액 입력") +
+        simHeader("한빛은행 · 금액 입력") +
           `<div class="bank-app"><div class="app-header">보낼 금액</div><div class="sim-body"><input id="amount" value="" readonly style="width:100%;font-size:2rem;padding:18px;text-align:right"><div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, "00", 0, "←"].map((x) => `<button data-key="${x}">${x}</button>`).join("")}</div><button class="big-primary" id="amountNext">다음</button></div></div>`,
       );
       $$("[data-key]").forEach(
@@ -665,7 +667,7 @@ const renderers = {
         "이름이 다르면 절대 송금하지 말고 이전으로 돌아가야 합니다.",
       );
       sim(
-        top("받는 분 확인") +
+        simHeader("받는 분 확인") +
           `<div class="bank-app"><div class="app-header">계좌 확인 결과</div><div class="sim-body"><div class="account-card"><span>받는 분</span><strong>김민수</strong><p>한빛은행 ${state.data.account}</p></div><button class="big-primary" id="nameOk">김민수님이 맞습니다</button><button class="big-primary" style="background:#777" id="nameNo">아닙니다</button></div></div>`,
       );
       $("#nameOk").onclick = () => next();
@@ -673,14 +675,14 @@ const renderers = {
     } else if (s === 4) {
       instruction("모든 내용을 마지막으로 확인하고 이체를 누르세요.");
       sim(
-        top("이체 최종 확인") +
+        simHeader("이체 최종 확인") +
           `<div class="bank-app"><div class="app-header">이체 내용</div><div class="sim-body"><table class="data-table"><tr><th>받는 분</th><td>김민수</td></tr><tr><th>계좌</th><td>${state.data.account}</td></tr><tr><th>금액</th><td>30,000원</td></tr><tr><th>수수료</th><td>0원</td></tr></table><button class="big-primary" id="sendMoney">모의 이체하기</button></div></div>`,
       );
       $("#sendMoney").onclick = () => next();
     } else {
       instruction("이체 결과를 확인하고 끝내세요.");
       sim(
-        top("이체 완료") +
+        simHeader("이체 완료") +
           `<div class="bank-app"><div class="app-header">✓ 이체 완료</div><div class="sim-body"><div class="result-check">✓</div><h2 style="text-align:center">김민수님께<br>30,000원을 보냈습니다.</h2><button class="big-primary" id="finishBank">확인</button></div></div>`,
       );
       $("#finishBank").onclick = () => next();
@@ -816,7 +818,7 @@ function renderChat(video) {
   if (s === 0) {
     instruction("검색창에서 가족 이름 “딸”을 찾아 대화방을 여세요.");
     sim(
-      top("모두톡") +
+      simHeader("모두톡") +
         `<div class="chat-app"><div class="chat-head"><span>대화</span><span>🔍</span></div><div class="sim-body"><button class="choice-card" id="daughter">👩 딸</button><button class="choice-card">👨 아들</button><button class="choice-card">친구 모임</button></div></div>`,
     );
     $("#daughter").onclick = () => next();
@@ -824,14 +826,14 @@ function renderChat(video) {
     if (s === 1) {
       instruction("오른쪽 위 카메라 모양을 눌러 영상통화를 거세요.");
       sim(
-        top("모두톡 · 딸") +
+        simHeader("모두톡 · 딸") +
           `<div class="chat-app"><div class="chat-head"><span>← 딸</span><button id="videoBtn">📹</button></div><div class="chat-body"><div class="bubble">엄마, 잘 도착했어요?</div></div></div>`,
       );
       $("#videoBtn").onclick = () => next();
     } else if (s === 2) {
       instruction("영상통화 연결 버튼을 누르세요.");
       sim(
-        top("영상통화 확인") +
+        simHeader("영상통화 확인") +
           `<div class="chat-app"><div class="video-call"><div><div class="avatar-large">👩</div><h2 style="text-align:center">딸</h2></div><button class="big-primary" id="connectCall" style="position:absolute;bottom:30px;width:80%">영상통화 연결</button></div></div>`,
       );
       $("#connectCall").onclick = () => next();
@@ -846,7 +848,7 @@ function renderChat(video) {
     } else {
       instruction("영상통화가 종료됐는지 확인하세요.");
       sim(
-        top("모두톡") +
+        simHeader("모두톡") +
           `<div class="chat-app"><div class="chat-head">딸</div><div class="chat-body"><div class="bubble me">영상통화 01:12</div></div><button class="big-primary" id="finishVideo" style="position:absolute;bottom:20px;width:90%;left:5%">확인</button></div>`,
       );
       $("#finishVideo").onclick = () => next();
@@ -866,14 +868,14 @@ function renderChat(video) {
     } else if (s === 3) {
       instruction("선택한 사진을 전송하세요.");
       sim(
-        top("모두톡 · 사진 전송") +
+        simHeader("모두톡 · 사진 전송") +
           `<div class="chat-app"><div class="chat-head">← 딸</div><div class="chat-body"><div class="bubble me">${state.data.message}</div><div class="bubble me" style="font-size:4rem">🌳</div></div><button class="big-primary" id="sendPhoto" style="position:absolute;bottom:20px;width:90%;left:5%">사진 전송</button></div>`,
       );
       $("#sendPhoto").onclick = () => next();
     } else if (s === 4) {
       instruction("보낸 메시지와 사진이 대화방에 표시되는지 확인하세요.");
       sim(
-        top("모두톡 · 딸") +
+        simHeader("모두톡 · 딸") +
           `<div class="chat-app"><div class="chat-head">← 딸</div><div class="chat-body"><div class="bubble">엄마, 잘 도착했어요?</div><div class="bubble me">${state.data.message}</div><div class="bubble me" style="font-size:4rem">🌳</div></div><button class="big-primary" id="chatDone" style="position:absolute;bottom:20px;width:90%;left:5%">확인</button></div>`,
       );
       $("#chatDone").onclick = () => next();
@@ -882,13 +884,13 @@ function renderChat(video) {
 }
 function chatUI(photo = false) {
   return (
-    top("모두톡 · 딸") +
+    simHeader("모두톡 · 딸") +
     `<div class="chat-app"><div class="chat-head"><span>← 딸</span><span>📞 📹</span></div><div class="chat-body"><div class="bubble">엄마, 잘 도착했어요?</div></div><div class="chat-input"><button id="addPhoto">＋</button><input id="chatText" placeholder="메시지 입력" value="${photo ? state.data.message || "잘 도착했다" : ""}"><button id="sendChat">전송</button></div></div>`
   );
 }
 function videoUI() {
   return (
-    top("모두톡 · 영상통화") +
+    simHeader("모두톡 · 영상통화") +
     `<div class="chat-app"><div class="video-call"><div><div class="avatar-large">👩</div><h2 style="text-align:center">딸과 통화 중</h2></div><div class="call-controls"><button>🎙️</button><button id="switchCam">🔄</button><button id="endCall" class="call-end">☎</button></div></div></div>`
   );
 }
@@ -959,42 +961,42 @@ function renderCommerce(brand, item, address, action) {
   if (s === 0) {
     instruction(`${brand} 앱의 검색창을 누르세요.`);
     sim(
-      top(brand) +
+      simHeader(brand) +
         `<div class="bank-app"><div class="app-header">${brand}</div><div class="sim-body"><input style="width:100%;padding:15px" value="${item}" id="productSearch"><button class="big-primary" id="doSearch">검색</button></div></div>`,
     );
     $("#doSearch").onclick = () => next();
   } else if (s === 1) {
     instruction(`검색 결과에서 “${item}”을 선택하세요.`);
     sim(
-      top(brand) +
+      simHeader(brand) +
         `<div class="sim-body product-grid"><button class="product" id="targetProduct"><div class="product-image">📦</div><h3>${item}</h3><p>12,900원</p></button><button class="product"><div class="product-image">🧴</div><h3>다른 상품</h3></button></div>`,
     );
     $("#targetProduct").onclick = () => next();
   } else if (s === 2) {
     instruction("수량과 옵션을 확인하세요.");
     sim(
-      top(brand) +
+      simHeader(brand) +
         `<div class="sim-body"><table class="data-table"><tr><th>상품</th><td>${item}</td></tr><tr><th>수량</th><td>1</td></tr><tr><th>가격</th><td>12,900원</td></tr></table><button class="big-primary" id="optionNext">장바구니 담기</button></div>`,
     );
     $("#optionNext").onclick = () => next();
   } else if (s === 3) {
     instruction(`배송지 또는 출발 위치가 “${address}”인지 확인하세요.`);
     sim(
-      top(brand) +
+      simHeader(brand) +
         `<div class="sim-body"><div class="field"><label>주소·위치</label><input value="${address}" readonly></div><button class="big-primary" id="addressNext">주소가 맞습니다</button></div>`,
     );
     $("#addressNext").onclick = () => next();
   } else if (s === 4) {
     instruction("최종 금액과 결제방법을 확인하세요.");
     sim(
-      top(brand) +
+      simHeader(brand) +
         `<div class="sim-body"><table class="data-table"><tr><th>내용</th><td>${item}</td></tr><tr><th>금액</th><td>12,900원</td></tr><tr><th>결제</th><td>교육용 모의 결제</td></tr></table><button class="big-primary" id="commercePay">${action}</button></div>`,
     );
     $("#commercePay").onclick = () => next();
   } else {
     instruction("주문 또는 호출 결과를 확인하세요.");
     sim(
-      top(brand) +
+      simHeader(brand) +
         `<div class="sim-body"><div class="result-check">✓</div><h2 style="text-align:center">${action} 완료</h2><button class="big-primary" id="commerceDone">확인</button></div>`,
     );
     $("#commerceDone").onclick = () => next();
@@ -1015,7 +1017,7 @@ function renderSMS() {
     );
     const suspicious = s % 2 === 0;
     sim(
-      top("문자 메시지") +
+      simHeader("문자 메시지") +
         `<div class="chat-app"><div class="chat-head">${suspicious ? "[국제발신] 배송안내" : "우리병원"}</div><div class="chat-body"><div class="bubble">${suspicious ? "주소 오류로 배송이 중단되었습니다. 아래 링크에서 개인정보를 입력하세요. http://short.url" : "내일 오전 10시 30분 진료 예약이 확인되었습니다. 변경은 병원 대표번호로 연락해 주세요."}</div></div><div class="chat-input"><button id="safe">안전</button><button id="sus">수상함</button></div></div>`,
     );
     $("#sus").onclick = () =>
@@ -1031,7 +1033,7 @@ function renderSMS() {
 function renderGeneric() {
   instruction("화면의 안내에 따라 다음 단계를 진행하세요.");
   sim(
-    top(state.module.title) +
+    simHeader(state.module.title) +
       `<div class="sim-body"><h2>${state.module.steps[state.step]}</h2><button class="big-primary" id="genericNext">다음 단계</button></div>`,
   );
   $("#genericNext").onclick = () => next();
@@ -1160,3 +1162,4 @@ window.DIGITAL_APP_READY = true;
   if (x === "clear-search") clearSearch();
 });
 renderHome();
+})();
