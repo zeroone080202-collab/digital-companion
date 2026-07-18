@@ -3097,3 +3097,112 @@ button { min-height: 46px; touch-action: manipulation; }
 @media(max-width:760px){.drawn-kiosk-stage{padding:10px;min-height:auto}.drawn-kiosk{padding:10px;border-radius:20px}.kiosk-display{padding:7px}.kiosk-display-inner{min-height:430px;padding:16px}.kiosk-hardware-panel{grid-template-columns:1fr;gap:8px}.hardware-unit{min-height:70px}.hospital-web{border-radius:0}.hospital-web header{padding:14px 16px}.hospital-web header nav{display:none}.hospital-web main{padding:12px}.hospital-steps span{font-size:.72rem;padding:10px 4px}.hospital-card{padding:16px}.department-grid{grid-template-columns:1fr}.hospital-summary div{grid-template-columns:1fr;gap:6px}.delivery-phone{--phone-width:min(390px,96vw)}}
 
 .kiosk-category-tabs{display:flex;gap:8px;margin-bottom:18px}.kiosk-category-tabs button{flex:1;border:1px solid #b8c7d4;background:white;border-radius:10px;padding:12px;font-weight:800}.kiosk-category-tabs .active{background:#226bb0;color:white}.kiosk-food-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}.kiosk-food-grid button{border:2px solid #d4e0e9;background:white;border-radius:14px;padding:18px;display:flex;flex-direction:column;align-items:center;gap:7px}.kiosk-food-grid button>span{font-size:3rem}.kiosk-food-grid button b{font-size:1.12rem}.kiosk-option-card{background:white;border:1px solid #d7e0e7;border-radius:14px;padding:15px;margin:12px 0}.kiosk-option-card label{display:flex;justify-content:space-between;padding:13px 4px;border-top:1px solid #eee}.kiosk-order-summary{background:white;border:1px solid #d7e0e7;border-radius:14px;padding:18px}.kiosk-order-summary>div:first-child{display:grid;grid-template-columns:1fr auto}.kiosk-order-summary span{display:block;color:#667}.summary-total{display:flex;justify-content:space-between;border-top:1px solid #ddd;margin-top:15px;padding-top:15px}.kiosk-pay-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}.kiosk-pay-grid button{padding:20px;border:2px solid #226bb0;border-radius:14px;background:white;font-size:1.2rem;font-weight:900}.kiosk-center-copy{text-align:center;font-size:1.1rem}.pin-dots{text-align:center;font-size:2rem;letter-spacing:8px;margin:20px}.kiosk-keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:430px;margin:auto}.kiosk-keypad button{min-height:58px;border:1px solid #bbc8d2;border-radius:10px;background:white;font-size:1.2rem;font-weight:900}.amount-menu{grid-template-columns:repeat(2,1fr)}.atm-recovery{max-width:420px;margin:30px auto;background:#fff;border:2px solid #226bb0;border-radius:16px;padding:24px;display:grid;gap:12px;text-align:center}.atm-recovery b,.atm-recovery span{font-size:1.35rem}.atm-recovery small{color:#667}
+
+/* v37: phone safe-area and chat composer clipping fix */
+#practiceView .practice-phone,
+#practiceView .release-phone-ui,
+#practiceView .delivery-phone {
+  overflow: visible !important;
+  margin-bottom: 24px !important;
+}
+
+#practiceView .practice-phone-screen,
+#practiceView .release-phone-ui > .practice-phone-screen {
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+#practiceView .conversation-view {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  padding-bottom: 22px !important;
+  box-sizing: border-box !important;
+  background: #fff !important;
+}
+
+#practiceView .conversation-view .realistic-chat-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  padding-bottom: 16px !important;
+}
+
+#practiceView .conversation-view .realistic-chat-input {
+  flex: 0 0 auto !important;
+  width: 100% !important;
+  min-height: 76px !important;
+  padding: 10px 12px 12px !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  background: #fff !important;
+  border-top: 1px solid #e1e6eb !important;
+  position: relative !important;
+  inset: auto !important;
+  transform: none !important;
+  overflow: visible !important;
+  z-index: 12 !important;
+}
+
+#practiceView .conversation-view .attach-button {
+  flex: 0 0 44px !important;
+}
+
+#practiceView .conversation-view .chat-input-box {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  height: 44px !important;
+  box-sizing: border-box !important;
+}
+
+#practiceView .conversation-view .send-chat-button {
+  flex: 0 0 64px !important;
+}
+
+#practiceView .practice-phone-homebar {
+  bottom: 7px !important;
+  z-index: 30 !important;
+  pointer-events: none !important;
+}
+
+#practiceView .simulator {
+  padding-bottom: 48px !important;
+}
+
+@media (max-width: 760px) {
+  #practiceView .practice-phone,
+  #practiceView .release-phone-ui,
+  #practiceView .delivery-phone {
+    width: min(430px, 96vw) !important;
+    max-width: 100% !important;
+    margin: 0 auto 28px !important;
+  }
+
+  #practiceView .conversation-view {
+    padding-bottom: 24px !important;
+  }
+
+  #practiceView .conversation-view .realistic-chat-input {
+    min-height: 74px !important;
+    padding: 9px 9px 12px !important;
+    gap: 6px !important;
+  }
+
+  #practiceView .conversation-view .attach-button {
+    flex-basis: 42px !important;
+    width: 42px !important;
+    height: 42px !important;
+  }
+
+  #practiceView .conversation-view .send-chat-button {
+    flex-basis: 58px !important;
+    min-width: 58px !important;
+    height: 42px !important;
+  }
+}
+
+/* v38 항공권 진행 순서 보정 */
+.selected-flight-mini{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;margin-bottom:12px;border-radius:16px;background:#eef4ff;border:1px solid #c8d9f5}.selected-flight-mini b{font-size:1.05rem}.selected-flight-mini span{color:#526274}.addon-list{display:grid;gap:12px}.addon-list section{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px;border:1px solid #dce3ec;border-radius:16px;background:#fff}.addon-list section div{display:grid;gap:5px}.addon-list section span{color:#667486;font-size:.9rem}.addon-list section>strong{color:#1769aa}.addon-skip{border:1px solid #cfd8e3;background:#f7f9fc;border-radius:12px;padding:10px 12px;white-space:nowrap}.flight-card.selected{outline:3px solid #2d6fc0;background:#eef5ff}@media(max-width:520px){.addon-list section{align-items:flex-start;flex-direction:column}.addon-skip{width:100%}.selected-flight-mini{align-items:flex-start;flex-direction:column}}
