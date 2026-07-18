@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0b4d89" />
-    <title>디지털 동행 연습관</title>
-    <link rel="stylesheet" href="./style.css?v=20260718-senior-guide-v13" />
+    <title>디지털 생활 길잡이</title>
+    <link rel="stylesheet" href="./style.css?v=20260718-field-v16" />
   </head>
   <body>
     <a class="skip-link" href="#main">본문으로 바로가기</a>
@@ -13,8 +13,8 @@
       <button class="brand" data-action="home" aria-label="처음 화면으로 이동">
         <span class="brand-mark">동행</span>
         <span
-          ><b>디지털 동행 연습관</b
-          ><small>생활 속 디지털 사용을 차근차근 연습하세요</small></span
+          ><b>디지털 생활 길잡이</b
+          ><small>실제 화면 순서대로 천천히 연습하세요</small></span
         >
       </button>
       <div class="access-tools" aria-label="화면 도움 기능">
@@ -77,6 +77,31 @@
         ></section>
       </section>
 
+
+      <section id="modeView" class="view mode-view" aria-labelledby="modeTitle">
+        <div class="mode-card">
+          <button data-action="home" class="back-btn">← 연습 목록으로</button>
+          <p class="eyebrow">연습 방법 선택</p>
+          <h1 id="modeTitle">어떤 방식으로 연습할까요?</h1>
+          <p id="modeGoal" class="mode-goal"></p>
+          <div class="mode-options">
+            <button type="button" class="mode-option guided" data-practice-mode="guided">
+              <span class="mode-icon">👆</span>
+              <strong>처음 배우기</strong>
+              <p>눌러야 할 위치와 순서를 크게 표시하고 음성으로 안내합니다.</p>
+              <em>처음 해보는 분께 추천</em>
+            </button>
+            <button type="button" class="mode-option field" data-practice-mode="field">
+              <span class="mode-icon">🏁</span>
+              <strong>실전처럼 해보기</strong>
+              <p>노란 표시 없이 실제 화면을 보고 스스로 찾아 진행합니다.</p>
+              <em>배운 뒤 혼자 해보는 연습</em>
+            </button>
+          </div>
+          <div class="mode-note"><b>권장 순서</b><span>처음 배우기 1회 → 실전처럼 해보기 2회</span></div>
+        </div>
+      </section>
+
       <section id="launcherView" class="view" aria-labelledby="launcherTitle">
         <div class="practice-head">
           <button data-action="home" class="back-btn">← 처음으로</button>
@@ -88,7 +113,7 @@
         </div>
         <div class="launcher-layout">
           <aside class="mission-panel">
-            <span class="mission-label">이번 연습 목표</span>
+            <span class="mission-label">지금 해야 할 일</span>
             <h2 id="launcherMission"></h2>
             <ol id="launcherChecklist"></ol>
             <div class="safe-box">
@@ -124,14 +149,19 @@
             <h1 id="practiceTitle"></h1>
           </div>
           <div class="practice-actions">
-            <button data-action="hint" class="help-btn">힌트</button
+            <button data-action="hint" class="help-btn"><span class="guided-only">힌트</span><span class="field-only">도움 요청</span></button
             ><button data-action="restart">처음부터</button>
           </div>
+        </div>
+        <div id="fieldMissionBanner" class="field-mission-banner" hidden>
+          <span>실전 과제</span>
+          <strong id="fieldMissionText"></strong>
+          <small>화면을 스스로 살펴보고 진행하세요. 막히면 오른쪽 위 [도움 요청]을 누르세요.</small>
         </div>
         <div class="progress-wrap"><div id="progressBar"></div></div>
         <div class="practice-layout">
           <aside class="mission-panel sticky">
-            <span class="mission-label">이번 단계에서 누를 것</span>
+            <span class="mission-label">지금 딱 한 가지만 하세요</span>
             <div class="command-box">
               <span class="command-number">1</span>
               <div>
@@ -139,12 +169,20 @@
                 <h2 id="currentInstruction"></h2>
               </div>
             </div>
+            <div class="instruction-facts" aria-live="polite">
+              <div class="fact-card target-word-card"><span>화면에서 찾을 글자</span><strong id="targetWord">안내된 버튼 이름</strong></div>
+              <div class="fact-card"><span>어디에서 찾나요?</span><strong id="targetLocation">오른쪽 연습 화면</strong></div>
+              <div class="fact-card"><span>어떻게 누르나요?</span><strong id="targetGesture">손가락으로 한 번 누르기</strong></div>
+              <div class="fact-card"><span>누른 뒤 무엇이 보여야 하나요?</span><strong id="expectedChange">다음 화면으로 이동</strong></div>
+            </div>
+            <h3 class="follow-title">아래 순서대로 그대로 하세요</h3>
             <div id="currentSteps" class="exact-steps" aria-live="polite"></div>
             <div class="why-box">
-              <b>왜 확인하나요?</b>
+              <b>실전에서 꼭 기억하세요</b>
               <p id="currentReason"></p>
             </div>
-            <p class="practice-tip">파란 테두리나 손가락 표시가 있는 곳을 찾아 누르세요.</p>
+            <button type="button" id="repeatInstruction" class="repeat-instruction">🔊 지금 할 일을 다시 읽어주세요</button>
+            <p class="practice-tip">한꺼번에 하지 않아도 됩니다. 1번 행동만 마친 뒤 화면이 바뀌면 다음 안내를 다시 읽으세요.</p>
             <div class="stat-row">
               <span>실수 <b id="mistakeCount">0</b>회</span
               ><span>힌트 <b id="hintCount">0</b>회</span>
@@ -178,6 +216,6 @@
     </main>
 
     <div id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260718-senior-guide-v13" defer></script>
+    <script src="app.js?v=20260718-field-v16" defer></script>
   </body>
 </html>
