@@ -2140,6 +2140,7 @@ document.addEventListener("click", (e) => {
     document.body.classList.remove("guided-mode", "field-mode");
     showView("homeView");
     renderHome();
+    renderChallengeCards();
 window.DIGITAL_APP_READY = true;
   }
   if (x === "back-launcher") {
@@ -2176,5 +2177,162 @@ window.DIGITAL_APP_READY = true;
   if (x === "speak") speak();
   if (x === "clear-search") clearSearch();
 });
+
+
+/* ============================================================
+   v47 연계 실전 과제
+   - 기존 16개 연습은 그대로 유지
+   - 튜토리얼 안내 없이 2개 이상의 기능을 연결해 해결
+   ============================================================ */
+const combinedChallenges = [
+  {
+    id: "family-trip",
+    icon: "🚄💬",
+    title: "딸의 부탁대로 기차표 예매하기",
+    summary: "딸이 보낸 조건에 맞춰 KTX 표를 예매하고, 예매 완료 화면을 딸에게 전송합니다.",
+    prerequisites: ["ktx", "chat"],
+    prereqLabels: ["KTX 기차표 예매", "메신저 연락하기"],
+    accent: "#e5f1ff",
+    total: 8,
+  },
+  {
+    id: "hospital-ride",
+    icon: "🏥🚕",
+    title: "병원 예약 후 택시 부르기",
+    summary: "진료 조건에 맞춰 병원을 예약한 뒤, 예약 시간에 늦지 않도록 병원까지 택시를 호출합니다.",
+    prerequisites: ["hospital", "taxi"],
+    prereqLabels: ["병원 예약·무인접수", "택시 호출"],
+    accent: "#e9f8ef",
+    total: 6,
+  },
+];
+let challengeState = null;
+
+function readCompletedChallenges(){
+  try{const value=JSON.parse(localStorage.getItem("digital-combined-challenges")||"[]");return Array.isArray(value)?value:[]}catch{return[]}
+}
+function saveCompletedChallenge(id){
+  const list=readCompletedChallenges();
+  if(!list.includes(id)) list.push(id);
+  try{localStorage.setItem("digital-combined-challenges",JSON.stringify(list))}catch(error){console.warn("과제 완료 기록 저장 실패",error)}
+}
+function renderChallengeCards(){
+  const grid=$("#challengeGrid");
+  if(!grid) return;
+  const completedModules=readCompletedModules();
+  const completedChallenges=readCompletedChallenges();
+  grid.innerHTML=combinedChallenges.map(challenge=>{
+    const ready=challenge.prerequisites.every(id=>completedModules.includes(id));
+    const done=completedChallenges.includes(challenge.id);
+    return `<button type="button" class="challenge-card ${ready?'ready':''}" data-challenge-id="${challenge.id}" style="--challenge-accent:${challenge.accent}">
+      <span class="challenge-card-icon">${challenge.icon}</span>
+      <h3>${challenge.title}</h3><p>${challenge.summary}</p>
+      <span class="challenge-prereq">${challenge.prereqLabels.map(label=>`<span>${label}</span>`).join('')}</span>
+      <strong class="challenge-readiness">${done?'✓ 과제 완료':ready?'준비 완료 · 과제 시작하기 →':'미리 도전 가능 · 관련 연습 후 다시 하면 더 좋아요 →'}</strong>
+    </button>`
+  }).join('');
+}
+function startCombinedChallenge(id){
+  const challenge=combinedChallenges.find(item=>item.id===id);
+  if(!challenge) return;
+  challengeState={id,challenge,step:0,mistakes:0,start:Date.now(),data:{},chatStage:'list'};
+  $("#challengeTitle").textContent=challenge.title;
+  $("#challengeBriefTitle").textContent=challenge.title;
+  if(id==="family-trip"){
+    $("#challengeBriefText").textContent="딸의 메시지를 읽고 조건에 맞는 표를 예매한 뒤, 예매 완료 화면을 다시 딸에게 보내세요.";
+    $("#challengeGiven").innerHTML=`<div><span>출발·도착</span><b>서울역 → 부산역</b></div><div><span>날짜</span><b>7월 20일</b></div><div><span>시간</span><b>오전 9시대</b></div><div><span>좌석</span><b>창가 좌석</b></div>`;
+  }else{
+    $("#challengeBriefText").textContent="진료 조건에 맞춰 병원을 예약하고, 예약 시간에 맞춰 병원으로 가는 일반 택시를 호출하세요.";
+    $("#challengeGiven").innerHTML=`<div><span>진료 내용</span><b>내과 · 소화가 잘 안 됨</b></div><div><span>예약</span><b>7월 22일 오전 10:30</b></div><div><span>목적지</span><b>우리병원</b></div><div><span>차량</span><b>일반 호출</b></div>`;
+  }
+  $("#challengeMistakes").textContent="0";
+  showView("challengeView");
+  renderCombinedChallenge();
+}
+function challengeUpdateProgress(){
+  if(!challengeState) return;
+  const total=challengeState.challenge.total;
+  const shown=Math.min(challengeState.step,total);
+  $("#challengeProgressText").textContent=`${shown} / ${total}`;
+  $("#challengeProgressBar").style.width=`${Math.round((shown/total)*100)}%`;
+  $("#challengeMistakes").textContent=String(challengeState.mistakes);
+}
+function challengeWrong(message){
+  challengeState.mistakes+=1;challengeUpdateProgress();toast(message);
+  const host=$("#challengeSimulator");host?.classList.remove("challenge-error");void host?.offsetWidth;host?.classList.add("challenge-error");
+}
+function challengeNext(data={}){Object.assign(challengeState.data,data);challengeState.step+=1;renderCombinedChallenge()}
+function renderCombinedChallenge(){
+  if(!challengeState) return;
+  challengeUpdateProgress();
+  if(challengeState.id==="family-trip") renderFamilyTripChallenge(); else renderHospitalRideChallenge();
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+function challengePhone(content,title=""){return `<div class="challenge-phone"><div class="challenge-phone-status"><span>9:41</span><span>● 5G ▰ 92%</span></div>${title?`<div class="challenge-app-head"><span>${title}</span><span>⋮</span></div>`:''}${content}</div>`}
+function renderFamilyTripChallenge(){
+  const s=challengeState.step,host=$("#challengeSimulator");
+  if(s===0){host.innerHTML=`<div class="challenge-start-card"><span class="challenge-badge">받은 부탁</span><h2>딸의 메시지를 읽고 과제를 해결하세요.</h2><div class="message-preview"><p><b>딸</b><br>엄마, 7월 20일 서울역에서 부산역 가는 오전 9시대 KTX로 예매해 줘. 창가 자리면 좋겠어.</p><p><b>딸</b><br>예매가 끝나면 승차권 화면을 사진으로 보내 줘.</p></div><button data-challenge-action="family-start">과제 시작</button></div>`;return}
+  if(s===1){host.innerHTML=challengePhone(`<div class="challenge-content"><h2>승차권 예매</h2><div class="challenge-form"><label>출발역<select id="cfFrom"><option>역 선택</option><option>서울역</option><option>용산역</option></select></label><label>도착역<select id="cfTo"><option>역 선택</option><option>부산역</option><option>대전역</option></select></label><label>출발일<input id="cfDate" type="date" value="2026-07-18"></label><label>출발 시간<select id="cfTime"><option>08시 이후</option><option>09시 이후</option><option>10시 이후</option></select></label><button class="challenge-primary" data-challenge-action="family-search">열차 조회</button></div></div>`,`코레일톡`);return}
+  if(s===2){host.innerHTML=challengePhone(`<div class="challenge-content"><h2>서울 → 부산</h2><p>7월 20일 · 어른 1명</p><div class="challenge-choice-list"><button class="challenge-choice" data-train="0820"><span><b>KTX 021</b><small>08:20 → 11:03</small></span><strong>59,800원</strong></button><button class="challenge-choice" data-train="0940"><span><b>KTX 027</b><small>09:40 → 12:16</small></span><strong>59,800원</strong></button><button class="challenge-choice" data-train="1015"><span><b>KTX 031</b><small>10:15 → 12:51</small></span><strong>59,800원</strong></button></div></div>`,`열차 선택`);return}
+  if(s===3){host.innerHTML=challengePhone(`<div class="challenge-content"><h2>5호차 좌석 선택</h2><p>진행 방향 ↑</p><div class="challenge-seat-map">${['1A','1B','x','1C','1D','2A','2B','x','2C','2D','3A','3B','x','3C','3D'].map(v=>v==='x'?'<span></span>':`<button ${['1B','2D','3C'].includes(v)?'disabled':''} data-seat="${v}">${v}</button>`).join('')}</div><p>회색 좌석은 이미 예약된 좌석입니다.</p></div>`,`좌석 선택`);return}
+  if(s===4){host.innerHTML=challengePhone(`<div class="challenge-content"><div class="challenge-ticket"><div class="challenge-ticket-head">모바일 승차권</div><div class="challenge-ticket-body"><div class="challenge-ticket-route"><span>서울</span><b>→</b><span>부산</span></div><div class="challenge-ticket-grid"><div><span>출발일</span><b>7월 20일</b></div><div><span>열차</span><b>KTX 027</b></div><div><span>시간</span><b>09:40</b></div><div><span>좌석</span><b>${escapeHtml(challengeState.data.seat||'1A')}</b></div></div></div></div><button class="challenge-primary" style="margin-top:16px" data-challenge-action="save-ticket">승차권 화면 저장</button></div>`,`승차권`);return}
+  if(s===5){host.innerHTML=challengePhone(`<div class="challenge-app-head"><span>채팅</span><span>⌕ ＋ ⚙</span></div><div class="challenge-chat-list"><button data-chat-person="daughter"><i>👩</i><span><b>딸</b><small>예매가 끝나면 승차권 화면을 보내 줘.</small></span><time>오후 5:03</time></button><button data-chat-person="son"><i>👨</i><span><b>아들</b><small>이번 주말에 찾아뵐게요.</small></span><time>오후 3:31</time></button><button data-chat-person="group"><i>👥</i><span><b>가족 모임</b><small>사진을 보냈습니다.</small></span><time>오후 1:58</time></button></div>`,`카카오톡`);return}
+  if(s===6){host.innerHTML=challengePhone(`<div class="challenge-chat-room"><div class="challenge-chat-head">← 딸</div><div class="challenge-bubbles"><div class="challenge-bubble">엄마, 예매 끝났어?</div></div><div class="challenge-chat-input"><button data-challenge-action="open-attach">＋</button><input aria-label="메시지" placeholder="메시지 입력"><button class="send">전송</button></div>${challengeState.chatStage==='sheet'?`<div class="challenge-sheet"><h3>보내기</h3><div class="challenge-sheet-grid"><button data-attach="album">🖼️<br>앨범</button><button data-attach="camera">📷<br>카메라</button><button data-attach="file">📎<br>파일</button></div></div>`:''}</div>`,`카카오톡`);return}
+  if(s===7){host.innerHTML=challengePhone(`<div class="challenge-content"><div class="challenge-app-head"><span>사진 선택</span><span>완료</span></div><div class="challenge-photo-grid"><button class="challenge-photo">🌳</button><button class="challenge-photo ticket-photo" data-photo="ticket">🎫<small>승차권</small></button><button class="challenge-photo">🍲</button><button class="challenge-photo">🌸</button><button class="challenge-photo">🐶</button><button class="challenge-photo">🏞️</button></div></div>`,`앨범`);return}
+  if(s===8){completeCombinedChallenge(["딸의 요청 조건과 같은 KTX를 선택했습니다.","창가 좌석을 선택했습니다.","예매 완료 승차권을 딸의 대화방으로 보냈습니다."]);return}
+}
+function renderHospitalRideChallenge(){
+  const s=challengeState.step,host=$("#challengeSimulator");
+  if(s===0){host.innerHTML=`<div class="challenge-start-card"><span class="challenge-badge">오늘의 일정</span><h2>병원 예약과 이동을 한 번에 해결하세요.</h2><div class="message-preview" style="background:#eef5fb"><p><b>해야 할 일</b><br>7월 22일 오전 10시 30분, 우리병원 내과에서 ‘소화가 잘 안 됨’으로 예약하세요.</p><p><b>이동</b><br>예약이 끝나면 집에서 우리병원까지 일반 택시를 호출하세요.</p></div><button data-challenge-action="hospital-start">과제 시작</button></div>`;return}
+  if(s===1){host.innerHTML=`<div class="challenge-hospital"><div class="challenge-hospital-head">우리병원 진료 예약</div><div class="challenge-content"><h2>진료 받을 내용을 선택하세요</h2><div class="challenge-choice-list"><button class="challenge-choice" data-symptom="cold"><span><b>감기·기침</b><small>열, 콧물, 기침 증상</small></span><strong>내과</strong></button><button class="challenge-choice" data-symptom="digest"><span><b>소화가 잘 안 됨</b><small>속이 불편하고 더부룩함</small></span><strong>내과</strong></button><button class="challenge-choice" data-symptom="back"><span><b>허리 통증</b><small>허리가 아프고 움직이기 어려움</small></span><strong>정형외과</strong></button></div></div></div>`;return}
+  if(s===2){host.innerHTML=`<div class="challenge-hospital"><div class="challenge-hospital-head">예약 날짜와 시간</div><div class="challenge-content"><div class="challenge-form"><label>날짜<select id="chDate"><option>7월 21일</option><option>7월 22일</option><option>7월 23일</option></select></label><label>시간<select id="chTime"><option>오전 9:30</option><option>오전 10:30</option><option>오후 2:00</option></select></label><button class="challenge-primary" data-challenge-action="hospital-date">선택 완료</button></div></div></div>`;return}
+  if(s===3){host.innerHTML=`<div class="challenge-hospital"><div class="challenge-hospital-head">예약 정보 확인</div><div class="challenge-content"><div class="challenge-summary-card"><div><span>날짜</span><b>2026년 7월 22일 오전 10:30</b></div><div><span>신청인</span><b>홍길동</b></div><div><span>신청 내용</span><b>내과 · 소화가 잘 안 됨</b></div></div><button class="challenge-primary" style="margin-top:16px" data-challenge-action="hospital-confirm">예약 신청</button></div></div>`;return}
+  if(s===4){host.innerHTML=challengePhone(`<div class="challenge-content"><h2>어디로 갈까요?</h2><div class="challenge-form"><label>출발지<input value="우리 집" readonly></label><label>목적지<input id="taxiDestination" placeholder="목적지를 입력하세요"></label><button class="challenge-primary" data-challenge-action="taxi-search">목적지 검색</button></div></div>`,`카카오 T`);return}
+  if(s===5){host.innerHTML=challengePhone(`<div class="challenge-map"><span class="challenge-pin">📍</span></div><div class="challenge-taxi-bottom"><h2>우리병원으로 이동</h2><button class="challenge-taxi-option" data-taxi-type="regular"><i>🚕</i><span><b>일반 호출</b><small>약 4분 후 도착 · 예상 8,600원</small></span><strong>선택</strong></button><button class="challenge-taxi-option" style="margin-top:10px;border-color:#d8dee5" data-taxi-type="venti"><i>🚐</i><span><b>벤티</b><small>넓은 차량 · 예상 15,000원</small></span><strong>선택</strong></button><div class="challenge-form" style="margin-top:14px"><label>결제수단<select id="taxiPay"><option>결제수단 선택</option><option>등록 카드</option><option>직접 결제</option></select></label><button class="challenge-primary" data-challenge-action="taxi-call">택시 호출</button></div></div>`,`카카오 T`);return}
+  if(s===6){completeCombinedChallenge(["진료 내용과 예약 날짜·시간을 정확히 선택했습니다.","예약 정보를 확인하고 신청했습니다.","우리병원까지 일반 택시를 호출했습니다."]);return}
+}
+function completeCombinedChallenge(lines){
+  const host=$("#challengeSimulator"),seconds=Math.max(1,Math.round((Date.now()-challengeState.start)/1000));
+  saveCompletedChallenge(challengeState.id);challengeState.step=challengeState.challenge.total;challengeUpdateProgress();
+  host.innerHTML=`<div class="challenge-done-card"><div class="challenge-done-icon">✓</div><p class="eyebrow">실전 과제 완료</p><h2>${challengeState.challenge.title}</h2><p>단계별 안내 없이 여러 기능을 연결해 해결했습니다.</p><ul>${lines.map(line=>`<li>${line}</li>`).join('')}</ul><p><b>소요 시간</b> ${Math.floor(seconds/60)}분 ${seconds%60}초 · <b>실수</b> ${challengeState.mistakes}회</p><div class="challenge-done-actions"><button data-challenge-retry="${challengeState.id}">다시 도전</button><button data-action="home">다른 연습 고르기</button></div></div>`;
+  renderChallengeCards();
+}
+function handleChallengeClick(target){
+  if(!challengeState) return false;
+  const action=target.closest("[data-challenge-action]")?.dataset.challengeAction;
+  if(action==="family-start"||action==="hospital-start"){challengeNext();return true}
+  if(action==="family-search"){
+    const from=$("#cfFrom")?.value,to=$("#cfTo")?.value,date=$("#cfDate")?.value,time=$("#cfTime")?.value;
+    if(from!=="서울역"||to!=="부산역"||date!=="2026-07-20"||time!=="09시 이후"){challengeWrong("딸이 보낸 출발역·도착역·날짜·시간을 다시 확인하세요.");return true}challengeNext();return true
+  }
+  const train=target.closest("[data-train]")?.dataset.train;if(train){if(train!=="0940")challengeWrong("딸은 오전 9시대 열차를 부탁했습니다.");else challengeNext({train});return true}
+  const seat=target.closest("[data-seat]")?.dataset.seat;if(seat){if(!/[AD]$/.test(seat))challengeWrong("창가 좌석을 선택하세요. A 또는 D 좌석이 창가입니다.");else challengeNext({seat});return true}
+  if(action==="save-ticket"){challengeNext({ticketSaved:true});return true}
+  const person=target.closest("[data-chat-person]")?.dataset.chatPerson;if(person){if(person!=="daughter")challengeWrong("승차권을 부탁한 사람의 대화방을 선택하세요.");else challengeNext();return true}
+  if(action==="open-attach"){challengeState.chatStage="sheet";renderCombinedChallenge();return true}
+  const attach=target.closest("[data-attach]")?.dataset.attach;if(attach){if(attach!=="album")challengeWrong("저장한 승차권 화면은 앨범에서 선택할 수 있습니다.");else challengeNext();return true}
+  const photo=target.closest("[data-photo]")?.dataset.photo;if(photo){if(photo!=="ticket")challengeWrong("예매한 승차권 사진을 선택하세요.");else challengeNext();return true}
+  const symptom=target.closest("[data-symptom]")?.dataset.symptom;if(symptom){if(symptom!=="digest")challengeWrong("과제에 적힌 진료 내용을 다시 확인하세요.");else challengeNext({symptom});return true}
+  if(action==="hospital-date"){
+    if($("#chDate")?.value!=="7월 22일"||$("#chTime")?.value!=="오전 10:30")challengeWrong("과제에 적힌 날짜와 시간을 다시 확인하세요.");else challengeNext();return true
+  }
+  if(action==="hospital-confirm"){challengeNext({reservation:true});return true}
+  if(action==="taxi-search"){
+    if(String($("#taxiDestination")?.value||"").replace(/\s/g,'')!=="우리병원")challengeWrong("예약한 병원 이름을 목적지로 입력하세요.");else challengeNext();return true
+  }
+  const taxiType=target.closest("[data-taxi-type]")?.dataset.taxiType;if(taxiType){challengeState.data.taxiType=taxiType;target.closest('.challenge-taxi-bottom')?.querySelectorAll('[data-taxi-type]').forEach(b=>b.style.borderColor=b===target.closest('[data-taxi-type]')?'#ffe100':'#d8dee5');return true}
+  if(action==="taxi-call"){
+    if(challengeState.data.taxiType!=="regular"||$("#taxiPay")?.value==="결제수단 선택")challengeWrong("일반 호출과 결제수단을 선택한 뒤 호출하세요.");else challengeNext();return true
+  }
+  return false;
+}
+
+document.addEventListener("click",event=>{
+  const card=event.target.closest("[data-challenge-id]");if(card){event.preventDefault();startCombinedChallenge(card.dataset.challengeId);return}
+  const retry=event.target.closest("[data-challenge-retry]");if(retry){event.preventDefault();startCombinedChallenge(retry.dataset.challengeRetry);return}
+  if(event.target.closest("#challengeView")) handleChallengeClick(event.target);
+});
+renderChallengeCards();
+
 renderHome();
 })();
