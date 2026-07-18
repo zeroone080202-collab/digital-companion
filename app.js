@@ -202,6 +202,132 @@ const modules = [
     steps: ["앱 찾기", "현재 위치", "목적지", "차종·요금", "호출", "차량 확인"],
   },
 ];
+
+const searchAliases = {
+  ktx: ["기차", "열차", "고속철도", "케이티엑스", "코레일", "부산", "서울역", "좌석", "표", "승차권", "예매", "예약"],
+  metro: ["지하철", "전철", "표", "승차권", "교통카드", "일회용", "1회용", "발매기", "키오스크", "역", "잠실"],
+  gtx: ["gtx", "지티엑스", "광역급행", "운정", "킨텍스", "대곡", "서울역", "교통카드", "개찰구"],
+  air: ["비행기", "항공", "항공권", "공항", "제주", "인천", "좌석", "탑승권", "여행"],
+  hotel: ["호텔", "숙소", "숙박", "방", "객실", "체크인", "여행", "부산"],
+  bank: ["은행", "송금", "이체", "돈 보내기", "계좌", "입금", "받는 사람", "금융"],
+  atm: ["atm", "현금", "출금", "돈 찾기", "자동화기기", "카드", "비밀번호"],
+  gov: ["정부", "민원", "등본", "주민등록", "서류", "발급", "공공", "정부24", "민원24"],
+  hospital: ["병원", "진료", "예약", "접수", "무인접수", "내과", "의사", "접수표"],
+  chat: ["카톡", "카카오톡", "메신저", "문자 보내기", "사진 보내기", "대화", "가족", "딸"],
+  video: ["영상통화", "화상통화", "카메라", "통화", "가족", "딸", "카톡"],
+  sms: ["문자", "스미싱", "사기", "수상한 문자", "택배 문자", "링크", "피싱", "보이스피싱"],
+  food: ["음식", "햄버거", "버거", "키오스크", "주문", "식당", "포장", "매장", "결제"],
+  delivery: ["배달", "음식 주문", "김밥", "배달앱", "주소", "주문", "요청사항"],
+  shopping: ["쇼핑", "물건", "온라인 주문", "택배", "배송", "생수", "장바구니", "인터넷 쇼핑"],
+  taxi: ["택시", "호출", "차 부르기", "기사", "목적지", "서울역", "지도"]
+};
+
+const synonymGroups = [
+  ["예매", "예약", "표", "승차권", "티켓"],
+  ["송금", "이체", "돈보내기", "돈 보내기", "계좌이체"],
+  ["영상통화", "화상통화", "비디오통화"],
+  ["지하철", "전철", "도시철도"],
+  ["음식", "식사", "메뉴", "주문"],
+  ["병원", "진료", "접수"],
+  ["쇼핑", "구매", "물건", "상품"],
+  ["비행기", "항공", "항공권"],
+  ["호텔", "숙소", "숙박"],
+  ["문자", "메시지", "메신저", "카톡", "카카오톡"]
+];
+
+function normalizeSearchText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^0-9a-z가-힣]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function compactSearchText(value) {
+  return normalizeSearchText(value).replace(/\s+/g, "");
+}
+
+function expandSearchTerms(query) {
+  const normalized = normalizeSearchText(query);
+  const compact = compactSearchText(query);
+  const terms = new Set(normalized.split(" ").filter(Boolean));
+  if (compact) terms.add(compact);
+  synonymGroups.forEach((group) => {
+    const normalizedGroup = group.map(normalizeSearchText);
+    if (normalizedGroup.some((word) => normalized.includes(word) || compact.includes(word.replace(/\s+/g, "")))) {
+      normalizedGroup.forEach((word) => {
+        terms.add(word);
+        terms.add(word.replace(/\s+/g, ""));
+      });
+    }
+  });
+  return [...terms].filter(Boolean);
+}
+
+function bigrams(value) {
+  const text = compactSearchText(value);
+  const result = [];
+  for (let i = 0; i < text.length - 1; i += 1) result.push(text.slice(i, i + 2));
+  return result;
+}
+
+function diceSimilarity(a, b) {
+  const aa = bigrams(a);
+  const bb = bigrams(b);
+  if (!aa.length || !bb.length) return compactSearchText(a) === compactSearchText(b) ? 1 : 0;
+  const counts = new Map();
+  aa.forEach((item) => counts.set(item, (counts.get(item) || 0) + 1));
+  let matches = 0;
+  bb.forEach((item) => {
+    const count = counts.get(item) || 0;
+    if (count > 0) {
+      matches += 1;
+      counts.set(item, count - 1);
+    }
+  });
+  return (2 * matches) / (aa.length + bb.length);
+}
+
+function moduleSearchText(module) {
+  return [module.title, module.desc, module.goal, ...module.steps, ...(searchAliases[module.id] || [])].join(" ");
+}
+
+function scoreModule(module, query) {
+  const normalizedQuery = normalizeSearchText(query);
+  if (!normalizedQuery) return 1;
+  const compactQuery = compactSearchText(query);
+  const haystack = normalizeSearchText(moduleSearchText(module));
+  const compactHaystack = compactSearchText(haystack);
+  const terms = expandSearchTerms(query);
+  let score = 0;
+  if (haystack.includes(normalizedQuery)) score += 80;
+  if (compactHaystack.includes(compactQuery)) score += 70;
+  terms.forEach((term) => {
+    const compactTerm = term.replace(/\s+/g, "");
+    if (haystack.includes(term)) score += term.length >= 3 ? 18 : 10;
+    if (compactTerm && compactHaystack.includes(compactTerm)) score += 14;
+  });
+  score += Math.round(diceSimilarity(query, moduleSearchText(module)) * 35);
+  return score;
+}
+
+function readCompletedModules() {
+  try {
+    const value = JSON.parse(localStorage.getItem("digital-completed") || "[]");
+    return Array.isArray(value) ? value : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function saveCompletedModules(value) {
+  try {
+    localStorage.setItem("digital-completed", JSON.stringify(value));
+  } catch (error) {
+    console.warn("완료 기록을 저장하지 못했습니다.", error);
+  }
+}
+
 const appCatalog = [
   ["rail", "🚄", "기차예매", "#2878b8"],
   ["air", "✈️", "항공예약", "#4b7bec"],
@@ -232,22 +358,69 @@ function showView(id) {
   $("#" + id).classList.add("active");
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
-function renderHome(cat = "all") {
+function renderHome(cat = "all", query = "") {
   const grid = $("#moduleGrid");
+  if (!grid) return;
+
+  const normalizedQuery = normalizeSearchText(query);
+  const ranked = modules
+    .filter((module) => cat === "all" || module.cat === cat)
+    .map((module) => ({ module, score: scoreModule(module, normalizedQuery) }))
+    .filter((item) => !normalizedQuery || item.score >= 12)
+    .sort((a, b) => b.score - a.score || a.module.title.localeCompare(b.module.title, "ko"));
+
   grid.innerHTML = "";
-  modules
-    .filter((m) => cat === "all" || m.cat === cat)
-    .forEach((m) => {
-      const b = document.createElement("button");
-      b.className = "module-card";
-      b.innerHTML = `<span class="module-icon">${m.icon}</span><h3>${m.title}</h3><p>${m.desc}</p><span class="goal">실전 목표: ${m.goal}</span>`;
-      b.onclick = () => startModule(m.id);
-      grid.appendChild(b);
-    });
-  $("#moduleCount").textContent = modules.length + "개";
-  $("#completeCount").textContent =
-    JSON.parse(localStorage.getItem("digital-completed") || "[]").length + "개";
+  ranked.forEach(({ module }) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "module-card";
+    button.dataset.moduleId = module.id;
+    button.setAttribute("aria-label", `${module.title} 연습 시작`);
+    button.innerHTML = `<span class="module-icon">${module.icon}</span><h3>${module.title}</h3><p>${module.desc}</p><span class="goal">실전 목표: ${module.goal}</span><span class="start-label">연습 시작하기 →</span>`;
+    grid.appendChild(button);
+  });
+
+  if (!ranked.length) {
+    grid.innerHTML = `<div class="empty-search"><div class="empty-icon">⌕</div><h3>비슷한 연습을 찾지 못했습니다.</h3><p>짧은 단어로 다시 검색해 보세요. 예: 기차, 송금, 병원, 영상통화</p><button type="button" data-action="clear-search">전체 연습 보기</button></div>`;
+  }
+
+  const resultTitle = $("#searchResultTitle");
+  const resultDescription = $("#searchResultDescription");
+  if (resultTitle && resultDescription) {
+    if (normalizedQuery) {
+      resultTitle.textContent = `“${query.trim()}”와 비슷한 연습 ${ranked.length}개`;
+      resultDescription.textContent = "원하는 결과를 누르면 휴대전화에서 앱을 찾는 단계부터 연습이 시작됩니다.";
+    } else {
+      resultTitle.textContent = cat === "all" ? "원하는 연습을 선택하세요" : "선택한 분야의 연습입니다";
+      resultDescription.textContent = "아래 연습을 누르거나 위 검색창에 하고 싶은 일을 입력하세요.";
+    }
+  }
+
+  const completed = readCompletedModules();
+  if ($("#moduleCount")) $("#moduleCount").textContent = modules.length + "개";
+  if ($("#completeCount")) $("#completeCount").textContent = completed.length + "개";
 }
+
+function runSearch(query) {
+  const input = $("#practiceSearchInput");
+  const clearButton = $("#clearSearch");
+  const value = String(query ?? input?.value ?? "").trim();
+  if (input) input.value = value;
+  if (clearButton) clearButton.hidden = !value;
+  $$('[data-category]').forEach((button) => button.classList.toggle("active", button.dataset.category === "all"));
+  renderHome("all", value);
+  $("#searchResultTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function clearSearch() {
+  const input = $("#practiceSearchInput");
+  if (input) input.value = "";
+  if ($("#clearSearch")) $("#clearSearch").hidden = true;
+  $$('[data-category]').forEach((button) => button.classList.toggle("active", button.dataset.category === "all"));
+  renderHome("all", "");
+  input?.focus();
+}
+
 function startModule(id) {
   state = {
     module: modules.find((m) => m.id === id),
@@ -353,10 +526,10 @@ function complete() {
   $("#resultTime").textContent = `${Math.floor(sec / 60)}분 ${sec % 60}초`;
   $("#resultMistakes").textContent = state.mistakes + "회";
   $("#resultHints").textContent = state.hints + "회";
-  const list = JSON.parse(localStorage.getItem("digital-completed") || "[]");
+  const list = readCompletedModules();
   if (!list.includes(state.module.id)) {
     list.push(state.module.id);
-    localStorage.setItem("digital-completed", JSON.stringify(list));
+    saveCompletedModules(list);
   }
   showView("resultView");
 }
@@ -887,15 +1060,58 @@ function renderGoals() {
     )
     .join("");
 }
-$$("[data-category]").forEach(
-  (b) =>
-    (b.onclick = () => {
-      $$("[data-category]").forEach((x) => x.classList.remove("active"));
-      b.classList.add("active");
-      renderHome(b.dataset.category);
-    }),
-);
+const searchForm = $("#practiceSearchForm");
+if (searchForm) {
+  searchForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    runSearch($("#practiceSearchInput")?.value || "");
+  });
+}
+
+$("#practiceSearchInput")?.addEventListener("input", (event) => {
+  if ($("#clearSearch")) $("#clearSearch").hidden = !event.target.value.trim();
+});
+
+$("#clearSearch")?.addEventListener("click", clearSearch);
+
+window.addEventListener("error", (event) => {
+  console.error("화면 실행 오류", event.error || event.message);
+  toast("화면을 불러오는 중 문제가 생겼습니다. 새로고침해 주세요.");
+});
+
 document.addEventListener("click", (e) => {
+  const moduleButton = e.target.closest("[data-module-id]");
+  if (moduleButton) {
+    e.preventDefault();
+    startModule(moduleButton.dataset.moduleId);
+    return;
+  }
+
+  const appButton = e.target.closest("[data-app]");
+  if (appButton && appButton.closest("#appIcons, .phone-dock")) {
+    e.preventDefault();
+    openApp(appButton.dataset.app);
+    return;
+  }
+
+  const categoryButton = e.target.closest("[data-category]");
+  if (categoryButton) {
+    e.preventDefault();
+    $$("[data-category]").forEach((button) => button.classList.remove("active"));
+    categoryButton.classList.add("active");
+    if ($("#practiceSearchInput")) $("#practiceSearchInput").value = "";
+    if ($("#clearSearch")) $("#clearSearch").hidden = true;
+    renderHome(categoryButton.dataset.category, "");
+    return;
+  }
+
+  const exampleButton = e.target.closest("[data-search-example]");
+  if (exampleButton) {
+    e.preventDefault();
+    runSearch(exampleButton.dataset.searchExample);
+    return;
+  }
+
   const a = e.target.closest("[data-action]");
   if (!a) return;
   const x = a.dataset.action;
@@ -935,10 +1151,6 @@ document.addEventListener("click", (e) => {
     );
   if (x === "contrast") document.body.classList.toggle("high-contrast");
   if (x === "speak") speak();
-  if (x === "open-goals") {
-    $("#goalDialog").showModal();
-    renderGoals();
-  }
-  if (x === "close-goals") $("#goalDialog").close();
+  if (x === "clear-search") clearSearch();
 });
 renderHome();
