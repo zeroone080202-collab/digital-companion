@@ -2206,3 +2206,269 @@ body.guided-mode .practice-head .eyebrow::after{content:' · 안내 모드';colo
     flex: 0 0 72px;
   }
 }
+
+
+/* v23 - 조부모님 실전형: 휴대전화 비율 유지, 한 화면 표시, 실제 앱 탐색 순서 */
+@media (min-width: 1000px) {
+  body:has(#launcherView.active), body:has(#practiceView.active) { overflow: hidden; }
+  #launcherView.active, #practiceView.active { height: calc(100vh - 86px); overflow: hidden; padding: 10px 20px; }
+  #launcherView .practice-head, #practiceView .practice-head { height: 58px; min-height: 58px; margin:0 0 8px; padding:0; }
+  #launcherView .launcher-layout, #practiceView .practice-layout { height: calc(100vh - 170px); min-height:0; gap:18px; align-items:stretch; }
+  #launcherView .launcher-layout { grid-template-columns:minmax(280px,340px) minmax(0,1fr); }
+  #practiceView .practice-layout { grid-template-columns:minmax(280px,350px) minmax(0,1fr); }
+  #launcherView .mission-panel, #practiceView .mission-panel { height:100%; min-height:0; overflow:hidden; padding:22px; display:flex; flex-direction:column; justify-content:center; }
+  #launcherView .phone-shell { height:100%; width:auto; aspect-ratio:9/19.5; max-width:min(430px,42vw); justify-self:center; align-self:center; border-radius:44px; border:12px solid #111; padding:0; overflow:hidden; box-shadow:0 22px 60px rgba(15,30,55,.24); background:#111; }
+  #launcherView .phone-screen { width:100%; height:100%; border-radius:30px; overflow:hidden; }
+  #practiceView .simulator { height:100%; min-height:0; overflow:hidden; padding:10px; display:flex; align-items:center; justify-content:center; background:linear-gradient(145deg,#eef3f8,#dde6ef); }
+}
+.launcher-brief h2 { font-size:clamp(25px,2vw,34px); line-height:1.4; word-break:keep-all; margin:18px 0; }
+.launcher-brief .repeat-instruction { margin-top:12px; }
+.galaxy-status { height:34px; display:flex; justify-content:space-between; align-items:center; padding:0 18px; font-size:12px; font-weight:800; color:#111; position:relative; z-index:3; }
+.galaxy-wallpaper { height:calc(100% - 34px); position:relative; padding:26px 20px 18px; background:linear-gradient(155deg,#dde9f7 0%,#c8d8f4 45%,#f4d9e7 100%); }
+.galaxy-clock { display:flex; flex-direction:column; color:#172238; }
+.galaxy-clock strong { font-size:58px; font-weight:300; letter-spacing:-3px; }
+.galaxy-clock span { font-size:15px; font-weight:700; }.galaxy-clock small{margin-top:6px;font-size:13px}
+.home-page-icons { display:grid; grid-template-columns:repeat(4,1fr); gap:18px 10px; margin-top:50px; }
+.home-page-icons button,.home-dock-real button,.drawer-app { border:0;background:transparent;display:flex;flex-direction:column;align-items:center;gap:6px;font-weight:700;color:#182238; }
+.home-page-icons i,.drawer-app i { width:54px;height:54px;border-radius:17px;display:grid;place-items:center;font-style:normal;font-size:27px;background:rgba(255,255,255,.88);box-shadow:0 5px 14px rgba(0,0,0,.13); }
+.home-dock-real { position:absolute;left:16px;right:16px;bottom:20px;height:76px;border-radius:25px;background:rgba(255,255,255,.58);backdrop-filter:blur(12px);display:grid;grid-template-columns:repeat(4,1fr);align-items:center; }
+.home-dock-real button i { font-style:normal;font-size:29px; }
+.swipe-up-zone { position:absolute;left:20%;right:20%;bottom:98px;height:52px;cursor:ns-resize;display:flex;justify-content:center;align-items:end; }
+.swipe-up-zone span { width:58px;height:5px;background:rgba(0,0,0,.48);border-radius:20px; }
+.apps-panel { height:calc(100% - 34px); background:linear-gradient(#f6f8fb,#e8edf5); padding:16px 16px 18px; display:flex;flex-direction:column; }
+.oneui-finder { height:52px;border:0;border-radius:26px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.08);display:flex;align-items:center;gap:12px;padding:0 18px;color:#5e6672;font-size:16px; }
+.oneui-app-grid { display:grid;grid-template-columns:repeat(4,1fr);gap:22px 8px;margin-top:24px;align-content:start; }
+.drawer-app span { font-size:11px;line-height:1.2;text-align:center;white-space:normal; }.drawer-app i{width:52px;height:52px}
+.page-dots { margin-top:auto;display:flex;justify-content:center;gap:6px }.page-dots>*{width:6px;height:6px;border-radius:50%;background:#a7afbb}.page-dots b{background:#3b4657}
+.finder-screen { height:calc(100% - 34px);background:#f4f6f9;display:flex;flex-direction:column; }
+.finder-top { height:62px;background:#fff;display:grid;grid-template-columns:42px 1fr 42px;align-items:center;padding:8px 10px;border-bottom:1px solid #e0e4ea; }
+.finder-top button{border:0;background:transparent;font-size:24px}.finder-top input{height:44px;border:0;background:#edf1f5;border-radius:22px;padding:0 16px;font-size:16px;outline:none}
+.finder-keyword{padding:14px 18px;font-size:13px;color:#596579}.finder-results{min-height:150px;padding:0 14px;overflow:auto}.finder-result{width:100%;display:flex;align-items:center;gap:14px;border:0;background:#fff;border-radius:16px;padding:12px;margin-bottom:8px;text-align:left}.finder-result i{width:50px;height:50px;border-radius:16px;display:grid;place-items:center;font-style:normal;font-size:25px}.finder-result span{display:flex;flex-direction:column;gap:3px}.finder-result strong{font-size:16px}.finder-result small{color:#7a8492}
+.mock-keyboard{margin-top:auto;background:#d9dde3;padding:8px 6px 14px;display:grid;grid-template-columns:repeat(10,1fr);gap:5px}.mock-keyboard span,.mock-keyboard b,.mock-keyboard em{height:34px;border-radius:5px;background:#fff;display:grid;place-items:center;font-style:normal;font-size:11px;box-shadow:0 1px 2px rgba(0,0,0,.18)}.mock-keyboard b{grid-column:span 5}.mock-keyboard em{grid-column:span 5;background:#6b8fca;color:#fff}
+.practice-phone { height:min(100%,780px); width:auto; aspect-ratio:9/19.5; max-width:430px; background:#0c0d10; border:10px solid #0c0d10; border-radius:42px; box-shadow:0 20px 55px rgba(20,37,62,.28); position:relative; overflow:hidden; flex:0 1 auto; }
+.practice-phone-screen { position:absolute;inset:0;background:#fff;border-radius:31px;overflow:hidden; }
+.practice-phone-camera { position:absolute;z-index:5;top:8px;left:50%;transform:translateX(-50%);width:11px;height:11px;border-radius:50%;background:#111827;box-shadow:0 0 0 2px #202630; }
+.practice-phone-homebar { position:absolute;z-index:6;bottom:8px;left:50%;transform:translateX(-50%);width:110px;height:4px;border-radius:4px;background:rgba(0,0,0,.48); }
+.kakao-app { height:100%;display:flex;flex-direction:column;background:#fff;padding-top:18px; }
+.kakao-top { flex:0 0 64px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:1px solid #f0f0f0 }.kakao-top strong{font-size:23px}.kakao-top div{display:flex;gap:12px}.kakao-top button{border:0;background:transparent;font-size:21px}
+.my-profile{display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:1px solid #eee}.profile-photo{width:50px;height:50px;border-radius:18px;background:#eceff4;display:grid;place-items:center;font-size:25px}.friends-section{flex:1;overflow:auto;padding:8px 18px}.friends-section small{color:#8b919a}.friend-line{height:62px;display:flex;align-items:center;gap:14px}.friend-line span{width:46px;height:46px;border-radius:16px;background:#eef1f5;display:grid;place-items:center;font-size:23px}
+.kakao-bottom { flex:0 0 66px;display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid #e5e5e5;background:#fff;padding-bottom:4px }.kakao-bottom button{border:0;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:#7d838d;font-size:10px}.kakao-bottom button i{font-style:normal;font-size:20px}.kakao-bottom button.active{color:#111;font-weight:800}
+.chat-filter{display:flex;gap:7px;padding:8px 14px}.chat-filter button{border:1px solid #ddd;background:#fff;border-radius:18px;padding:7px 12px;font-size:11px}.chat-filter .active{background:#222;color:#fff;border-color:#222}.kakao-chat-list{flex:1;overflow:auto}.kakao-chat-list .messenger-row{min-height:70px;padding:8px 15px}.kakao-chat-list .messenger-avatar{width:48px;height:48px}.kakao-chat-list .messenger-main strong{font-size:15px}.kakao-chat-list .messenger-main span{font-size:12px}.kakao-chat-list .messenger-side{font-size:10px}
+.practice-phone .conversation-view,.practice-phone .messenger-realistic,.practice-phone .chat-app{height:100%;max-height:none;border-radius:0!important}.practice-phone .conversation-head{padding-top:18px;flex-basis:74px}.practice-phone .realistic-chat-body{background:#b9cbd9}.practice-phone .realistic-chat-input{padding-bottom:12px}
+.call-choice{height:100%;padding:28px 22px;display:flex;flex-direction:column;align-items:center;background:#fff}.call-choice-head{width:100%;display:flex;align-items:center;justify-content:space-between}.call-choice-head button{border:0;background:transparent;font-size:25px}.call-profile{width:92px;height:92px;border-radius:34px;background:#eef0f4;display:grid;place-items:center;font-size:48px;margin:70px 0 18px}.call-choice h2{font-size:18px;margin-bottom:26px}.call-choice>button:not(:first-child){width:100%;height:58px;border:0;border-radius:16px;margin:7px 0;font-size:17px;font-weight:800}.voice-choice{background:#f0f2f5}.video-choice{background:#fee500}
+@media (max-width:999px){#launcherView .phone-shell{width:min(390px,92vw);aspect-ratio:9/19.5}.practice-phone{height:720px;max-width:92vw}.launcher-brief{min-height:260px}}
+
+
+/* ===== 모바일·겹침 방지 최종 보정 ===== */
+* { box-sizing: border-box; }
+html, body { max-width: 100%; overflow-x: hidden; }
+img, svg, video, canvas { max-width: 100%; height: auto; }
+button, input, select, textarea { max-width: 100%; font: inherit; }
+button { min-height: 46px; touch-action: manipulation; }
+.practice-layout, .practice-shell, .sim-grid, .content-grid { min-width: 0; }
+.practice-layout > *, .practice-shell > *, .sim-grid > *, .content-grid > * { min-width: 0; }
+.mission-panel, .simulator, .phone-frame, .kiosk-frame, .app-screen { overflow-wrap: anywhere; word-break: keep-all; }
+.phone-frame { aspect-ratio: 9 / 19.5; height: min(70dvh, 760px); width: auto; max-width: min(100%, 390px); margin-inline: auto; }
+.phone-screen { overflow: hidden; }
+.chat-list, .chat-room, .app-body, .screen-scroll { overscroll-behavior: contain; }
+.chat-input, .bottom-nav, .call-controls { position: sticky; bottom: 0; z-index: 5; }
+.call-controls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.call-control { min-width: 0; white-space: normal; line-height: 1.2; }
+.table-wrap, .seat-map-wrap, .route-map-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+@media (max-width: 900px) {
+  body { min-height: 100dvh; }
+  .topbar, header { position: relative; }
+  .practice-layout, .practice-shell, .sim-grid, .content-grid {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+  .mission-panel { position: relative !important; inset: auto !important; max-height: none !important; overflow: visible !important; }
+  .simulator { min-height: 520px; max-height: none; overflow: visible; }
+  .phone-frame { height: min(72dvh, 700px); max-width: 360px; }
+  .category-row, .filter-row { overflow-x: auto; flex-wrap: nowrap !important; scrollbar-width: thin; }
+  .module-grid, .card-grid { grid-template-columns: 1fr !important; }
+  .search-row { display: grid !important; grid-template-columns: 1fr auto; }
+}
+
+@media (max-width: 480px) {
+  :root { font-size: 15px; }
+  main, .container, .page-shell { padding-inline: 10px !important; }
+  .phone-frame { width: min(100%, 340px); height: auto; aspect-ratio: 9 / 19.5; }
+  .phone-screen { height: 100%; }
+  .mission-panel { padding: 14px !important; }
+  .mission-panel h2, .mission-panel .instruction { font-size: clamp(1.12rem, 5vw, 1.42rem) !important; }
+  .call-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .chat-row, .menu-row, .restaurant-row, .product-row { gap: 8px; }
+  .chat-row > *, .menu-row > *, .restaurant-row > *, .product-row > * { min-width: 0; }
+  .search-row { grid-template-columns: 1fr; }
+  .search-row button { width: 100%; }
+}
+
+/* ===== v30: 안내-화면 동기화, 겹침 제거, 실제 앱 비율 보정 ===== */
+/* 실제 휴대전화 안의 브라우저 하단 도구막대가 화면 전체로 빠져나오지 않게 제한 */
+.phone-screen,
+.browser-phone,
+.practice-phone-screen {
+  position: relative;
+  overflow: hidden;
+  contain: layout paint;
+}
+.browser-phone {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.browser-phone .browser-toolbar { flex: 0 0 auto; }
+.browser-phone .browser-page {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto !important;
+  overflow-y: auto;
+  padding-bottom: 76px !important;
+}
+.browser-phone .browser-bottom {
+  position: absolute !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 58px;
+  z-index: 30;
+  display: grid !important;
+  grid-template-columns: repeat(5, minmax(0,1fr));
+  align-items: center;
+  padding: 6px 8px max(8px, env(safe-area-inset-bottom)) !important;
+  background: rgba(255,255,255,.98) !important;
+  border-top: 1px solid #dfe4ea;
+  box-shadow: 0 -4px 14px rgba(15,30,50,.08);
+}
+.browser-phone .browser-bottom button {
+  min-width: 0;
+  min-height: 42px;
+  padding: 4px;
+  font-size: 1.12rem;
+}
+
+/* 설명은 한 단계 한 문장만, 눌려 보이지 않도록 넉넉하게 */
+#practiceView .concise-mission {
+  justify-content: flex-start !important;
+  gap: 14px;
+  padding: 22px !important;
+  overflow: hidden !important;
+}
+#practiceView .concise-mission .mission-label {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 1rem !important;
+  line-height: 1.2;
+}
+#practiceView .concise-mission .command-box {
+  flex: 0 0 auto;
+  display: grid !important;
+  grid-template-columns: 52px minmax(0,1fr);
+  align-items: center;
+  gap: 14px;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 20px 18px !important;
+  border-width: 2px !important;
+  border-radius: 16px;
+}
+#practiceView .concise-mission .command-number {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #125896;
+  color: #fff;
+  font-size: 1.35rem;
+  font-weight: 900;
+  line-height: 1;
+}
+#practiceView .concise-mission #currentInstruction {
+  margin: 0 !important;
+  font-size: clamp(1.22rem, 1.55vw, 1.72rem) !important;
+  line-height: 1.42 !important;
+  letter-spacing: -0.02em;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+#practiceView .concise-mission .repeat-instruction {
+  flex: 0 0 auto;
+  margin: 0 !important;
+  min-height: 54px;
+  font-size: 1.05rem !important;
+}
+
+/* 앱에 없는 교육용 파란 머리띠 제거 */
+.sim-top { display: none !important; }
+
+/* 영상통화와 대화방 상단 아이콘에 글자 병기 */
+.conversation-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px !important;
+}
+.conversation-actions button {
+  width: auto !important;
+  min-width: 48px;
+  min-height: 50px;
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 3px 5px !important;
+}
+.conversation-actions button span { font-size: 1.12rem; line-height: 1; }
+.conversation-actions button small { font-size: .62rem; white-space: nowrap; color: #485466; }
+.realistic-call-controls button {
+  width: 74px !important;
+  height: 74px !important;
+  min-height: 74px;
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 1.1rem !important;
+  padding: 4px;
+}
+.realistic-call-controls button span { font-size: 1.35rem; line-height: 1; }
+.realistic-call-controls button small { font-size: .62rem; line-height: 1.1; white-space: normal; text-align:center; color: inherit; }
+
+/* 데스크톱에서도 안내 칸이 너무 좁아지지 않도록 조정 */
+@media (min-width: 1000px) {
+  #practiceView .practice-layout {
+    grid-template-columns: minmax(360px, 400px) minmax(0, 1fr) !important;
+    gap: 18px !important;
+  }
+  #practiceView .simulator { padding: 10px !important; }
+}
+
+/* 휴대폰에서는 설명과 연습화면이 잘리지 않도록 자연스럽게 이어짐 */
+@media (max-width: 999px) {
+  body:has(#practiceView.active) { overflow-y: auto !important; }
+  #practiceView.active { height: auto !important; min-height: 100dvh; overflow: visible !important; }
+  #practiceView .practice-layout { height: auto !important; }
+  #practiceView .concise-mission {
+    padding: 14px !important;
+    gap: 10px;
+  }
+  #practiceView .concise-mission .command-box {
+    grid-template-columns: 42px minmax(0,1fr);
+    gap: 10px;
+    padding: 14px !important;
+  }
+  #practiceView .concise-mission .command-number { width: 40px; height: 40px; font-size: 1.1rem; }
+  #practiceView .concise-mission #currentInstruction { font-size: clamp(1.08rem, 4.6vw, 1.35rem) !important; }
+  #practiceView .simulator { overflow: visible !important; min-height: 0 !important; }
+  .practice-phone { width: min(100%, 390px); height: auto !important; aspect-ratio: 9/19.5; }
+}
