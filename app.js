@@ -1,364 +1,44 @@
-const views = document.querySelectorAll('.view');
-const root = document.documentElement;
-const body = document.body;
-
-const state = {
-  fontScale: Number(localStorage.getItem('fontScale')) || 1,
-  highContrast: localStorage.getItem('highContrast') === 'true',
-  voiceEnabled: localStorage.getItem('voiceEnabled') === 'true',
-  kiosk: { step: 0, mistakes: 0, help: 0, startTime: null, answers: {} },
-  quiz: { index: 0, correct: 0, answered: false }
-};
-
-const kioskSteps = [
-  {
-    title: '어디에서 드시겠어요?',
-    speech: '매장에서 드실지, 포장하실지 선택해 주세요.',
-    options: ['매장에서 먹기', '포장하기'],
-    correct: '포장하기',
-    key: 'place'
-  },
-  {
-    title: '주문할 메뉴를 선택해 주세요.',
-    speech: '불고기 버거를 선택해 주세요.',
-    options: ['불고기 버거', '새우 버거', '치킨 버거', '주문 취소'],
-    correct: '불고기 버거',
-    key: 'menu'
-  },
-  {
-    title: '음료를 선택해 주세요.',
-    speech: '콜라를 선택해 주세요.',
-    options: ['콜라', '사이다', '물', '음료 없음'],
-    correct: '콜라',
-    key: 'drink'
-  },
-  {
-    title: '주문 내용을 확인해 주세요.',
-    speech: '포장, 불고기 버거, 콜라가 맞으면 주문 확인을 눌러 주세요.',
-    options: ['주문 확인', '처음부터 다시'],
-    correct: '주문 확인',
-    key: 'confirm'
-  },
-  {
-    title: '결제 방법을 선택해 주세요.',
-    speech: '연습용 카드 결제를 선택해 주세요. 실제 결제는 되지 않습니다.',
-    options: ['연습용 카드 결제', '실제 계좌 입력', '주민등록번호 입력'],
-    correct: '연습용 카드 결제',
-    key: 'payment'
-  }
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const state={font:+localStorage.getItem('fontScale')||1,contrast:localStorage.getItem('highContrast')==='true',voice:localStorage.getItem('voiceEnabled')==='true',kiosk:null,quiz:null};
+const steps=['이용 방식','메뉴 선택','주문 확인','결제 방법','완료'];
+const menuItems=[
+ {id:'burger',name:'불고기 버거',price:6900,emoji:'🍔',desc:'달콤한 불고기 소스'},
+ {id:'chicken',name:'바삭 치킨버거',price:7200,emoji:'🍗',desc:'바삭한 치킨 패티'},
+ {id:'shrimp',name:'새우 버거',price:7500,emoji:'🍤',desc:'통통한 새우 패티'},
+ {id:'coffee',name:'따뜻한 커피',price:2500,emoji:'☕',desc:'고소한 아메리카노'},
+ {id:'cola',name:'콜라',price:2200,emoji:'🥤',desc:'시원한 탄산음료'},
+ {id:'fries',name:'감자튀김',price:2800,emoji:'🍟',desc:'바삭한 감자튀김'}
 ];
-
-const quizQuestions = [
-  {
-    message: '[택배 안내]\n주소가 정확하지 않아 배송이 중단되었습니다. 아래 링크에서 다시 입력하세요.\nhttp://delivery-check.example',
-    suspicious: true,
-    reason: '출처가 불분명한 링크를 누르게 하고 개인정보 입력을 유도합니다.'
-  },
-  {
-    message: '[가족 문자]\n엄마, 휴대폰이 고장 났어. 급하게 돈이 필요하니 이 계좌로 보내줘.',
-    suspicious: true,
-    reason: '가족을 사칭해 급하게 송금을 요구하는 전형적인 수법입니다. 반드시 기존 번호로 직접 전화해 확인해야 합니다.'
-  },
-  {
-    message: '[도서관]\n예약한 도서가 도착했습니다. 회원증을 가지고 안내 데스크를 방문해 주세요.',
-    suspicious: false,
-    reason: '링크나 개인정보 입력, 송금 요구가 없고 일반적인 안내 내용입니다.'
-  },
-  {
-    message: '[카드 결제]\n해외에서 980,000원이 결제되었습니다. 취소하려면 앱을 설치하세요.',
-    suspicious: true,
-    reason: '불안감을 조성하고 앱 설치를 유도합니다. 카드사 공식 앱이나 대표번호로 직접 확인해야 합니다.'
-  },
-  {
-    message: '[병원 안내]\n내일 오전 10시 진료 예약이 있습니다. 변경이 필요하면 병원 대표번호로 연락해 주세요.',
-    suspicious: false,
-    reason: '금전이나 개인정보를 요구하지 않고 공식 연락 방법을 안내합니다.'
-  }
+const quizzes=[
+ {sender:'택배 안내',text:'[배송조회]\n주소가 정확하지 않아 배송이 중단되었습니다. 아래 링크에서 주소를 확인해 주세요.\nhttp://delivery-check.example',bad:true,points:['출처가 불분명한 링크가 있습니다.','주소 입력을 유도합니다.','공식 택배 앱에서 직접 확인해야 합니다.']},
+ {sender:'행복병원',text:'내일 오전 10시 진료 예약이 있습니다. 변경이 필요하면 병원 대표번호로 연락해 주세요.',bad:false,points:['링크가 없습니다.','개인정보나 송금을 요구하지 않습니다.','일반적인 예약 안내입니다.']},
+ {sender:'엄마',text:'휴대폰이 고장 나서 다른 번호로 연락해. 급하게 돈이 필요하니 계좌로 80만원만 보내줘.',bad:true,points:['가족을 사칭해 송금을 요구합니다.','급하게 행동하도록 재촉합니다.','기존 번호로 직접 전화해 확인해야 합니다.']},
+ {sender:'중앙도서관',text:'예약하신 도서가 도착했습니다. 회원증을 지참해 안내 데스크를 방문해 주세요.',bad:false,points:['금전 요구가 없습니다.','외부 링크가 없습니다.','기관 방문 안내만 포함합니다.']},
+ {sender:'카드 보안센터',text:'해외에서 980,000원이 결제되었습니다. 본인이 아니라면 아래 앱을 설치해 취소하세요.',bad:true,points:['불안감을 조성합니다.','앱 설치를 유도합니다.','카드사 공식 앱이나 대표번호로 확인해야 합니다.']},
+ {sender:'복지관 안내',text:'이번 주 금요일 스마트폰 교육은 오후 2시에 시작합니다. 문의는 복지관 안내 데스크로 해 주세요.',bad:false,points:['교육 일정만 안내합니다.','개인정보를 요구하지 않습니다.','수상한 링크가 없습니다.']}
 ];
-
-function showView(name) {
-  views.forEach(view => view.classList.remove('active'));
-  document.getElementById(`${name}View`).classList.add('active');
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-  if (name === 'results') renderResults();
-  if (state.voiceEnabled) speak(getViewIntro(name));
+function saveSettings(){localStorage.setItem('fontScale',state.font);localStorage.setItem('highContrast',state.contrast);localStorage.setItem('voiceEnabled',state.voice)}
+function applySettings(){document.documentElement.style.setProperty('--scale',state.font);document.body.classList.toggle('high-contrast',state.contrast);$('#contrastToggle').textContent=state.contrast?'◐ 기본 화면':'◐ 고대비';$('#voiceToggle').setAttribute('aria-pressed',state.voice);$('#voiceToggle').textContent=state.voice?'🔇 음성 끄기':'🔊 음성 안내'}
+function speak(text){if(!state.voice||!('speechSynthesis'in window))return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='ko-KR';u.rate=.82;speechSynthesis.speak(u)}
+function toast(text){const el=$('#toast');el.textContent=text;el.classList.add('show');clearTimeout(window.__toast);window.__toast=setTimeout(()=>el.classList.remove('show'),2300)}
+function showView(name){$$('.view').forEach(v=>v.classList.remove('active'));$(`#${name}View`).classList.add('active');scrollTo({top:0,behavior:'smooth'});if(name==='results')renderResults();const intro={home:'첫 화면입니다.',kiosk:'음식 주문 키오스크 연습입니다.',smishing:'수상한 문자 구별 연습입니다.',guide:'화면 사용 안내입니다.',results:'연습 결과 화면입니다.'};speak(intro[name])}
+function resetKiosk(){state.kiosk={step:0,place:null,cart:[],pay:null,start:Date.now(),mistakes:0,help:0};renderKiosk()}
+function money(v){return v.toLocaleString('ko-KR')+'원'}
+function coach(text){$('#coachText').textContent=text}
+function renderSteps(){$('#stepList').innerHTML=steps.map((s,i)=>`<div class="step-dot ${i<state.kiosk.step?'done':i===state.kiosk.step?'active':''}"><i>${i<state.kiosk.step?'✓':i+1}</i><span>${s}</span></div>`).join('')}
+function kioskHeader(title,sub='화면을 눌러 선택하세요'){return `<div class="k-screen-header"><b>${title}</b><span>${sub}</span></div>`}
+function renderKiosk(){renderSteps();const k=state.kiosk;const panel=$('#kioskPanel');if(k.step===0){coach('매장에서 먹을지, 포장할지 선택해 보세요.');panel.innerHTML=`<div class="k-start"><div class="k-start-copy"><small>어서 오세요!</small><h3>어떻게 이용하시겠어요?</h3><p>원하는 버튼을 한 번 눌러 주세요.</p><div class="k-big-buttons"><button class="k-big-button" data-place="매장에서 먹기">🍽️<br>매장에서 먹기</button><button class="k-big-button" data-place="포장하기">🛍️<br>포장하기</button></div></div><div class="k-start-visual">🍔</div></div>`;$$('[data-place]').forEach(b=>b.onclick=()=>{k.place=b.dataset.place;k.step=1;renderKiosk()})}
+ else if(k.step===1){coach('원하는 메뉴를 눌러 장바구니에 담고 주문 확인을 누르세요.');const total=k.cart.reduce((a,id)=>a+menuItems.find(m=>m.id===id).price,0);panel.innerHTML=`${kioskHeader('메뉴를 골라 주세요','메뉴를 누르면 장바구니에 담깁니다')}<div class="menu-layout"><div class="menu-main"><div class="category-tabs"><button class="active">전체 메뉴</button><button>버거</button><button>음료</button><button>사이드</button></div><div class="real-menu-grid">${menuItems.map(m=>`<button class="real-menu-card" data-menu="${m.id}"><div class="food-art">${m.emoji}</div><b>${m.name}</b><small>${m.desc}</small><div class="price">${money(m.price)}</div></button>`).join('')}</div></div><aside class="cart-panel"><h4>🛒 주문 목록</h4><div class="cart-items">${k.cart.length?k.cart.map((id,i)=>{const m=menuItems.find(x=>x.id===id);return `<div class="cart-item"><span>${m.name}</span><button data-remove="${i}">삭제</button></div>`}).join(''):'<div class="cart-empty">메뉴를 눌러<br>담아 보세요</div>'}</div><div class="cart-total"><span>합계</span><span>${money(total)}</span></div><button class="cart-next" id="toReview" ${!k.cart.length?'disabled':''}>주문 확인</button></aside></div>`;$$('[data-menu]').forEach(b=>b.onclick=()=>{k.cart.push(b.dataset.menu);toast('장바구니에 담았습니다');renderKiosk()});$$('[data-remove]').forEach(b=>b.onclick=()=>{k.cart.splice(+b.dataset.remove,1);renderKiosk()});$('#toReview').onclick=()=>{if(!k.cart.length){k.mistakes++;toast('메뉴를 먼저 담아 주세요');return}k.step=2;renderKiosk()}}
+ else if(k.step===2){coach('주문 내용과 금액을 확인한 뒤 결제하기를 누르세요.');const total=k.cart.reduce((a,id)=>a+menuItems.find(m=>m.id===id).price,0);panel.innerHTML=`${kioskHeader('주문 내용을 확인해 주세요')}<div class="review-wrap"><div class="review-grid"><div class="receipt"><h3>주문 내역</h3><div class="receipt-row"><span>이용 방식</span><b>${k.place}</b></div>${k.cart.map(id=>{const m=menuItems.find(x=>x.id===id);return `<div class="receipt-row"><span>${m.name}</span><b>${money(m.price)}</b></div>`}).join('')}<div class="receipt-total">총 결제 금액 ${money(total)}</div></div><div class="payment-box"><h3>내용이 맞나요?</h3><p>틀린 내용이 있으면 이전 단계로 돌아갈 수 있습니다.</p><div class="payment-options"><button class="pay-option" id="backMenu">← 메뉴 다시 고르기</button><button class="pay-option" id="goPay">✓ 결제하기</button></div></div></div></div>`;$('#backMenu').onclick=()=>{k.step=1;renderKiosk()};$('#goPay').onclick=()=>{k.step=3;renderKiosk()}}
+ else if(k.step===3){coach('카드 결제를 선택하고 카드 삽입을 연습해 보세요.');panel.innerHTML=`${kioskHeader('결제 방법을 선택해 주세요')}<div class="review-wrap"><div class="review-grid"><div class="payment-box"><h3>결제 방법</h3><div class="payment-options"><button class="pay-option" data-pay="card">💳 신용·체크카드</button><button class="pay-option" data-pay="mobile">📱 모바일 결제</button><button class="pay-option" data-pay="cash">💵 현금</button></div></div><div><div class="card-reader"><b>카드 결제 단말기</b><p>카드를 아래 투입구에<br>끝까지 넣어 주세요.</p><div class="card-slot"></div></div></div></div></div>`;$$('[data-pay]').forEach(b=>b.onclick=()=>{if(b.dataset.pay!=='card'){k.mistakes++;toast('이번 연습에서는 카드 결제를 선택해 주세요');return}k.pay='카드';toast('카드가 인식되었습니다');setTimeout(()=>{k.step=4;finishKiosk()},700)})}
 }
-
-function getViewIntro(name) {
-  const intros = {
-    home: '디지털 동행 첫 화면입니다. 연습할 항목을 선택해 주세요.',
-    kiosk: '음식 주문 연습입니다. 천천히 한 단계씩 진행해 주세요.',
-    smishing: '수상한 문자 구별 연습입니다.',
-    guide: '스마트폰 화면을 편하게 바꾸는 방법입니다.',
-    results: '나의 연습 결과 화면입니다.'
-  };
-  return intros[name] || '';
-}
-
-function speak(text) {
-  if (!('speechSynthesis' in window) || !text) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'ko-KR';
-  utterance.rate = 0.82;
-  speechSynthesis.speak(utterance);
-}
-
-function applySettings() {
-  root.style.setProperty('--font-scale', state.fontScale.toFixed(1));
-  body.classList.toggle('high-contrast', state.highContrast);
-  document.getElementById('contrastToggle').textContent = state.highContrast ? '기본 화면' : '고대비';
-  const voiceButton = document.getElementById('voiceToggle');
-  voiceButton.textContent = state.voiceEnabled ? '음성 안내 끄기' : '음성 안내 켜기';
-  voiceButton.setAttribute('aria-pressed', String(state.voiceEnabled));
-}
-
-function saveSettings() {
-  localStorage.setItem('fontScale', String(state.fontScale));
-  localStorage.setItem('highContrast', String(state.highContrast));
-  localStorage.setItem('voiceEnabled', String(state.voiceEnabled));
-}
-
-function resetKiosk() {
-  state.kiosk = { step: 0, mistakes: 0, help: 0, startTime: Date.now(), answers: {} };
-  renderKiosk();
-}
-
-function renderKiosk() {
-  const panel = document.getElementById('kioskPanel');
-  const step = kioskSteps[state.kiosk.step];
-  const percent = ((state.kiosk.step) / kioskSteps.length) * 100;
-  document.getElementById('kioskProgress').style.setProperty('--progress', `${percent}%`);
-  document.getElementById('kioskStepText').textContent = `${state.kiosk.step + 1}단계 / ${kioskSteps.length}단계`;
-
-  const summary = state.kiosk.step >= 3 ? `
-    <div class="order-summary">
-      <strong>현재 주문</strong><br>
-      ${state.kiosk.answers.place || '선택 전'} · ${state.kiosk.answers.menu || '선택 전'} · ${state.kiosk.answers.drink || '선택 전'}
-    </div>` : '';
-
-  panel.innerHTML = `
-    ${summary}
-    <p class="practice-question">${step.title}</p>
-    <div class="choice-grid">
-      ${step.options.map(option => `<button type="button" class="choice-button" data-kiosk-choice="${option}">${option}</button>`).join('')}
-    </div>
-    <div id="kioskFeedback" class="feedback-box" style="display:none"></div>
-  `;
-
-  panel.querySelectorAll('[data-kiosk-choice]').forEach(button => {
-    button.addEventListener('click', () => handleKioskChoice(button.dataset.kioskChoice));
-  });
-}
-
-function handleKioskChoice(choice) {
-  const step = kioskSteps[state.kiosk.step];
-  const feedback = document.getElementById('kioskFeedback');
-
-  if (choice === '처음부터 다시') {
-    resetKiosk();
-    return;
-  }
-
-  if (choice !== step.correct) {
-    state.kiosk.mistakes += 1;
-    feedback.style.display = 'block';
-    feedback.className = 'feedback-box warning';
-    feedback.innerHTML = `<strong>괜찮습니다.</strong><br>이 연습에서는 <strong>${step.correct}</strong>를 선택해 보세요.`;
-    if (state.voiceEnabled) speak(`괜찮습니다. ${step.correct}를 선택해 보세요.`);
-    return;
-  }
-
-  state.kiosk.answers[step.key] = choice;
-  state.kiosk.step += 1;
-
-  if (state.kiosk.step >= kioskSteps.length) {
-    finishKiosk();
-  } else {
-    renderKiosk();
-    if (state.voiceEnabled) speak(kioskSteps[state.kiosk.step].speech);
-  }
-}
-
-function finishKiosk() {
-  const elapsed = Math.max(1, Math.round((Date.now() - state.kiosk.startTime) / 1000));
-  const record = {
-    date: new Date().toLocaleString('ko-KR'),
-    seconds: elapsed,
-    mistakes: state.kiosk.mistakes,
-    help: state.kiosk.help
-  };
-  localStorage.setItem('kioskResult', JSON.stringify(record));
-  document.getElementById('kioskProgress').style.setProperty('--progress', '100%');
-  document.getElementById('kioskStepText').textContent = '연습 완료';
-  document.getElementById('kioskPanel').innerHTML = `
-    <div class="feedback-box success">
-      <h3>주문 연습을 완료했습니다!</h3>
-      <p>실제 돈은 결제되지 않았습니다.</p>
-    </div>
-    <div class="results-grid">
-      <article class="result-card"><h3>걸린 시간</h3><p class="result-number">${elapsed}초</p></article>
-      <article class="result-card"><h3>잘못 누른 횟수</h3><p class="result-number">${record.mistakes}회</p></article>
-      <article class="result-card"><h3>도움 사용</h3><p class="result-number">${record.help}회</p></article>
-      <article class="result-card"><h3>최종 결과</h3><p class="result-number">성공</p></article>
-    </div>
-    <button type="button" id="retryKiosk" class="primary-button">다시 연습하기</button>
-  `;
-  document.getElementById('retryKiosk').addEventListener('click', resetKiosk);
-  if (state.voiceEnabled) speak('축하합니다. 음식 주문 연습을 완료했습니다.');
-}
-
-function renderQuiz() {
-  const question = quizQuestions[state.quiz.index];
-  const panel = document.getElementById('quizPanel');
-  const percent = (state.quiz.index / quizQuestions.length) * 100;
-  document.getElementById('quizProgress').style.setProperty('--progress', `${percent}%`);
-  document.getElementById('quizStepText').textContent = `${state.quiz.index + 1}번 문제 / ${quizQuestions.length}번 문제`;
-
-  panel.innerHTML = `
-    <p class="practice-question">이 문자는 수상한 문자일까요?</p>
-    <div class="message-box">${question.message}</div>
-    <div class="choice-grid">
-      <button type="button" class="choice-button" data-quiz-answer="true">수상한 문자 같아요</button>
-      <button type="button" class="choice-button" data-quiz-answer="false">안전한 문자 같아요</button>
-    </div>
-    <div id="quizFeedback" class="feedback-box" style="display:none"></div>
-  `;
-
-  panel.querySelectorAll('[data-quiz-answer]').forEach(button => {
-    button.addEventListener('click', () => answerQuiz(button.dataset.quizAnswer === 'true'));
-  });
-
-  if (state.voiceEnabled) speak('문자 내용을 읽고 수상한 문자인지 선택해 주세요.');
-}
-
-function answerQuiz(answer) {
-  if (state.quiz.answered) return;
-  state.quiz.answered = true;
-  const question = quizQuestions[state.quiz.index];
-  const isCorrect = answer === question.suspicious;
-  if (isCorrect) state.quiz.correct += 1;
-
-  const feedback = document.getElementById('quizFeedback');
-  feedback.style.display = 'block';
-  feedback.className = `feedback-box ${isCorrect ? 'success' : 'warning'}`;
-  feedback.innerHTML = `
-    <h3>${isCorrect ? '잘 판단했습니다!' : '다시 확인해 볼까요?'}</h3>
-    <p>${question.reason}</p>
-    <button type="button" id="nextQuiz" class="primary-button">다음 문제</button>
-  `;
-  document.getElementById('nextQuiz').addEventListener('click', nextQuiz);
-  if (state.voiceEnabled) speak(`${isCorrect ? '정답입니다.' : '아쉽습니다.'} ${question.reason}`);
-}
-
-function nextQuiz() {
-  state.quiz.index += 1;
-  state.quiz.answered = false;
-  if (state.quiz.index >= quizQuestions.length) finishQuiz();
-  else renderQuiz();
-}
-
-function finishQuiz() {
-  const record = {
-    date: new Date().toLocaleString('ko-KR'),
-    correct: state.quiz.correct,
-    total: quizQuestions.length
-  };
-  localStorage.setItem('quizResult', JSON.stringify(record));
-  document.getElementById('quizProgress').style.setProperty('--progress', '100%');
-  document.getElementById('quizStepText').textContent = '연습 완료';
-  document.getElementById('quizPanel').innerHTML = `
-    <div class="feedback-box success">
-      <h3>문자 구별 연습을 마쳤습니다.</h3>
-      <p>모르는 링크는 누르지 말고, 공식 대표번호로 직접 확인하세요.</p>
-    </div>
-    <div class="result-card">
-      <h3>정답 수</h3>
-      <p class="result-number">${record.correct} / ${record.total}</p>
-    </div>
-    <button type="button" id="retryQuiz" class="primary-button">다시 풀기</button>
-  `;
-  document.getElementById('retryQuiz').addEventListener('click', () => {
-    state.quiz = { index: 0, correct: 0, answered: false };
-    renderQuiz();
-  });
-  if (state.voiceEnabled) speak(`문자 구별 연습을 마쳤습니다. ${record.total}문제 중 ${record.correct}문제를 맞혔습니다.`);
-}
-
-function renderResults() {
-  const panel = document.getElementById('resultsPanel');
-  const kiosk = JSON.parse(localStorage.getItem('kioskResult') || 'null');
-  const quiz = JSON.parse(localStorage.getItem('quizResult') || 'null');
-
-  if (!kiosk && !quiz) {
-    panel.innerHTML = '<div class="empty-state"><h3>아직 저장된 기록이 없습니다.</h3><p>연습을 완료하면 결과가 이곳에 표시됩니다.</p></div>';
-    return;
-  }
-
-  panel.innerHTML = `
-    ${kiosk ? `<article class="result-card"><h3>음식 주문 연습</h3><p class="result-number">완료</p><p>시간 ${kiosk.seconds}초 · 실수 ${kiosk.mistakes}회 · 도움 ${kiosk.help}회</p><small>${kiosk.date}</small></article>` : ''}
-    ${quiz ? `<article class="result-card"><h3>수상한 문자 구별</h3><p class="result-number">${quiz.correct}/${quiz.total}</p><p>정답률 ${Math.round((quiz.correct / quiz.total) * 100)}%</p><small>${quiz.date}</small></article>` : ''}
-  `;
-}
-
-document.querySelectorAll('[data-open]').forEach(button => {
-  button.addEventListener('click', () => {
-    const target = button.dataset.open;
-    if (target === 'kiosk') resetKiosk();
-    if (target === 'smishing') {
-      state.quiz = { index: 0, correct: 0, answered: false };
-      renderQuiz();
-    }
-    showView(target);
-  });
-});
-
-document.querySelectorAll('[data-home]').forEach(button => button.addEventListener('click', () => showView('home')));
-
-document.getElementById('fontUp').addEventListener('click', () => {
-  state.fontScale = Math.min(1.4, +(state.fontScale + 0.1).toFixed(1));
-  saveSettings(); applySettings();
-  if (state.voiceEnabled) speak('글자를 크게 했습니다.');
-});
-
-document.getElementById('fontDown').addEventListener('click', () => {
-  state.fontScale = Math.max(0.9, +(state.fontScale - 0.1).toFixed(1));
-  saveSettings(); applySettings();
-  if (state.voiceEnabled) speak('글자를 작게 했습니다.');
-});
-
-document.getElementById('contrastToggle').addEventListener('click', () => {
-  state.highContrast = !state.highContrast;
-  saveSettings(); applySettings();
-  if (state.voiceEnabled) speak(state.highContrast ? '고대비 화면을 켰습니다.' : '기본 화면으로 돌아왔습니다.');
-});
-
-document.getElementById('voiceToggle').addEventListener('click', () => {
-  state.voiceEnabled = !state.voiceEnabled;
-  saveSettings(); applySettings();
-  if (state.voiceEnabled) speak('음성 안내를 켰습니다.');
-  else if ('speechSynthesis' in window) speechSynthesis.cancel();
-});
-
-document.getElementById('kioskHelp').addEventListener('click', () => {
-  state.kiosk.help += 1;
-  const step = kioskSteps[state.kiosk.step];
-  alert(`도움말\n\n${step.speech}\n\n정답 버튼: ${step.correct}`);
-  speak(`${step.speech} 정답은 ${step.correct}입니다.`);
-});
-
-document.getElementById('kioskSpeak').addEventListener('click', () => {
-  const step = kioskSteps[state.kiosk.step];
-  if (step) speak(step.speech);
-});
-
-document.getElementById('resetResults').addEventListener('click', () => {
-  const confirmed = confirm('저장된 연습 기록을 모두 지울까요?');
-  if (!confirmed) return;
-  localStorage.removeItem('kioskResult');
-  localStorage.removeItem('quizResult');
-  renderResults();
-});
-
+function finishKiosk(){const k=state.kiosk;renderSteps();coach('주문이 완료되었습니다. 주문번호를 확인하세요.');const sec=Math.max(1,Math.round((Date.now()-k.start)/1000));const rec={date:new Date().toLocaleString('ko-KR'),seconds:sec,mistakes:k.mistakes,help:k.help,items:k.cart.length};localStorage.setItem('kioskResult',JSON.stringify(rec));$('#kioskPanel').innerHTML=`<div class="finish-screen"><div><div class="finish-check">✓</div><h3>주문이 완료되었습니다</h3><p>아래 주문번호가 화면에 표시되면 주문이 끝난 것입니다.</p><div class="order-number">A-107</div><p><b>걸린 시간 ${sec}초</b> · 실수 ${k.mistakes}회 · 도움 ${k.help}회</p><button class="retry-button" id="retryKiosk">다시 연습하기</button></div></div>`;$('#retryKiosk').onclick=resetKiosk;speak('주문 연습을 완료했습니다. 주문번호는 A 107입니다.')}
+function resetQuiz(){state.quiz={index:0,correct:0,answered:false};renderQuiz()}
+function renderQuiz(){const q=state.quiz,item=quizzes[q.index];$('#quizCount').textContent=`${q.index+1} / ${quizzes.length}`;$('#quizStatus').textContent=`현재 정답 ${q.correct}개`;$('#senderName').textContent=item.sender;$('#quizPanel').innerHTML=`<div class="sms-date">오늘 오전 9:41</div><div class="sms-bubble">${item.text}</div><div class="sms-time">오전 9:41</div><div id="riskArea"></div>`;$('#quizButtons').innerHTML=`<button class="answer-btn danger" data-answer="bad">⚠️ 수상한 문자예요</button><button class="answer-btn safe" data-answer="safe">✓ 안전한 문자예요</button><button class="answer-btn unknown" data-answer="unknown">? 잘 모르겠어요</button>`;$$('[data-answer]').forEach(b=>b.onclick=()=>answerQuiz(b.dataset.answer));speak('문자를 읽고 수상한 문자인지 선택해 주세요.')}
+function answerQuiz(ans){const q=state.quiz;if(q.answered)return;q.answered=true;const item=quizzes[q.index],correct=(ans==='bad')===item.bad&&ans!=='unknown';if(correct)q.correct++;$('#quizStatus').textContent=`현재 정답 ${q.correct}개`;$('#riskArea').innerHTML=`<div class="risk-highlights"><b>${item.bad?'주의할 점':'안전하다고 볼 수 있는 이유'}</b><ul>${item.points.map(p=>`<li>${p}</li>`).join('')}</ul></div>`;$('#quizButtons').innerHTML=`<div class="feedback-card ${correct?'good':'bad'}"><h4>${correct?'잘 판단했습니다!':'한 번 더 확인해 보세요'}</h4><p>${item.bad?'이 문자는 수상한 문자입니다.':'이 문자는 일반적인 안내 문자입니다.'}</p><button class="next-btn" id="nextQuiz">${q.index===quizzes.length-1?'결과 보기':'다음 문제'}</button></div>`;$('#nextQuiz').onclick=()=>{q.index++;q.answered=false;if(q.index>=quizzes.length)finishQuiz();else renderQuiz()};speak(correct?'정답입니다.':'아쉽습니다. 표시된 이유를 확인해 주세요.')}
+function finishQuiz(){const q=state.quiz;const rec={date:new Date().toLocaleString('ko-KR'),correct:q.correct,total:quizzes.length};localStorage.setItem('quizResult',JSON.stringify(rec));$('#senderName').textContent='연습 완료';$('#quizPanel').innerHTML=`<div class="finish-screen"><div><div class="finish-check">✓</div><h3>문자 구별 연습 완료</h3><p>모르는 링크는 누르지 말고 공식 대표번호로 확인하세요.</p><div class="order-number">${rec.correct} / ${rec.total}</div></div></div>`;$('#quizButtons').innerHTML=`<button class="next-btn" id="retryQuiz">다시 풀기</button>`;$('#retryQuiz').onclick=resetQuiz;speak(`${rec.total}문제 중 ${rec.correct}문제를 맞혔습니다.`)}
+function renderResults(){const k=JSON.parse(localStorage.getItem('kioskResult')||'null'),q=JSON.parse(localStorage.getItem('quizResult')||'null');const p=$('#resultsPanel');if(!k&&!q){p.innerHTML='<div class="empty-result"><h3>아직 연습 기록이 없습니다</h3><p>음식 주문이나 문자 구별 연습을 완료하면 이곳에 결과가 표시됩니다.</p></div>';return}p.innerHTML=`${k?`<article class="result-summary"><small>음식 주문 키오스크</small><div class="big">연습 완료</div><div class="result-metrics"><div><b>${k.seconds}초</b><small>완료 시간</small></div><div><b>${k.mistakes}회</b><small>실수</small></div><div><b>${k.help}회</b><small>도움</small></div></div><p>${k.date}</p></article>`:''}${q?`<article class="result-summary"><small>수상한 문자 구별</small><div class="big">${Math.round(q.correct/q.total*100)}점</div><div class="result-metrics"><div><b>${q.correct}개</b><small>정답</small></div><div><b>${q.total-q.correct}개</b><small>오답</small></div><div><b>${q.total}개</b><small>전체</small></div></div><p>${q.date}</p></article>`:''}`}
+$$('[data-open]').forEach(b=>b.onclick=()=>{const t=b.dataset.open;if(t==='kiosk')resetKiosk();if(t==='smishing')resetQuiz();showView(t)});$$('[data-home]').forEach(b=>b.onclick=()=>showView('home'));
+$('#fontUp').onclick=()=>{state.font=Math.min(1.3,+(state.font+.1).toFixed(1));saveSettings();applySettings();toast('글자를 크게 했습니다')};$('#fontDown').onclick=()=>{state.font=Math.max(.9,+(state.font-.1).toFixed(1));saveSettings();applySettings();toast('글자를 작게 했습니다')};$('#contrastToggle').onclick=()=>{state.contrast=!state.contrast;saveSettings();applySettings()};$('#voiceToggle').onclick=()=>{state.voice=!state.voice;saveSettings();applySettings();if(state.voice)speak('음성 안내가 켜졌습니다.')};
+$('#kioskSpeak').onclick=()=>speak($('#coachText').textContent);$('#kioskHelp').onclick=()=>{if(!state.kiosk)return;state.kiosk.help++;const hints=['매장에서 먹기 또는 포장하기 중 하나를 누르세요.','메뉴 사진을 눌러 장바구니에 담아 보세요.','주문 내용이 맞으면 결제하기를 누르세요.','신용 체크카드 버튼을 누르세요.','주문번호를 확인하세요.'];toast(hints[state.kiosk.step]||'화면 안내를 확인해 주세요.');speak(hints[state.kiosk.step])};$('#resetResults').onclick=()=>{if(confirm('저장된 연습 기록을 모두 지울까요?')){localStorage.removeItem('kioskResult');localStorage.removeItem('quizResult');renderResults();toast('기록을 지웠습니다')}};
 applySettings();
-showView('home');
