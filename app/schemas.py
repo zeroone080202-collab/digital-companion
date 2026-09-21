@@ -48,7 +48,7 @@ class MedicalAnswer(Strict):
 
 class Credentials(Strict):
     email: str = Field(min_length=5, max_length=254)
-    password: str = Field(min_length=12, max_length=128)
+    password: str = Field(min_length=5, max_length=128)
     invite_code: str = Field(default='',max_length=200)
     terms_accepted: bool = False
 

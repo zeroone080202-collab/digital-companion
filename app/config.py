@@ -26,6 +26,7 @@ class Settings:
     max_image_bytes: int = 5*1024*1024
     requests_per_minute: int = 8
     max_concurrency: int = 2
+    guest_daily_limit: int = field(default_factory=lambda: max(1, min(50, int(os.getenv('GUEST_DAILY_LIMIT','5')))))
     @property
     def has_accounts(self): return bool(self.supabase_url and self.supabase_key and self.encryption_key)
     @property
@@ -36,8 +37,6 @@ class Settings:
             raise RuntimeError('Render must use DEPLOYMENT_MODE=public; anonymous local mode must not be exposed.')
         if self.public and not self.has_accounts:
             raise RuntimeError('Public mode requires SUPABASE_URL, SUPABASE_ANON_KEY and DATA_ENCRYPTION_KEY. See docs/RENDER_KO.md.')
-        if self.public and not self.open_signup and len(self.invite_code)<12:
-            raise RuntimeError('Set a SIGNUP_INVITE_CODE of at least 12 characters for the closed research beta.')
         if self.has_accounts:
             from cryptography.fernet import Fernet
             Fernet(self.encryption_key.encode())

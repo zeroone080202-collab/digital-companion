@@ -6,10 +6,11 @@ import hashlib
 import hmac
 import json
 import re
+import secrets
 import time
 from uuid import uuid4, UUID
 from pathlib import Path
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -90,6 +91,21 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
         user=await cloud().user(token)
         if not await cloud().membership(token): raise HTTPException(403,'membership_required')
         return user,token
+    async def chat_identity(request, response):
+        token=request.cookies.get('medi_access','')
+        if token and cfg.has_accounts:
+            try:
+                user=await cloud().user(token)
+                if await cloud().membership(token): return user,token,False
+            except CloudError:
+                pass
+        if not cfg.has_accounts and not cfg.public:
+            return {'id':'local','email':''},'',True
+        guest=request.cookies.get('medi_guest','')
+        if not re.fullmatch(r'[0-9a-f]{32}',guest):
+            guest=secrets.token_hex(16)
+            response.set_cookie('medi_guest',guest,max_age=30*86400,httponly=True,secure=cfg.public,samesite='strict',path='/api')
+        return {'id':'guest:'+guest,'email':''},'',True
     def cookies(response,session):
         response.set_cookie('medi_access',session['access_token'],max_age=min(int(session.get('expires_in',3600)),3600),
             httponly=True,secure=cfg.public,samesite='strict',path='/api')
@@ -110,7 +126,7 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
         return {'app':'MEDI','version':'0.1.0','public':cfg.public,'accounts':cfg.has_accounts,
                 'ai_connected':bool(cfg.api_key),'model':cfg.model if cfg.api_key else None,
                 'knowledge':app.state.stats,'knowledge_enabled':not cfg.public or cfg.dataset_rights_confirmed,
-                'invite_required':not cfg.open_signup,'max_image_mb':5,'max_images':2,
+                'invite_required':False,'guest_chat':True,'guest_daily_limit':cfg.guest_daily_limit,'max_image_mb':5,'max_images':2,
                 'learning':'consented_feedback_then_human_review','radiology_enabled':False,
                 'operator_contact':cfg.operator_contact}
     @app.post('/api/auth/signup')
@@ -118,12 +134,10 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
         auth_limit(request,data.email)
         if not data.terms_accepted: raise HTTPException(400,'terms_required')
         if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',data.email): raise HTTPException(400,'invalid_email')
-        if not cfg.open_signup and (not cfg.invite_code or not hmac.compare_digest(data.invite_code,cfg.invite_code)):
-            raise HTTPException(403,'invalid_invite')
         session=await cloud().signup(data.email,data.password)
         response=JSONResponse({'ok':True,'email_confirmation_required':not bool(session.get('access_token'))})
         if session.get('access_token'):
-            await cloud().join(session['access_token'],data.invite_code)
+            await cloud().join(session['access_token'],'')
             cookies(response,session)
         return response
     @app.post('/api/auth/login')
@@ -131,7 +145,7 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
         auth_limit(request,data.email)
         session=await cloud().login(data.email,data.password)
         if not await cloud().membership(session['access_token']):
-            await cloud().join(session['access_token'],data.invite_code)
+            await cloud().join(session['access_token'],'')
         response=JSONResponse({'ok':True});cookies(response,session);return response
     @app.post('/api/auth/refresh')
     async def refresh(request: Request):
@@ -149,6 +163,29 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
         except CloudError:pass
         results.clear()
         response=JSONResponse({'ok':True});clear_cookies(response);return response
+    @app.get('/api/auth/session')
+    async def auth_session(request: Request):
+        if not cfg.has_accounts:
+            return {'user':None}
+        token=request.cookies.get('medi_access','')
+        if token:
+            try:
+                user=await cloud().user(token)
+                if await cloud().membership(token): return {'user':user}
+            except CloudError:
+                pass
+        refresh_token=request.cookies.get('medi_refresh','')
+        if refresh_token:
+            try:
+                session=await cloud().refresh(refresh_token)
+                user=await cloud().user(session['access_token'])
+                if not await cloud().membership(session['access_token']):
+                    response=JSONResponse({'user':None});clear_cookies(response);return response
+                response=JSONResponse({'user':user});cookies(response,session);return response
+            except CloudError:
+                response=JSONResponse({'user':None});clear_cookies(response);return response
+        return {'user':None}
+
     @app.get('/api/auth/me')
     async def me(request: Request):
         user,_=await identity(request)
@@ -175,8 +212,8 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
         return {'ok':True}
 
     @app.post('/api/chat')
-    async def chat(data: ChatRequest,request:Request):
-        user,token=await identity(request)
+    async def chat(data: ChatRequest,request:Request,response:Response):
+        user,token,is_guest=await chat_identity(request,response)
         if not data.consent:raise HTTPException(400,'processing_consent_required')
         uid=user['id'];key=(uid,str(data.request_id))
         now=time.monotonic()
@@ -192,6 +229,7 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
         try:
             # Saved history comes from owner-scoped DB, not forged client records.
             if data.conversation_id:
+                if is_guest: raise HTTPException(401,'login_required_for_saving')
                 saved=await cloud().turns(token,str(data.conversation_id),80)
                 if len(saved)>=80:raise HTTPException(409,'conversation_full')
                 for old in saved:
@@ -231,7 +269,10 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
                     try: await asyncio.wait_for(gate.acquire(),timeout=.2)
                     except TimeoutError: raise HTTPException(503,'server_busy')
                     try:
-                        if cfg.has_accounts:quota=await cloud().reserve_call(token)
+                        if token and cfg.has_accounts:quota=await cloud().reserve_call(token)
+                        elif is_guest and cfg.public:
+                            if not limiter.allow('guest-daily:'+uid,cfg.guest_daily_limit,86400):raise HTTPException(429,'daily_limit')
+                            quota={'guest':True,'daily_limit':cfg.guest_daily_limit}
                         elif not limiter.allow('local-daily',100,86400):raise HTTPException(429,'daily_limit')
                         answer=await generator(data,sources,clean,cfg)
                         provider='openai'
@@ -240,7 +281,7 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
                     'provider':provider,'model':cfg.model if provider=='openai' else None,
                     'image_processing':image_info,'image_bytes_stored':False,'quota':quota,'saved':False,
                     'learning_applied':False}
-            if data.conversation_id:
+            if data.conversation_id and not is_guest:
                 try:
                     result['saved']=True
                     await cloud().save_turn(token,uid,str(data.conversation_id),str(data.request_id),
