@@ -1,0 +1,78 @@
+{
+  "format": 1,
+  "codec": "gzip",
+  "uncompressed_bytes": 883294208,
+  "sha256": "04888527a063e918bb1ec9f24ba78f09a43b6a47e9308cf02e442de59d7cbf47",
+  "parts": [
+    {
+      "name": "knowledge.000.bin",
+      "bytes": 20971520,
+      "sha256": "6c42030a23256bd277fd88d56a901da27f81ef73e4126c08613a46dcc216caf2"
+    },
+    {
+      "name": "knowledge.001.bin",
+      "bytes": 20971520,
+      "sha256": "2d89973b9b4006157048ab935ad1043df0c7c0edd513abea5398a7bc11c9fbbc"
+    },
+    {
+      "name": "knowledge.002.bin",
+      "bytes": 20971520,
+      "sha256": "8c55c56ece9e5c9b4afaeb6515d10d5879cddabec1b75ecb2f768c97c538fbdc"
+    },
+    {
+      "name": "knowledge.003.bin",
+      "bytes": 20971520,
+      "sha256": "20e9b370aa31dedfe1e29e6d7250856db2f4bd1f1f0115b194233fd34dcc6cbd"
+    },
+    {
+      "name": "knowledge.004.bin",
+      "bytes": 20971520,
+      "sha256": "676cfb8ad6cb5fa34057e25359cc96bcfc39bbe147b4280c14a58b3c67ce34b7"
+    },
+    {
+      "name": "knowledge.005.bin",
+      "bytes": 20971520,
+      "sha256": "0a68acc181642eae4a87d5c87123933e71e0b311e1b499c76ddf52359d43506a"
+    },
+    {
+      "name": "knowledge.006.bin",
+      "bytes": 20971520,
+      "sha256": "358890294a531440e8986704657f816abd00e8a45ff8b80f571d2d9cf345e319"
+    },
+    {
+      "name": "knowledge.007.bin",
+      "bytes": 20971520,
+      "sha256": "bc3ff9ec6d9c57f51f26f0dddfd10c414a0bc5921b7ac88526b42d72c461cde4"
+    },
+    {
+      "name": "knowledge.008.bin",
+      "bytes": 20971520,
+      "sha256": "1ad6baebbdbf71b83873b4ede69af4a29fa0b9abc574f6295e6b2b6962b991a5"
+    },
+    {
+      "name": "knowledge.009.bin",
+      "bytes": 20971520,
+      "sha256": "ce17cca19240af3e5551ecc1cd80b5efe354f86f39f6a1ea1d85d1d6df3a92fc"
+    },
+    {
+      "name": "knowledge.010.bin",
+      "bytes": 20971520,
+      "sha256": "d9d370dbca9f34f9999df304c6aad914ae4637240984170359370011465139bf"
+    },
+    {
+      "name": "knowledge.011.bin",
+      "bytes": 20971520,
+      "sha256": "838dd75b2fd2fdd787e17d448d00c5114cf8320f4cd5d72b4f1e162fb1137785"
+    },
+    {
+      "name": "knowledge.012.bin",
+      "bytes": 20971520,
+      "sha256": "86abfb8259f385593171bec37db1bfca41bbf6e8f5a7c99e2c1bd453b6ca199a"
+    },
+    {
+      "name": "knowledge.013.bin",
+      "bytes": 12836790,
+      "sha256": "06530af33b72489d950fcd93cab5ff5db00ec1ab266a93eb7978e42cb36d3def"
+    }
+  ]
+}
