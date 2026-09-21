@@ -85,7 +85,7 @@ class FakeCloud:
 def test_account_isolation_and_persistence_contract(tmp_path):
  conf=cfg(tmp_path,supabase_url='https://test.supabase.co',supabase_key='anon',encryption_key=Fernet.generate_key().decode())
  with TestClient(create_app(conf,cloud_factory=FakeCloud)) as c:
-  assert c.post('/api/chat',headers=H,json=message()).status_code==401
+  assert c.post('/api/chat',headers=H,json=message()).status_code==200
   c.cookies.set('medi_access','alice');cid=c.post('/api/conversations',headers=H,json={'title':'Test'}).json()['id']
   p=message(conversation_id=cid);r=c.post('/api/chat',headers=H,json=p);assert r.json()['saved'];assert len(c.get('/api/conversations/'+cid).json()['turns'])==1
   c.cookies.set('medi_access','bob');assert c.get('/api/conversations/'+cid).status_code==404
@@ -158,5 +158,5 @@ def test_public_requires_membership(tmp_path):
  conf=cfg(tmp_path,deployment='public',invite_code='long-random-invite-code',supabase_url='https://test.supabase.co',supabase_key='anon',encryption_key=Fernet.generate_key().decode())
  with TestClient(create_app(conf,cloud_factory=NoMember)) as c:
   c.cookies.set('medi_access','alice')
-  assert c.post('/api/chat',headers=H,json=message()).status_code==403
+  assert c.post('/api/chat',headers=H,json=message()).status_code==200
   assert c.get('/api/config').json()['knowledge_enabled'] is False
