@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light"><meta name="robots" content="noindex,nofollow">
+<title>MEDI - Medical Research Companion</title>
+<link rel="icon" href="/static/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/app.css">
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#question" data-i18n="skip"></a>
+<div class="layout">
+<button id="shade" class="shade" aria-label="Close navigation" hidden></button>
+<aside id="sidebar" class="sidebar" aria-label="Conversation navigation">
+ <a class="brand" href="/" aria-label="MEDI home"><img src="/static/mark.svg" width="35" height="35" alt=""><span>MEDI<small>RESEARCH COMPANION</small></span></a>
+ <button id="newChat" class="new-chat"><span class="plus">+</span><span data-i18n="newChat"></span><kbd>N</kbd></button>
+ <div class="nav-caption" data-i18n="history"></div><div id="conversationList" class="conversation-list"></div>
+ <div class="sidebar-bottom">
+  <button id="dataInfo" class="data-card"><span class="data-top"><span class="status-dot"></span><span data-i18n="knowledgeLabel"></span><span class="arrow">&#8599;</span></span><strong id="docCount">--</strong><small id="chunkCount" data-i18n="loading"></small><span class="data-line"></span><small data-i18n="dataCaution"></small></button>
+  <button id="privacyButton" class="side-link"><span aria-hidden="true">&#9671;</span><span data-i18n="privacy"></span></button>
+  <button id="accountButton" class="account-button"><span class="avatar">M</span><span><b id="accountName" data-i18n="localSession"></b><small id="accountState" data-i18n="temporary"></small></span><span class="arrow">&#8250;</span></button>
+ </div>
+</aside>
+<div class="workspace">
+ <header class="topbar"><div class="top-left"><button id="menuButton" class="icon-button menu-button" aria-label="Open navigation">&#9776;</button><b>MEDI</b><span class="version-tag">RESEARCH BETA</span></div><div class="top-right"><span id="connection" class="connection" data-i18n="loading"></span><button id="exportButton" class="quiet-button" data-i18n="export"></button></div></header>
+ <div id="systemNotice" class="system-notice" role="status" hidden></div>
+ <main id="scrollArea" class="scroll-area">
+  <section id="welcome" class="welcome">
+   <div class="welcome-symbol"><img src="/static/mark.svg" width="42" height="42" alt=""></div>
+   <p class="eyebrow">A SPACE FOR BETTER UNDERSTANDING</p><h1 data-i18n="welcomeTitle"></h1><p class="welcome-description" data-i18n="welcomeDescription"></p>
+   <div class="suggestions">
+    <button class="suggestion" data-prompt="promptKnowledge"><span class="card-icon">&#9783;</span><b data-i18n="cardKnowledge"></b><p data-i18n="cardKnowledgeDesc"></p><span class="card-arrow">&#8599;</span></button>
+    <button class="suggestion" id="welcomeImage"><span class="card-icon">&#9635;</span><b data-i18n="cardImage"></b><p data-i18n="cardImageDesc"></p><span class="card-arrow">&#8599;</span></button>
+    <button class="suggestion" data-prompt="promptStudy" data-mode="study"><span class="card-icon">&#10022;</span><b data-i18n="cardStudy"></b><p data-i18n="cardStudyDesc"></p><span class="card-arrow">&#8599;</span></button>
+   </div><p class="welcome-note"><span class="status-dot"></span><span data-i18n="welcomeNote"></span></p>
+  </section>
+  <section id="messages" class="messages" aria-label="Conversation"></section>
+  <div id="pending" class="pending" role="status" hidden><span class="pulse"></span><span data-i18n="pending"></span></div>
+ </main>
+ <footer class="composer-area"><form id="chatForm" class="composer">
+  <div id="attachments" class="attachments"></div>
+  <label class="sr-only" for="question" data-i18n="questionLabel"></label><textarea id="question" rows="2" maxlength="4000" data-placeholder="questionPlaceholder"></textarea>
+  <div class="composer-tools"><div class="tool-group"><button type="button" id="attachButton" class="attach-button" data-title="attach"><span class="plus">+</span><span class="attach-label" data-i18n="image"></span></button><span class="tool-divider"></span><label class="sr-only" for="mode" data-i18n="mode"></label><select id="mode"><option value="health" data-i18n="health"></option><option value="study" data-i18n="study"></option></select></div><div class="tool-group"><span id="charCount" class="char-count">0 / 4000</span><button type="submit" id="sendButton" class="send-button" data-title="send" aria-label="Send message">&#8593;</button><button type="button" id="stopButton" class="stop-button" data-i18n="stop" hidden></button></div></div>
+ </form>
+ <div class="composer-options"><label class="save-option"><input type="checkbox" id="saveChat"><span data-i18n="saveChat"></span></label><button id="consentButton" class="text-button" data-i18n="processingInfo"></button></div>
+ <p class="disclaimer" data-i18n="disclaimer"></p>
+ </footer>
+</div>
+</div>
+<input type="file" id="fileInput" accept="image/png,image/jpeg,image/webp" multiple hidden>
+<div id="toast" class="toast" role="status" hidden></div>
+<dialog id="infoDialog"><div class="dialog-heading"><h2 id="infoTitle"></h2><button class="icon-button" data-close="infoDialog" aria-label="Close">&#215;</button></div><div id="infoBody" class="dialog-body"></div><div class="dialog-actions"><button class="primary-button" data-close="infoDialog" data-i18n="close"></button></div></dialog>
+<dialog id="consentDialog"><div class="dialog-heading"><h2 data-i18n="consentTitle"></h2><button class="icon-button" data-close="consentDialog" aria-label="Close">&#215;</button></div><div class="dialog-body"><p data-i18n="consentBody"></p><p class="notice-box" data-i18n="consentPrivacy"></p><label class="check-line"><input id="consentCheck" type="checkbox"><span data-i18n="consentCheck"></span></label></div><div class="dialog-actions"><button class="quiet-button" data-close="consentDialog" data-i18n="cancel"></button><button id="acceptConsent" class="primary-button" data-i18n="agree"></button></div></dialog>
+<dialog id="authDialog"><div class="dialog-heading"><h2 id="authTitle" data-i18n="login"></h2><button class="icon-button" data-close="authDialog" aria-label="Close">&#215;</button></div><form id="authForm" class="dialog-body"><p class="subtle" data-i18n="authDescription"></p><label class="field"><span data-i18n="email"></span><input id="email" type="email" autocomplete="email" maxlength="254" required></label><label class="field"><span data-i18n="password"></span><input id="password" type="password" autocomplete="current-password" minlength="12" maxlength="128" required></label><label id="inviteField" class="field"><span data-i18n="invite"></span><input id="invite" type="password" autocomplete="off" maxlength="200"></label><label id="termsField" class="check-line" hidden><input id="terms" type="checkbox"><span data-i18n="terms"></span></label><p id="authError" class="inline-error" role="alert"></p><button id="authSubmit" class="primary-button full" type="submit" data-i18n="login"></button><button id="authToggle" type="button" class="text-button full" data-i18n="toSignup"></button></form></dialog>
+<dialog id="feedbackDialog"><div class="dialog-heading"><h2 data-i18n="feedbackTitle"></h2><button class="icon-button" data-close="feedbackDialog" aria-label="Close">&#215;</button></div><form id="feedbackForm" class="dialog-body"><p class="notice-box" data-i18n="feedbackDescription"></p><label class="field"><span data-i18n="feedbackQuestion"></span><textarea id="feedbackQuestion" maxlength="4000" rows="2" required></textarea></label><label class="field"><span data-i18n="feedbackAnswer"></span><textarea id="feedbackAnswer" maxlength="16000" rows="4" required></textarea></label><label class="field"><span data-i18n="correction"></span><textarea id="correction" maxlength="4000" rows="3"></textarea></label><label class="field"><span data-i18n="rating"></span><select id="rating"><option value="needs_review" data-i18n="needsReview"></option><option value="helpful" data-i18n="helpful"></option></select></label><label class="check-line"><input id="feedbackConsent" type="checkbox" required><span data-i18n="feedbackConsent"></span></label><label class="check-line"><input id="deidentified" type="checkbox" required><span data-i18n="deidentified"></span></label><button id="feedbackSubmit" class="primary-button full" type="submit" data-i18n="feedbackSend"></button><p id="feedbackError" class="inline-error" role="alert"></p></form></dialog>
+</body></html>
