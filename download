@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+playwright-report/
+test-results/
+data/*.sqlite*
+reports/*.heldout.jsonl
+feedback-export*
+reviewed-feedback*
+research/raw/
+research/checkpoints/
+private_exports/
+*.log
