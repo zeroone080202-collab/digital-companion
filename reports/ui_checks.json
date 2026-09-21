@@ -1,0 +1,32 @@
+{
+  "transport": "Browser DOM + in-memory FastAPI TestClient, no external network",
+  "viewports": [
+    {
+      "width": 1440,
+      "height": 1000,
+      "ok": true
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "ok": true
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "ok": true
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "ok": true
+    },
+    {
+      "width": 360,
+      "height": 800,
+      "ok": true
+    }
+  ],
+  "errors": [],
+  "checks": 43
+}

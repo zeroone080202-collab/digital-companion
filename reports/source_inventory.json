@@ -1,0 +1,107 @@
+[
+  {
+    "archive": "09.필수의료 의학지식 데이터/3.개방데이터/1.데이터/Training/01.원천데이터/TS_국문_기타.zip",
+    "files": 1032,
+    "bytes": 97113955,
+    "oversized": [
+      {
+        "file": "/cid_54097_1_0392.json",
+        "bytes": 38877520
+      },
+      {
+        "file": "/cid_54095_1_5752.json",
+        "bytes": 37406120
+      }
+    ]
+  },
+  {
+    "archive": "09.필수의료 의학지식 데이터/3.개방데이터/1.데이터/Training/01.원천데이터/TS_국문_온라인 의료 정보 제공 사이트.zip",
+    "files": 2034,
+    "bytes": 1547088,
+    "oversized": []
+  },
+  {
+    "archive": "09.필수의료 의학지식 데이터/3.개방데이터/1.데이터/Training/01.원천데이터/TS_국문_의학 교과서.zip",
+    "files": 256,
+    "bytes": 1615871,
+    "oversized": []
+  },
+  {
+    "archive": "09.필수의료 의학지식 데이터/3.개방데이터/1.데이터/Training/01.원천데이터/TS_국문_학술 논문 및 저널.zip",
+    "files": 9685,
+    "bytes": 40121760,
+    "oversized": []
+  },
+  {
+    "archive": "09.필수의료 의학지식 데이터/3.개방데이터/1.데이터/Training/01.원천데이터/TS_국문_학회 가이드라인.zip",
+    "files": 1157,
+    "bytes": 19544090,
+    "oversized": []
+  },
+  {
+    "archive": "09.필수의료 의학지식 데이터/3.개방데이터/1.데이터/Training/01.원천데이터/TS_영문_국제기관 가이드라인.zip",
+    "files": 16582,
+    "bytes": 111005192,
+    "oversized": []
+  },
+  {
+    "archive": "09.필수의료 의학지식 데이터/3.개방데이터/1.데이터/Training/01.원천데이터/TS_영문_온라인 의료 정보 제공 사이트.zip",
+    "files": 18288,
+    "bytes": 61662049,
+    "oversized": []
+  },
+  {
+    "archive": "09.필수의료 의학지식 데이터/3.개방데이터/1.데이터/Training/01.원천데이터/TS_영문_학술 논문 및 저널.zip",
+    "files": 3092,
+    "bytes": 11824162,
+    "oversized": []
+  },
+  {
+    "archive": "09.필수의료 의학지식 데이터/3.개방데이터/1.데이터/Training/02.라벨링데이터/TL_내과.zip",
+    "files": 10299,
+    "bytes": 6682498,
+    "oversized": []
+  },
+  {
+    "archive": "09.필수의료 의학지식 데이터/3.개방데이터/1.데이터/Training/02.라벨링데이터/TL_산부인과.zip",
+    "files": 1991,
+    "bytes": 1185201,
+    "oversized": []
+  },
+  {
+    "archive": "09.필수의료 의학지식 데이터/3.개방데이터/1.데이터/Training/02.라벨링데이터/TL_소아청소년과.zip",
+    "files": 2421,
+    "bytes": 1470798,
+    "oversized": []
+  },
+  {
+    "archive": "09.필수의료 의학지식 데이터/3.개방데이터/1.데이터/Training/02.라벨링데이터/TL_응급의학과.zip",
+    "files": 649,
+    "bytes": 414168,
+    "oversized": []
+  },
+  {
+    "archive": "09.필수의료 의학지식 데이터/3.개방데이터/1.데이터/Validation/02.라벨링데이터/VL_내과.zip",
+    "files": 1248,
+    "bytes": 836205,
+    "oversized": []
+  },
+  {
+    "archive": "09.필수의료 의학지식 데이터/3.개방데이터/1.데이터/Validation/02.라벨링데이터/VL_산부인과.zip",
+    "files": 259,
+    "bytes": 159762,
+    "oversized": []
+  },
+  {
+    "archive": "09.필수의료 의학지식 데이터/3.개방데이터/1.데이터/Validation/02.라벨링데이터/VL_소아청소년과.zip",
+    "files": 340,
+    "bytes": 196223,
+    "oversized": []
+  },
+  {
+    "archive": "09.필수의료 의학지식 데이터/3.개방데이터/1.데이터/Validation/02.라벨링데이터/VL_응급의학과.zip",
+    "files": 73,
+    "bytes": 45307,
+    "oversized": []
+  }
+]

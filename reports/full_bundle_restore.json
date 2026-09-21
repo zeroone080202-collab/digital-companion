@@ -1,0 +1,15 @@
+{
+  "status": "full_bundle_restored_and_verified",
+  "stats": {
+    "chunks": 200492,
+    "documents": 67485,
+    "datasets": 1,
+    "by_type": {
+      "qa": 15359,
+      "reference": 185133
+    },
+    "available": true
+  },
+  "asthma_results": 5,
+  "fracture_results": 5
+}

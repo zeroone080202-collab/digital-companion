@@ -1,0 +1,31 @@
+{
+  "image_counts": {
+    "test": 64,
+    "train": 1347,
+    "valid": 128
+  },
+  "labels_by_class": {
+    "7": 74,
+    "4": 389,
+    "8": 718,
+    "5": 57,
+    "9": 142,
+    "0": 192,
+    "2": 64,
+    "1": 92,
+    "6": 21,
+    "3": 22
+  },
+  "invalid_label_files": [],
+  "exact_cross_split_hashes": 0,
+  "filename_family_cross_split": 100,
+  "readmes": {
+    "Human Bone Fractures Multi-modal Image Dataset (HBFMID)/Bone Fractures Detection/README.roboflow.txt": "\nBon Fracture Detection  - v2 2023-10-07 8:58pm\n==============================\n\nThis dataset was exported via roboflow.com on October 7, 2023 at 2:59 PM GMT\n\nRoboflow is an end-to-end computer vision platform that helps you\n* collaborate with your team on computer vision projects\n* collect & organize images\n* understand and search unstructured image data\n* annotate, and create datasets\n* export, train, and deploy computer vision models\n* use active learning to improve your dataset over time\n\nFor state of the art Computer Vision training notebooks you can use with this dataset,\nvisit https://github.com/roboflow/notebooks\n\nTo find over 100k other datasets and pre-trained models, visit https://universe.roboflow.com\n\nThe dataset includes 1539 images.\nFractured bone are annotated in YOLOv8 format.\n\nThe following pre-processing was applied to each image:\n* Auto-orientation of pixel data (with EXIF-orientation stripping)\n* Resize to 640x640 (Stretch)\n\nThe following augmentation was applied to create 3 versions of each source image:\n* 50% probability of horizontal flip\n* 50% probability of vertical flip\n* Random rotation of between -5 and +5 degrees\n* Random shear of between -2° to +2° horizontally and -2° to +2° vertically\n* Random brigthness adjustment of between -10 and +10 percent\n\n\n",
+    "Human Bone Fractures Multi-modal Image Dataset (HBFMID)/Bone Fractures Detection/data.yaml": "train: ../train/images\nval: ../valid/images\ntest: ../test/images\n\nnc: 10\nnames: ['Comminuted', 'Greenstick', 'Healthy', 'Linear', 'Oblique Displaced', 'Oblique', 'Segmental', 'Spiral', 'Transverse Displaced', 'Transverse']\n\nroboflow:\n  workspace: iubat-i4ldm\n  project: bon-fracture-detection\n  version: 2\n  license: Private\n  url: https://app.roboflow.com/iubat-i4ldm/bon-fracture-detection/2"
+  },
+  "notes": [
+    "Filename-family overlap is a risk indicator, not proof of patient identity.",
+    "Patient-level independence cannot be verified without a patient grouping key.",
+    "Imaging model NOT trained."
+  ]
+}
