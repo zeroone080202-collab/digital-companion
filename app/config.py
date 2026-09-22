@@ -1,8 +1,8 @@
-"""MEDI runtime configuration.
+"""MEDI runtime configuration — Gemini free-tier focused build.
 
-All secrets stay in environment variables. MEDI can use Groq and/or Gemini free
-API tiers and automatically fail over between them. Browser-local AI remains a
-text-only last resort when no server provider is available.
+All secrets stay in environment variables. This build intentionally removes
+OpenAI/Groq as required dependencies so the app can run with a single Gemini
+API key from Google AI Studio.
 """
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,18 +30,12 @@ class Settings:
     database: Path = field(default_factory=lambda: Path(os.getenv('KNOWLEDGE_DB', str(ROOT / 'data/knowledge.sqlite'))))
     deployment: str = field(default_factory=lambda: os.getenv('DEPLOYMENT_MODE', 'public' if os.getenv('RENDER') else 'local'))
 
-    # Free AI providers. These are NOT OpenAI keys.
-    ai_provider: str = field(default_factory=lambda: os.getenv('MEDI_AI_PROVIDER', 'auto').strip().lower())
-    provider_failover: bool = field(default_factory=lambda: flag('MEDI_PROVIDER_FAILOVER', True))
+    # Gemini free API. Older values such as MEDI_AI_PROVIDER=auto are accepted
+    # for compatibility and still resolve to Gemini when GEMINI_API_KEY exists.
+    ai_provider: str = field(default_factory=lambda: os.getenv('MEDI_AI_PROVIDER', 'gemini').strip().lower())
     ai_request_retries: int = field(default_factory=lambda: integer('MEDI_AI_RETRIES', 2, 0, 3))
-
-    groq_api_key: str = field(default_factory=lambda: os.getenv('GROQ_API_KEY', '').strip())
-    groq_model: str = field(default_factory=lambda: os.getenv('GROQ_MODEL', 'qwen/qwen3.8-27b').strip())
-    # Keep a dedicated vision model so text-model changes cannot silently break image input.
-    groq_vision_model: str = field(default_factory=lambda: os.getenv('GROQ_VISION_MODEL', 'qwen/qwen3.8-27b').strip())
-
     gemini_api_key: str = field(default_factory=lambda: os.getenv('GEMINI_API_KEY', '').strip())
-    gemini_model: str = field(default_factory=lambda: os.getenv('GEMINI_MODEL', 'gemini-2.5-flash-lite').strip())
+    gemini_model: str = field(default_factory=lambda: os.getenv('GEMINI_MODEL', 'gemini-2.5-flash').strip())
 
     # Account/history storage.
     supabase_url: str = field(default_factory=lambda: os.getenv('SUPABASE_URL', '').rstrip('/'))
@@ -78,33 +72,28 @@ class Settings:
 
     @property
     def configured_backends(self) -> tuple[str, ...]:
-        out: list[str] = []
-        if self.groq_api_key:
-            out.append('groq')
-        if self.gemini_api_key:
-            out.append('gemini')
-        return tuple(out)
+        return ('gemini',) if self.gemini_api_key else ()
+
+    @property
+    def provider_failover(self) -> bool:
+        # Kept for compatibility with the frontend/config response. This build
+        # intentionally uses Gemini only, so there is no second server provider.
+        return False
 
     @property
     def free_server_ai(self) -> str | None:
-        if self.ai_provider == 'browser':
-            return None
-        if self.ai_provider == 'groq':
-            return 'groq' if self.groq_api_key else None
-        if self.ai_provider == 'gemini':
-            return 'gemini' if self.gemini_api_key else None
-        return self.configured_backends[0] if self.configured_backends else None
+        return 'gemini' if self.gemini_api_key and self.ai_provider != 'browser' else None
 
     @property
     def image_ai_available(self) -> bool:
-        # Both configured providers support image input in MEDI's adapter.
-        return bool(self.groq_api_key or self.gemini_api_key)
+        return bool(self.gemini_api_key and self.ai_provider != 'browser')
 
     def validate(self):
         if self.deployment not in {'local', 'public'}:
             raise RuntimeError('Invalid DEPLOYMENT_MODE')
-        if self.ai_provider not in {'auto', 'groq', 'gemini', 'browser'}:
-            raise RuntimeError('MEDI_AI_PROVIDER must be auto, groq, gemini, or browser')
+        # Keep compatibility with older Render env values instead of crashing.
+        if self.ai_provider not in {'auto', 'gemini', 'browser', 'groq'}:
+            raise RuntimeError('MEDI_AI_PROVIDER must be gemini, auto, browser, or groq')
         if os.getenv('RENDER') and not self.public:
             raise RuntimeError('Render must use DEPLOYMENT_MODE=public; anonymous local mode must not be exposed.')
         if self.public and not self.has_accounts:
