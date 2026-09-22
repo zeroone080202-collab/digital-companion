@@ -9,8 +9,6 @@ def flag(name, default=False):
     return os.getenv(name, str(default)).lower() in {'1','true','yes'}
 @dataclass(frozen=True)
 class Settings:
-    api_key: str = field(default_factory=lambda: os.getenv('OPENAI_API_KEY', ''))
-    model: str = field(default_factory=lambda: os.getenv('OPENAI_MODEL', 'gpt-5.4-mini'))
     database: Path = field(default_factory=lambda: Path(os.getenv('KNOWLEDGE_DB', str(ROOT/'data/knowledge.sqlite'))))
     deployment: str = field(default_factory=lambda: os.getenv('DEPLOYMENT_MODE','public' if os.getenv('RENDER') else 'local'))
     supabase_url: str = field(default_factory=lambda: os.getenv('SUPABASE_URL','').rstrip('/'))

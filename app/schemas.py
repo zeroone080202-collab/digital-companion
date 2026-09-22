@@ -66,3 +66,10 @@ class FeedbackRequest(Strict):
 
 class DeleteAccount(Strict):
     confirm: Literal['DELETE MY ACCOUNT']
+
+class LocalTurnSave(Strict):
+    request_id: UUID
+    question: str = Field(min_length=1, max_length=4000)
+    mode: Literal['health', 'study'] = 'health'
+    had_images: bool = False
+    response: dict

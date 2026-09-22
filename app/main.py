@@ -19,10 +19,9 @@ from app.config import Settings, settings as default_settings, ROOT
 from app.cloud import CloudStore, CloudError
 from app.images import sanitize_image, ImageValidationError
 from app.policy import is_medical, emergency_signal, fixed_answer, DISCLAIMER
-from app.provider import generate, ProviderError
 from app.retrieval import KnowledgeStore
 from app.schemas import (ChatRequest, Credentials, NewConversation, FeedbackRequest, DeleteAccount,
-                         HistoryMessage, MedicalAnswer, Paragraph)
+                         HistoryMessage, MedicalAnswer, Paragraph, LocalTurnSave)
 from app.security import BodyAndOriginGuard, Limiter
 
 
@@ -30,7 +29,7 @@ def answer_text(answer):
     return '\n\n'.join((p.get('heading','')+'\n'+p['text']).strip() for p in answer['paragraphs'])
 
 
-def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generator=generate):
+def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generator=None):
     @asynccontextmanager
     async def lifespan(app):
         cfg.validate()
@@ -55,7 +54,6 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
     app.add_middleware(BodyAndOriginGuard,max_bytes=cfg.max_body_bytes)
     app.add_middleware(TrustedHostMiddleware,allowed_hosts=list(cfg.allowed_hosts))
     limiter=Limiter(); knowledge=KnowledgeStore(cfg.database)
-    gate=asyncio.Semaphore(cfg.max_concurrency)
     results=OrderedDict(); active=set(); active_users=set()
 
     @app.middleware('http')
@@ -65,7 +63,7 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
         response.headers['Referrer-Policy']='no-referrer'
         response.headers['X-Frame-Options']='DENY'
         response.headers['Permissions-Policy']='camera=(), microphone=(), geolocation=()'
-        response.headers['Content-Security-Policy']="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
+        response.headers['Content-Security-Policy']="default-src 'self'; script-src 'self' https://esm.run 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://esm.run https://huggingface.co https://*.huggingface.co https://hf.co https://*.hf.co https://cdn.jsdelivr.net https://raw.githubusercontent.com https://github.com https://objects.githubusercontent.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
         if request.url.path.startswith('/api'): response.headers['Cache-Control']='no-store'
         if cfg.public: response.headers['Strict-Transport-Security']='max-age=31536000'
         return response
@@ -78,8 +76,6 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
     async def http_error(request,error): return JSONResponse({'error':str(error.detail)},error.status_code)
     @app.exception_handler(ImageValidationError)
     async def image_error(request,error): return JSONResponse({'error':'invalid_image','detail':str(error)},400)
-    @app.exception_handler(ProviderError)
-    async def provider_error(request,error): return JSONResponse({'error':error.code,'detail':str(error)},502)
 
     def cloud():
         if not app.state.cloud: raise HTTPException(409,'accounts_not_configured')
@@ -123,10 +119,11 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
     async def health(): return {'status':'ok','service':'medi-research-chat'}
     @app.get('/api/config')
     async def config():
-        return {'app':'MEDI','version':'0.1.0','public':cfg.public,'accounts':cfg.has_accounts,
-                'ai_connected':bool(cfg.api_key),'model':cfg.model if cfg.api_key else None,
+        return {'app':'MEDI','version':'0.4.0','public':cfg.public,'accounts':cfg.has_accounts,
+                'ai_mode':'browser_local','ai_connected':False,
+                'local_model':'Qwen2.5-0.5B-Instruct-q4f16_1-MLC',
                 'knowledge':app.state.stats,'knowledge_enabled':not cfg.public or cfg.dataset_rights_confirmed,
-                'invite_required':False,'guest_chat':True,'guest_daily_limit':cfg.guest_daily_limit,'max_image_mb':5,'max_images':2,
+                'invite_required':False,'guest_chat':True,'max_image_mb':5,'max_images':2,
                 'learning':'consented_feedback_then_human_review','radiology_enabled':False,
                 'operator_contact':cfg.operator_contact}
     @app.post('/api/auth/signup')
@@ -234,15 +231,15 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
                 if len(saved)>=80:raise HTTPException(409,'conversation_full')
                 for old in saved:
                     if old['id']==str(data.request_id):
-                        if old['question']!=data.message or (old.get('request_digest') and old['request_digest']!=digest):raise HTTPException(409,'request_id_conflict')
+                        if old['question']!=data.message:raise HTTPException(409,'request_id_conflict')
                         return old['response']
                 hist=[]
                 for t in saved[-4:]:
                     hist.extend([HistoryMessage(role='user',content=t['question'][:2000]),
                                  HistoryMessage(role='assistant',content=answer_text(t['response']['answer'])[:3000])])
                 data=data.model_copy(update={'history':hist})
-            sources=[];clean=[];image_info=[];provider='guardrail';quota=None
-            # Urgent help is not conditional on a usable image or provider quota.
+
+            sources=[];image_info=[];provider='guardrail'
             if emergency_signal(data.message):
                 answer=fixed_answer('emergency')
             elif any(i.kind=='radiology' for i in data.images):
@@ -250,48 +247,53 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
             elif not is_medical(data.message,data.history,bool(data.images)):
                 answer=fixed_answer('out_of_scope')
             else:
+                # Images are only validated/re-encoded on this server. They are NOT sent to an AI API.
                 for image in data.images:
-                    im,info=await asyncio.to_thread(sanitize_image,image.data_url,cfg.max_image_bytes)
-                    clean.append(im);image_info.append(info)
+                    _,info=await asyncio.to_thread(sanitize_image,image.data_url,cfg.max_image_bytes)
+                    image_info.append(info)
                 query=data.message
                 if len(query)<80 and data.history:
                     previous=next((h.content for h in reversed(data.history) if h.role=='user'),'')
                     query=previous[:250]+' '+query
                 if not cfg.public or cfg.dataset_rights_confirmed:
                     sources=await asyncio.to_thread(knowledge.search,query,study=data.mode=='study',limit=5)
-                if not cfg.api_key:
-                    provider='retrieval_demo'
-                    answer=MedicalAnswer(in_scope=True,urgency='unknown',evidence_status='insufficient',
-                        paragraphs=[Paragraph(heading='AI \uc5f0\uacb0 \uc804 \uac80\uc0c9 \uccb4\ud5d8',
-                        text='\ud604\uc7ac \ubaa8\ub378 API \ud0a4\uac00 \uc124\uc815\ub418\uc9c0 \uc54a\uc544 \uc0c8\ub85c\uc6b4 \uc758\ud559 \ub2f5\ubcc0\uc744 \uc0dd\uc131\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4. \uc544\ub798\uc5d0\uc11c \uc5c5\ub85c\ub4dc \uc790\ub8cc\uc758 \uac80\uc0c9 \uacb0\uacfc\ub97c \ud655\uc778\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4. \uac80\uc0c9 \uacb0\uacfc\ub294 \uc784\uc0c1\uc801\uc73c\ub85c \uac80\uc99d\ub41c \ub2f5\ubcc0\uc774 \uc544\ub2d9\ub2c8\ub2e4. \uc774\ubbf8\uc9c0\ub3c4 AI\ub85c \uc804\uc1a1\ub418\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4.',source_ids=[])],
-                        follow_up_questions=[],image_observations=[],limitations=DISCLAIMER)
+                provider='browser_local'
+                if sources:
+                    text='질문과 관련된 업로드 의료자료를 찾았습니다. 지원되는 기기에서는 무료 기기 AI가 아래 자료를 바탕으로 답변을 작성합니다. 기기 AI를 사용할 수 없으면 아래 참고자료를 직접 확인해 주세요.'
+                    evidence='partial'
                 else:
-                    try: await asyncio.wait_for(gate.acquire(),timeout=.2)
-                    except TimeoutError: raise HTTPException(503,'server_busy')
-                    try:
-                        if token and cfg.has_accounts:quota=await cloud().reserve_call(token)
-                        elif is_guest and cfg.public:
-                            if not limiter.allow('guest-daily:'+uid,cfg.guest_daily_limit,86400):raise HTTPException(429,'daily_limit')
-                            quota={'guest':True,'daily_limit':cfg.guest_daily_limit}
-                        elif not limiter.allow('local-daily',100,86400):raise HTTPException(429,'daily_limit')
-                        answer=await generator(data,sources,clean,cfg)
-                        provider='openai'
-                    finally:gate.release()
+                    text='현재 질문과 직접 연결되는 업로드 의료자료를 찾지 못했습니다. 무료 기기 AI가 일반적인 설명을 만들 수는 있지만, 근거가 부족하므로 중요한 의료 판단에 사용하면 안 됩니다.'
+                    evidence='insufficient'
+                image_note=['첨부 이미지는 현재 무료 기기 AI가 분석하지 않습니다. 이미지 진단·판독 기능은 별도의 검증된 영상 모델이 준비된 뒤 연결해야 합니다.'] if data.images else []
+                answer=MedicalAnswer(in_scope=True,urgency='general_information' if data.mode=='study' else 'unknown',
+                    evidence_status=evidence,
+                    paragraphs=[Paragraph(heading='관련 의료자료 검색',text=text,source_ids=[])],
+                    follow_up_questions=[],image_observations=image_note,limitations=DISCLAIMER)
+
             result={'id':str(data.request_id),'answer':answer.model_dump(),'sources':sources,
-                    'provider':provider,'model':cfg.model if provider=='openai' else None,
-                    'image_processing':image_info,'image_bytes_stored':False,'quota':quota,'saved':False,
-                    'learning_applied':False}
-            if data.conversation_id and not is_guest:
-                try:
-                    result['saved']=True
-                    await cloud().save_turn(token,uid,str(data.conversation_id),str(data.request_id),
-                        {'question':data.message,'mode':data.mode,'had_images':bool(data.images),'request_digest':digest,'response':result})
-                except CloudError:
-                    result['saved']=False;result['save_warning']='answer_not_saved_export_before_leaving'
+                    'provider':provider,'model':None,'image_processing':image_info,
+                    'image_bytes_stored':False,'quota':None,'saved':False,'learning_applied':False,
+                    'local_ai_allowed':provider=='browser_local'}
             results[key]=(time.monotonic(),digest,result)
             return result
         finally:
             active.discard(key);active_users.discard(uid)
+
+    @app.post('/api/conversations/{cid}/turns/local')
+    async def save_local_turn(cid:UUID,data:LocalTurnSave,request:Request):
+        user,token=await identity(request)
+        if data.response.get('provider') not in {'browser_local','retrieval_only','guardrail'}:
+            raise HTTPException(400,'invalid_request')
+        try:
+            MedicalAnswer.model_validate(data.response.get('answer'))
+        except Exception:
+            raise HTTPException(400,'invalid_request')
+        await cloud().require_conversation(token,str(cid))
+        response_payload=dict(data.response)
+        response_payload['saved']=True
+        payload={'question':data.question,'mode':data.mode,'had_images':data.had_images,'response':response_payload}
+        await cloud().save_turn(token,user['id'],str(cid),str(data.request_id),payload)
+        return {'ok':True,'saved':True}
 
     @app.post('/api/feedback')
     async def feedback(data: FeedbackRequest,request:Request):
