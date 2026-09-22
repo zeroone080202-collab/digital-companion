@@ -19,6 +19,7 @@ from app.config import Settings, settings as default_settings, ROOT
 from app.cloud import CloudStore, CloudError
 from app.images import sanitize_image, ImageValidationError
 from app.policy import is_medical, emergency_signal, fixed_answer, DISCLAIMER
+from app.provider import generate as provider_generate, ProviderError, ProviderResult
 from app.retrieval import KnowledgeStore
 from app.schemas import (ChatRequest, Credentials, NewConversation, FeedbackRequest, DeleteAccount,
                          HistoryMessage, MedicalAnswer, Paragraph, LocalTurnSave)
@@ -119,10 +120,14 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
     async def health(): return {'status':'ok','service':'medi-research-chat'}
     @app.get('/api/config')
     async def config():
-        return {'app':'MEDI','version':'0.4.0','public':cfg.public,'accounts':cfg.has_accounts,
-                'ai_mode':'browser_local','ai_connected':False,
+        backend=cfg.free_server_ai
+        model=(cfg.groq_model if backend=='groq' else cfg.gemini_model if backend=='gemini' else None)
+        return {'app':'MEDI','version':'0.5.2','public':cfg.public,'accounts':cfg.has_accounts,
+                'ai_mode':'server_free' if backend else 'browser_local',
+                'ai_backend':backend,'ai_connected':bool(backend),'ai_model':model,
                 'local_model':'Qwen2.5-0.5B-Instruct-q4f16_1-MLC',
                 'knowledge':app.state.stats,'knowledge_enabled':not cfg.public or cfg.dataset_rights_confirmed,
+                'dataset_rights_confirmed':cfg.dataset_rights_confirmed,
                 'invite_required':False,'guest_chat':True,'max_image_mb':5,'max_images':2,
                 'learning':'consented_feedback_then_human_review','radiology_enabled':False,
                 'operator_contact':cfg.operator_contact}
@@ -239,7 +244,7 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
                                  HistoryMessage(role='assistant',content=answer_text(t['response']['answer'])[:3000])])
                 data=data.model_copy(update={'history':hist})
 
-            sources=[];image_info=[];provider='guardrail'
+            sources=[];image_info=[];provider='guardrail';model=None;provider_warning=None
             if emergency_signal(data.message):
                 answer=fixed_answer('emergency')
             elif any(i.kind=='radiology' for i in data.images):
@@ -247,33 +252,63 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
             elif not is_medical(data.message,data.history,bool(data.images)):
                 answer=fixed_answer('out_of_scope')
             else:
-                # Images are only validated/re-encoded on this server. They are NOT sent to an AI API.
+                # Images are validated/re-encoded locally. Text-only free providers
+                # never receive the image bytes in v0.5.
                 for image in data.images:
                     _,info=await asyncio.to_thread(sanitize_image,image.data_url,cfg.max_image_bytes)
                     image_info.append(info)
+
                 query=data.message
                 if len(query)<80 and data.history:
                     previous=next((h.content for h in reversed(data.history) if h.role=='user'),'')
                     query=previous[:250]+' '+query
                 if not cfg.public or cfg.dataset_rights_confirmed:
                     sources=await asyncio.to_thread(knowledge.search,query,study=data.mode=='study',limit=5)
-                provider='browser_local'
-                if sources:
-                    text='질문과 관련된 업로드 의료자료를 찾았습니다. 지원되는 기기에서는 무료 기기 AI가 아래 자료를 바탕으로 답변을 작성합니다. 기기 AI를 사용할 수 없으면 아래 참고자료를 직접 확인해 주세요.'
-                    evidence='partial'
+
+                # Prefer a free server-side provider because it works on PCs and
+                # phones even when WebGPU is unavailable. The uploaded MEDI
+                # evidence is inserted into the prompt before generation.
+                if cfg.free_server_ai:
+                    try:
+                        gen=generator or provider_generate
+                        produced=await gen(data,sources,cfg)
+                        if isinstance(produced, ProviderResult):
+                            answer=produced.answer;provider=produced.provider;model=produced.model
+                        elif isinstance(produced, MedicalAnswer):
+                            answer=produced;provider='free_server_ai';model=None
+                        else:
+                            raise ProviderError('free_ai_output','무료 AI 응답 형식이 올바르지 않습니다.')
+                    except ProviderError as exc:
+                        provider_warning=exc.code
+                        provider='browser_local'
+                        text=('MEDI 의료자료는 찾았지만 무료 서버 AI 연결이 잠시 실패했습니다. '
+                              '브라우저 보조 AI로 답변 생성을 시도합니다.' if sources else
+                              '이번 질문과 직접 연결되는 MEDI 의료자료를 찾지 못했고 무료 서버 AI 연결도 잠시 실패했습니다. '
+                              '브라우저 보조 AI로 일반적인 설명을 시도합니다.')
+                        answer=MedicalAnswer(in_scope=True,urgency='general_information' if data.mode=='study' else 'unknown',
+                            evidence_status='partial' if sources else 'insufficient',
+                            paragraphs=[Paragraph(heading='',text=text,source_ids=[])],
+                            follow_up_questions=[],image_observations=[],limitations=DISCLAIMER)
                 else:
-                    text='현재 질문과 직접 연결되는 업로드 의료자료를 찾지 못했습니다. 무료 기기 AI가 일반적인 설명을 만들 수는 있지만, 근거가 부족하므로 중요한 의료 판단에 사용하면 안 됩니다.'
-                    evidence='insufficient'
-                image_note=['첨부 이미지는 현재 무료 기기 AI가 분석하지 않습니다. 이미지 진단·판독 기능은 별도의 검증된 영상 모델이 준비된 뒤 연결해야 합니다.'] if data.images else []
-                answer=MedicalAnswer(in_scope=True,urgency='general_information' if data.mode=='study' else 'unknown',
-                    evidence_status=evidence,
-                    paragraphs=[Paragraph(heading='관련 의료자료 검색',text=text,source_ids=[])],
-                    follow_up_questions=[],image_observations=image_note,limitations=DISCLAIMER)
+                    provider='browser_local'
+                    if sources:
+                        text='MEDI 의료자료를 찾았습니다. 브라우저 보조 AI가 이 자료를 우선 근거로 답변을 작성합니다.'
+                        evidence='partial'
+                    else:
+                        text='이번 질문과 직접 연결되는 MEDI 의료자료는 찾지 못했습니다. 브라우저 보조 AI가 일반 의학지식으로 설명하되 근거 부족을 표시합니다.'
+                        evidence='insufficient'
+                    image_note=['첨부 이미지는 현재 텍스트 AI에 전달하지 않습니다. 영상 분석은 검증된 별도 모델을 연결한 뒤 활성화합니다.'] if data.images else []
+                    answer=MedicalAnswer(in_scope=True,urgency='general_information' if data.mode=='study' else 'unknown',
+                        evidence_status=evidence,
+                        paragraphs=[Paragraph(heading='',text=text,source_ids=[])],
+                        follow_up_questions=[],image_observations=image_note,limitations=DISCLAIMER)
 
             result={'id':str(data.request_id),'answer':answer.model_dump(),'sources':sources,
-                    'provider':provider,'model':None,'image_processing':image_info,
-                    'image_bytes_stored':False,'quota':None,'saved':False,'learning_applied':False,
-                    'local_ai_allowed':provider=='browser_local'}
+                    'provider':provider,'model':model,'provider_warning':provider_warning,
+                    'image_processing':image_info,'image_bytes_stored':False,'quota':None,
+                    'saved':False,'learning_applied':False,
+                    'local_ai_allowed':provider=='browser_local',
+                    'knowledge_used':bool(sources)}
             results[key]=(time.monotonic(),digest,result)
             return result
         finally:
@@ -282,7 +317,7 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
     @app.post('/api/conversations/{cid}/turns/local')
     async def save_local_turn(cid:UUID,data:LocalTurnSave,request:Request):
         user,token=await identity(request)
-        if data.response.get('provider') not in {'browser_local','retrieval_only','guardrail'}:
+        if data.response.get('provider') not in {'browser_local','retrieval_only','guardrail','groq_free','gemini_free','free_server_ai'}:
             raise HTTPException(400,'invalid_request')
         try:
             MedicalAnswer.model_validate(data.response.get('answer'))
