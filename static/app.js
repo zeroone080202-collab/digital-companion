@@ -31,16 +31,39 @@ applyAppearance();
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>{if(appearance.theme==='system')applyAppearance();});
 function toast(text){$('toast').textContent=text;$('toast').hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('toast').hidden=true,6000);}
 function failure(e){return e.name==='AbortError'?T.stopped:(ERR[e.code]||e.detail||'\uc694\uccad\uc744 \ucc98\ub9ac\ud558\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4. \uc5f0\uacb0 \uc0c1\ud0dc\uc640 \uc11c\ubc84 \uc124\uc815\uc744 \ud655\uc778\ud574 \uc8fc\uc138\uc694.');}
-async function api(path,options={},retry=true){
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+async function api(path,options={},retry=true,networkAttempt=0){
  const method=options.method||'GET';const headers={'X-Medi-Client':'web',...(method!=='GET'?{'Content-Type':'application/json'}:{}),...options.headers};
- const r=await fetch(path,{credentials:'same-origin',cache:'no-store',...options,headers});
+ let r;
+ try{
+  r=await fetch(path,{credentials:'same-origin',cache:'no-store',...options,headers});
+ }catch(err){
+  if(networkAttempt<2&&err?.name!=='AbortError'){
+   if(state.busy)setPendingText(networkAttempt===0?'연결을 다시 확인하고 있습니다…':'서버에 다시 연결하고 있습니다…');
+   await sleep(900*(networkAttempt+1));
+   return api(path,options,retry,networkAttempt+1);
+  }
+  throw Object.assign(err||new Error('network'),{code:err?.name==='AbortError'?'aborted':'network'});
+ }
+ if([502,503,504].includes(r.status)&&networkAttempt<2){
+  if(state.busy)setPendingText('서버가 깨어나는 중입니다. 잠시만 기다려 주세요…');
+  await sleep(1200*(networkAttempt+1));
+  return api(path,options,retry,networkAttempt+1);
+ }
  if(r.status===401&&retry&&!path.startsWith('/api/auth/')){
   if(!state.refresh)state.refresh=api('/api/auth/refresh',{method:'POST',body:'{}'},false).finally(()=>state.refresh=null);
-  await state.refresh;return api(path,options,false);
+  await state.refresh;return api(path,options,false,networkAttempt);
  }
- let data;try{data=await r.json();}catch{throw Object.assign(new Error('Invalid server response'),{code:'network'});}
+ let data;try{data=await r.json();}catch{throw Object.assign(new Error('Invalid server response'),{code:'network',status:r.status});}
  if(!r.ok)throw Object.assign(new Error(data.error||'network'),{code:data.error,detail:data.detail,status:r.status});return data;
 }
+async function keepSessionWarm(){
+ if(document.hidden||!navigator.onLine)return;
+ try{await fetch('/healthz',{cache:'no-store',credentials:'same-origin'});}catch{}
+}
+setInterval(keepSessionWarm,4*60*1000);
+window.addEventListener('online',keepSessionWarm);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)keepSessionWarm();});
 function closeMenu(){$('sidebar').classList.remove('open');$('shade').hidden=true;}
 $('menuButton').onclick=()=>{$('sidebar').classList.toggle('open');$('shade').hidden=!$('sidebar').classList.contains('open');};$('shade').onclick=closeMenu;
 for(const b of document.querySelectorAll('[data-close]'))b.onclick=()=>$(b.dataset.close).close();
@@ -66,8 +89,12 @@ function statusUI(){
  if(!c.knowledge_enabled)notes.push('업로드한 MEDI 의료자료 검색이 현재 비활성화되어 있습니다. 자료 이용권한을 확인한 경우 Render의 DATASET_RIGHTS_CONFIRMED=true로 설정해야 의료자료가 답변에 사용됩니다.');
  $('systemNotice').textContent=notes.join(' ');$('systemNotice').hidden=!notes.length;
  if($('serverAiStatus')){
-  if(c.ai_connected){const n=c.ai_backend==='groq'?'Groq 무료 서버 AI':c.ai_backend==='gemini'?'Gemini 무료 서버 AI':'무료 서버 AI';$('serverAiStatus').textContent=`${n} 연결됨 · ${c.ai_model||''}`;}
-  else $('serverAiStatus').textContent='무료 서버 AI 미연결 · Render에 GROQ_API_KEY 또는 GEMINI_API_KEY를 추가하면 PC·휴대폰에서 답변 생성이 가능합니다.';
+  if(c.ai_connected){
+   const names=(c.ai_backends||[]).map(x=>x==='groq'?'Groq':x==='gemini'?'Gemini':x);
+   const backup=names.length>1?' · 자동 예비 연결 '+names.slice(1).join(', '):'';
+   const n=c.ai_backend==='groq'?'Groq 무료 서버 AI':c.ai_backend==='gemini'?'Gemini 무료 서버 AI':'무료 서버 AI';
+   $('serverAiStatus').textContent=`${n} 연결 설정됨 · ${c.ai_model||''}${backup}`;
+  }else $('serverAiStatus').textContent='무료 서버 AI 미연결 · Render에 GROQ_API_KEY 또는 GEMINI_API_KEY를 추가하면 PC·휴대폰에서 답변과 이미지 분석이 가능합니다.';
  }
  if($('knowledgeStatus'))$('knowledgeStatus').textContent=c.knowledge_enabled?`MEDI 의료자료 활성 · ${(c.knowledge.documents||0).toLocaleString()}건`:'MEDI 의료자료 비활성 · DATASET_RIGHTS_CONFIRMED 확인 필요';
  if($('localAiCard'))$('localAiCard').hidden=!!c.ai_connected;
@@ -116,31 +143,48 @@ function setBusy(b){state.busy=b;$('pending').hidden=!b;$('sendButton').hidden=b
 function scrollBottom(){requestAnimationFrame(()=>$('scrollArea').scrollTo({top:$('scrollArea').scrollHeight,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));}
 function answerText(a){return a.paragraphs.map(p=>(p.heading?p.heading+'\n':'')+p.text).join('\n\n')+(a.image_observations.length?'\n\n'+a.image_observations.join('\n'):'')+'\n\n'+a.limitations;}
 const VISUAL_AIDS=[
- {keys:['인공심폐기','인공심폐','심폐우회','체외순환','heart-lung','cardiopulmonary bypass'],src:'/static/visuals/heart_lung_machine.svg',title:'인공심폐기는 이렇게 도와줘요',caption:'혈액을 기계로 보내 산소를 공급한 뒤 다시 몸으로 돌려보내는 원리예요.'},
- {keys:['무릎','슬관절','슬개','반월상','십자인대','knee'],src:'/static/visuals/knee.svg',title:'무릎은 이런 구조예요',caption:'뼈와 관절이 만나는 위치를 단순하게 그린 이해용 그림이에요.'},
- {keys:['고혈압','저혈압','혈압','blood pressure'],src:'/static/visuals/blood_pressure.svg',title:'혈압은 이런 뜻이에요',caption:'혈액이 흐르면서 혈관벽을 미는 힘을 혈압이라고 해요.'},
- {keys:['당뇨','혈당','인슐린','diabetes','glucose'],src:'/static/visuals/diabetes.svg',title:'혈당과 인슐린의 관계',caption:'인슐린은 혈액 속 포도당이 세포로 들어가도록 돕는 역할을 해요.'},
- {keys:['천식','폐렴','호흡','기관지','기침','폐','lung','asthma'],src:'/static/visuals/lungs.svg',title:'폐와 기도는 이렇게 이어져요',caption:'공기는 기도를 지나 좌우 폐로 들어가요.'},
- {keys:['상처','피부','발진','봉합','찰과상','화상','염증','wound','rash'],src:'/static/visuals/wound.svg',title:'상처는 겉모습 변화도 중요해요',caption:'붉음·붓기·열감이 커지는지 함께 살펴보는 게 좋아요.'},
- {keys:['복통','위염','소화','위','장','stomach','digest'],src:'/static/visuals/stomach.svg',title:'소화기관은 이렇게 이어져요',caption:'음식은 식도를 지나 위와 장으로 이동해요.'},
- {keys:['허리','척추','디스크','목 통증','요추','경추','spine'],src:'/static/visuals/spine.svg',title:'척추는 몸의 중심을 지지해요',caption:'척추는 몸을 지지하고 안쪽의 신경을 보호해요.'},
- {keys:['뇌','두통','뇌졸중','마비','신경','brain'],src:'/static/visuals/brain.svg',title:'뇌는 몸의 여러 기능을 조절해요',caption:'움직임·감각·생각과 관련된 신호를 처리해요.'},
- {keys:['약','복용','처방','알약','캡슐','medicine','drug'],src:'/static/visuals/medicine.svg',title:'약은 복용정보 확인이 중요해요',caption:'이름·용량·횟수·복용시간을 확인하고 임의로 바꾸지 않는 게 중요해요.'},
- {keys:['심장','심근','협심','심부전','부정맥','맥박','heart'],src:'/static/visuals/heart.svg',title:'심장은 혈액을 보내는 펌프예요',caption:'심장은 온몸으로 혈액을 보내 산소와 영양분이 전달되게 해요.'}
+ {keys:['인공심폐기','인공심폐','심폐우회','체외순환','heart-lung','cardiopulmonary bypass'],src:'/static/visuals/heart_lung_machine.svg',title:'인공심폐기는 이렇게 도와줘요',caption:'심장수술 중 혈액이 저장통·펌프·산화기를 거쳐 다시 몸으로 돌아오는 흐름을 표시했어요.'},
+ {keys:['무릎','슬관절','슬개','반월상','십자인대','knee'],src:'/static/visuals/knee.svg',title:'무릎은 이런 구조예요',caption:'대퇴골·정강뼈·무릎뼈·연골·반월상연골·십자인대의 위치를 함께 표시했어요.'},
+ {keys:['고혈압','저혈압','혈압','blood pressure'],src:'/static/visuals/blood_pressure.svg',title:'혈압은 이런 뜻이에요',caption:'혈관 안의 압력과 수축기·이완기 숫자가 무엇을 뜻하는지 함께 보여줘요.'},
+ {keys:['당뇨','혈당','인슐린','diabetes','glucose'],src:'/static/visuals/diabetes.svg',title:'혈당과 인슐린의 관계',caption:'혈액 속 포도당, 췌장, 인슐린, 세포가 어떻게 연결되는지 보여줘요.'},
+ {keys:['천식','폐렴','호흡','기관지','기침','폐','lung','asthma'],src:'/static/visuals/lungs.svg',title:'폐와 기도는 이렇게 이어져요',caption:'기관·기관지·좌우 폐와 폐포까지 공기가 이동하는 길을 표시했어요.'},
+ {keys:['상처','피부','발진','봉합','찰과상','화상','염증','wound','rash'],src:'/static/visuals/wound.svg',title:'상처는 겉모습 변화도 중요해요',caption:'피부 단면과 함께 붉음·붓기·열감·분비물 같은 변화 포인트를 표시했어요.'},
+ {keys:['복통','위염','소화','위','장','stomach','digest'],src:'/static/visuals/stomach.svg',title:'소화기관은 이렇게 이어져요',caption:'식도에서 위·십이지장·장으로 이어지는 소화기관의 흐름을 보여줘요.'},
+ {keys:['허리','척추','디스크','목 통증','요추','경추','spine'],src:'/static/visuals/spine.svg',title:'척추는 몸의 중심을 지지해요',caption:'척추뼈·디스크·신경뿌리의 위치와 신경 증상이 생길 수 있는 이유를 보여줘요.'},
+ {keys:['뇌','두통','뇌졸중','마비','신경','brain'],src:'/static/visuals/brain.svg',title:'뇌는 몸의 여러 기능을 조절해요',caption:'뇌의 주요 영역과 갑작스러운 신경 증상에서 확인할 점을 함께 표시했어요.'},
+ {keys:['약','복용','처방','알약','캡슐','medicine','drug'],src:'/static/visuals/medicine.svg',title:'약은 복용정보 확인이 중요해요',caption:'약 봉투나 처방전 사진에서 이름·용량·횟수·시간을 어디서 확인하는지 보여줘요.'},
+ {keys:['심장','심근','협심','심부전','부정맥','맥박','heart'],src:'/static/visuals/heart.svg',title:'심장은 혈액을 보내는 펌프예요',caption:'심장의 네 방과 폐·온몸으로 혈액이 이동하는 기본 흐름을 표시했어요.'}
 ];
+const VISUAL_SKIP_TERMS=['고소','소송','합의','손해배상','배상','법률','법적','과실','보험금','보험처리','진단서 발급'];
 function pickVisualAid(question,answer,hadImages){
  if(hadImages)return null;
- const text=((question||'')+' '+(answer?.paragraphs||[]).map(p=>p.heading+' '+p.text).join(' ')).toLowerCase();
+ const text=(question||'').trim().toLowerCase();
+ if(!text||text.length<3||VISUAL_SKIP_TERMS.some(k=>text.includes(k)))return null;
+ // Only the user's current wording may trigger a diagram. A short follow-up such
+ // as "왜이래" must not inherit an unrelated picture from the model's answer.
  for(const item of VISUAL_AIDS){if(item.keys.some(k=>text.includes(k.toLowerCase())))return item;}
  return null;
 }
 function makeVisualAid(item){
  const fig=el('figure','medi-visual');
  const img=el('img');img.src=item.src;img.alt=item.title;img.loading='lazy';img.decoding='async';
- const cap=el('figcaption','');cap.append(el('strong','',item.title),el('span','',item.caption),el('small','','이해를 돕는 간단 그림'));
+ img.tabIndex=0;img.title='그림 크게 보기';
+ const enlarge=()=>showInfo(item.title,b=>{const big=el('img','visual-dialog-image');big.src=item.src;big.alt=item.title;b.append(big);para(b,item.caption,'subtle');});
+ img.onclick=enlarge;img.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();enlarge();}};
+ const cap=el('figcaption','');cap.append(el('strong','',item.title),el('span','',item.caption),el('small','','교육용으로 구조와 흐름을 단순화한 그림 · 그림을 누르면 크게 볼 수 있어요'));
  fig.append(img,cap);return fig;
 }
 
+function retryImageTurn(t){
+ if(state.busy||!t?.previewImages?.length)return;
+ state.images=t.previewImages.map((src,i)=>({name:'다시 분석 이미지 '+(i+1),data_url:src,kind:'photo'}));
+ renderAttachments();
+ $('question').value=t.question||'이 이미지를 다시 분석해줘.';
+ updateInput();
+ $('question').focus();
+ scrollBottom();
+ toast('같은 이미지와 질문을 다시 준비했습니다. 전송하면 재분석합니다.');
+}
 function renderTurn(t){
  const turn=el('article','turn');turn.dataset.id=t.id;turn.append(el('div','user-message',t.question));if(t.previewImages?.length){const imgs=el('div','user-images');for(const src of t.previewImages){const img=el('img');img.src=src;img.alt=T.image;imgs.append(img);}turn.append(imgs);}if(t.had_images&&!t.previewImages?.length)turn.append(el('p','source-meta','\uc774\ubbf8\uc9c0 \ucca8\ubd80 \uc774\ub825\uc774 \uc788\uc2b5\ub2c8\ub2e4. \uc6d0\ubcf8\uc740 \uc800\uc7a5\ud558\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4.'));
  if(t.response){const r=t.response,a=r.answer,assistant=el('div','assistant-message'),label=el('div','assistant-label'),mark=el('img');mark.src='/static/mark.svg';mark.alt='';label.append(mark,el('span','','MEDI'));
@@ -148,7 +192,13 @@ function renderTurn(t){
  assistant.append(label);
  const visual=pickVisualAid(t.question,a,t.had_images);
  a.paragraphs.forEach((p,index)=>{const block=el('div','answer-paragraph'+(index===0?' answer-summary':''));if(p.heading)block.append(el('h3','',p.heading));block.append(el('p','',p.text));assistant.append(block);if(index===0&&visual)assistant.append(makeVisualAid(visual));});
- if(a.image_observations.length){const obs=el('div','answer-paragraph');obs.append(el('h3','',T.observations),el('p','',a.image_observations.join('\n')));assistant.append(obs);}
+ if(a.image_observations.length){
+  const obs=el('div',r.image_analysis_ok?'answer-paragraph image-analysis-ok':'answer-paragraph image-analysis-warning');
+  obs.append(el('h3','',r.image_analysis_ok?T.observations:'이미지 분석 연결 안내'),el('p','',a.image_observations.join('\n')));
+  if(t.had_images&&!r.image_analysis_ok&&r.retryable&&t.previewImages?.length){const retry=el('button','retry-analysis','이미지 다시 분석');retry.type='button';retry.onclick=()=>retryImageTurn(t);obs.append(retry);}
+  assistant.append(obs);
+ }
+ if(t.had_images&&!r.image_analysis_ok&&r.retryable&&!a.image_observations.length&&t.previewImages?.length){const retryBox=el('div','answer-paragraph image-analysis-warning');retryBox.append(el('h3','','이미지 분석 연결 안내'),el('p','','이미지 분석 연결이 일시적으로 실패했습니다. 같은 사진으로 다시 시도할 수 있어요.'));const retry=el('button','retry-analysis','이미지 다시 분석');retry.type='button';retry.onclick=()=>retryImageTurn(t);retryBox.append(retry);assistant.append(retryBox);}
  if(r.sources.length){const sources=el('details','source-list');sources.append(el('summary','','답변에 참고한 MEDI 자료 '+r.sources.length+'개'));for(const s of r.sources){const item=el('details','source-item');item.dataset.source=s.id;item.append(el('summary','',s.id+'  '+s.title),el('p','source-meta',(s.source_label||'\uc5c5\ub85c\ub4dc \uc790\ub8cc')+' \u00b7 '+(s.year||'\uc5f0\ub3c4 \ubbf8\uc0c1')+' \u00b7 '+(s.source_type==='qa'?'\ud559\uc2b5 \ubb38\ud56d':'\ucc38\uace0 \ubb38\uc11c')),el('p','excerpt',s.excerpt));sources.append(item);}sources.append(el('p','source-warning',T.referenceWarning));assistant.append(sources);}
  if(a.follow_up_questions.length){const fs=el('div','followups');for(const q of a.follow_up_questions){const b=el('button','followup',q);b.onclick=()=>{if(!state.busy){$('question').value=q;updateInput();$('question').focus();}};fs.append(b);}assistant.append(fs);}assistant.append(el('p','answer-limits',a.limitations));
  const actions=el('div','turn-actions');const copy=el('button','turn-action',T.copy);copy.onclick=async()=>{try{await navigator.clipboard.writeText(answerText(a));toast(T.copied);}catch{toast('Clipboard is unavailable.');}};actions.append(copy);if(state.user){const fb=el('button','turn-action',T.feedback);fb.onclick=()=>openFeedback(t);actions.append(fb);}assistant.append(actions);if(r.save_warning)assistant.append(el('p','inline-error',T.notSaved));turn.append(assistant);
