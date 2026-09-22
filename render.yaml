@@ -13,7 +13,15 @@ services:
         value: public
       - key: MEDI_AI_PROVIDER
         value: auto
+      - key: MEDI_PROVIDER_FAILOVER
+        value: "true"
+      - key: MEDI_AI_RETRIES
+        value: "2"
+      - key: MEDI_AI_TIMEOUT
+        value: "90"
       - key: GROQ_MODEL
+        value: qwen/qwen3.8-27b
+      - key: GROQ_VISION_MODEL
         value: qwen/qwen3.8-27b
       - key: GROQ_API_KEY
         sync: false

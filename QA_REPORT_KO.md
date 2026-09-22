@@ -1,12 +1,16 @@
-# MEDI v0.7 QA
+# MEDI v0.8 QA 요약
 
-검사한 항목:
-- `static/app.js` JavaScript 문법 검사 통과
-- `static/local_ai.js` JavaScript 문법 검사 통과
-- `app/provider.py`, `app/main.py` Python 컴파일 검사 통과
-- 자동 이해 그림 SVG 11개 XML 파싱 검사 통과
-- 긴 AI 답변을 최대 3문단/짧은 길이로 정리하는 provider 단위 검사 통과
-- 본문에서 `[S1]` 같은 내부 근거번호를 제거하고 근거 목록에는 유지하는 검사 통과
-- 브라우저 DOM 모의 테스트에서 무릎 질문 → 자동 무릎 그림 카드 삽입, 첫 문단 강조, 근거 목록 유지, 페이지 오류 0건 확인
+검사 항목:
 
-주의: 자동 그림은 질환을 진단하는 사진이 아니라 이해를 돕는 단순 교육용 그림입니다. 사용자가 직접 첨부한 의료영상이 있으면 자동 그림보다 첨부 이미지를 우선합니다.
+- Python 문법 검사: 통과
+- JavaScript 문법 검사: 통과
+- SVG 11개 XML 파싱: 통과
+- `/healthz`: 200 OK
+- `/api/config`: v0.8.0 반환 확인
+- Groq 이미지 요청: `text + image_url` 멀티모달 payload 확인
+- Groq 이미지 모델: `qwen/qwen3.8-27b` 사용 확인
+- Groq 임시 503 발생 시 재시도 후 Gemini로 failover 확인
+- 서버 이미지 채팅 경로: `image_analysis_ok=true` 응답 확인
+- 이미지 분석 실패 시 가짜 분석 대신 재시도 UI를 표시하도록 구현
+- 자동 그림 선택: 현재 질문 문구만 기준으로 선택하도록 변경
+- `왜이래` 같은 짧은 후속 질문이 이전 답변 때문에 무릎 그림을 띄우지 않도록 수정
