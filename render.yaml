@@ -11,9 +11,15 @@ services:
         value: 3.13.5
       - key: DEPLOYMENT_MODE
         value: public
-      - key: OPENAI_MODEL
-        value: gpt-5.4-mini
-      - key: OPENAI_API_KEY
+      - key: MEDI_AI_PROVIDER
+        value: auto
+      - key: GROQ_MODEL
+        value: qwen/qwen3.8-27b
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash-lite
+      - key: GEMINI_API_KEY
         sync: false
       - key: SUPABASE_URL
         sync: false
@@ -28,5 +34,4 @@ services:
       - key: ALLOW_OPEN_SIGNUP
         value: "true"
       - key: GUEST_DAILY_LIMIT
-        value: "5"
-
+        value: "8"
