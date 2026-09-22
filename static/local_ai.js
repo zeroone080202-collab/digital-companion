@@ -14,7 +14,7 @@
   let preparing = null;
   let progressHandler = null;
   let lastStatus = 'idle';
-  let lastMessage = '무료 기기 AI 준비 안 됨';
+  let lastMessage = '브라우저 보조 AI 준비 안 됨';
 
   const setStatus = (status, message, progress = null) => {
     lastStatus = status;
@@ -42,13 +42,13 @@
     if (engine) return { ok: true, modelId };
     if (preparing) return preparing;
     if (!supported()) {
-      setStatus('unsupported', '이 기기/브라우저는 WebGPU를 지원하지 않아 의료자료 검색 모드로 사용합니다.');
+      setStatus('unsupported', '이 브라우저는 WebGPU 보조 AI를 지원하지 않습니다. 무료 서버 AI가 연결되어 있으면 정상 사용 가능합니다.');
       return { ok: false, reason: 'webgpu_unavailable' };
     }
 
     preparing = (async () => {
       try {
-        setStatus('loading', '무료 AI 모듈을 불러오는 중입니다…', 0);
+        setStatus('loading', '브라우저 보조 AI 모듈을 불러오는 중입니다…', 0);
         const webllm = await loadModule();
         const listed = new Set((webllm.prebuiltAppConfig?.model_list || []).map(x => x.model_id));
         const candidates = PREFERRED_MODELS.filter(id => listed.size === 0 || listed.has(id));
@@ -60,7 +60,7 @@
           const initProgressCallback = (report) => {
             const p = typeof report?.progress === 'number' ? report.progress : null;
             let text = String(report?.text || '모델을 준비하는 중입니다…');
-            if (p !== null) text = `무료 AI 모델 준비 중 ${Math.round(p * 100)}%`;
+            if (p !== null) text = `브라우저 보조 AI 준비 중 ${Math.round(p * 100)}%`;
             setStatus('loading', text, p);
           };
           try {
@@ -77,11 +77,11 @@
         }
         if (!engine) throw lastError || new Error('no_compatible_model');
 
-        setStatus('ready', `무료 기기 AI 준비 완료 · ${modelId}` , 1);
+        setStatus('ready', `브라우저 보조 AI 준비 완료 · ${modelId}` , 1);
         return { ok: true, modelId };
       } catch (error) {
         engine = null;
-        setStatus('error', '무료 기기 AI 준비에 실패해 의료자료 검색 모드로 전환합니다.');
+        setStatus('error', '브라우저 보조 AI 준비에 실패했습니다. 무료 서버 AI가 있으면 서버 AI를 사용합니다.');
         return { ok: false, reason: String(error?.message || error) };
       } finally {
         preparing = null;
@@ -106,7 +106,8 @@
       : '검색된 참고자료가 없습니다.';
 
     const system = [
-      '너는 MEDI라는 한국어 의료정보 학습 보조 AI다.',
+      '너는 MEDI라는 한국어 의료 전문 연구·학습 보조 AI다.',
+      '반드시 제공된 MEDI 업로드 근거자료를 최우선으로 활용하고 관련 문장에는 [S1]처럼 실제 근거 ID를 붙여라.',
       '이 서비스는 개인 연구·학습용이며 의료진이 아니다.',
       '진단을 확정하거나 질환을 배제하지 말고, 처방약의 시작·중단·용량 변경을 지시하지 마라.',
       '사용자 개인의 증상에는 가능한 원인을 단정하지 말고 일반적인 정보, 확인할 점, 진료가 필요한 상황을 설명하라.',
@@ -158,7 +159,7 @@
     const ready = await prepare();
     if (!ready.ok || !engine) throw new Error(ready.reason || 'local_ai_unavailable');
 
-    setStatus('generating', '무료 기기 AI가 의료자료를 바탕으로 답변을 작성하고 있습니다…');
+    setStatus('generating', '브라우저 보조 AI가 MEDI 의료자료를 바탕으로 답변을 작성하고 있습니다…');
     try {
       const reply = await engine.chat.completions.create({
         messages: buildMessages({ question, mode, sources, history }),
@@ -168,10 +169,10 @@
       });
       const text = reply?.choices?.[0]?.message?.content || '';
       const answer = textToAnswer(text, Boolean(sources?.length), mode, hadImages);
-      setStatus('ready', `무료 기기 AI 준비 완료 · ${modelId}`);
+      setStatus('ready', `브라우저 보조 AI 준비 완료 · ${modelId}`);
       return { answer, model: modelId };
     } catch (error) {
-      setStatus('error', '무료 기기 AI 답변 생성에 실패했습니다. 의료자료 검색 결과만 표시합니다.');
+      setStatus('error', '브라우저 보조 AI 답변 생성에 실패했습니다.');
       throw error;
     }
   };

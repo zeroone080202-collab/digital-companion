@@ -31,3 +31,250 @@ html[data-theme="dark"] .user-message *{color:#f5fffc!important}
 html[data-theme="dark"] .settings-card{background:#15211f;border-color:#31413e}
 html[data-theme="dark"] .safety-dialog{background:#182421;color:var(--ink)}
 @media(max-width:540px){.settings-card{grid-template-columns:1fr auto;padding:13px}.settings-card #localAiPrepare{grid-column:1/-1;width:100%}.safety-actions{display:grid;grid-template-columns:1fr}.safety-actions button{width:100%}}
+
+/* =========================================================
+   MEDI v0.5 - readable settings in BOTH light/dark themes
+   ========================================================= */
+:root,
+html[data-theme="light"]{
+  color-scheme:light;
+  --dialog-bg:#ffffff;
+  --dialog-text:#20383a;
+  --dialog-muted:#647b78;
+  --field-bg:#f7faf9;
+  --field-text:#173638;
+  --field-border:#cfdcda;
+  --card-bg:#f4f8f7;
+  --button-bg:#ffffff;
+  --button-text:#21413f;
+}
+html[data-theme="dark"]{
+  color-scheme:dark;
+  --dialog-bg:#17221f;
+  --dialog-text:#f0f8f6;
+  --dialog-muted:#b7c9c5;
+  --field-bg:#0f1917;
+  --field-text:#f4fbf9;
+  --field-border:#40534f;
+  --card-bg:#1b2926;
+  --button-bg:#1d2c29;
+  --button-text:#edf8f5;
+}
+
+#settingsDialog,
+#infoDialog,
+#consentDialog,
+#authDialog,
+#feedbackDialog{
+  background:var(--dialog-bg)!important;
+  color:var(--dialog-text)!important;
+  border-color:var(--field-border)!important;
+}
+#settingsDialog .dialog-heading,
+#infoDialog .dialog-heading,
+#consentDialog .dialog-heading,
+#authDialog .dialog-heading,
+#feedbackDialog .dialog-heading{
+  background:var(--dialog-bg)!important;
+  color:var(--dialog-text)!important;
+  border-color:var(--field-border)!important;
+}
+#settingsDialog .dialog-body,
+#settingsDialog .dialog-body label,
+#settingsDialog .dialog-body label>span,
+#settingsDialog strong,
+#settingsDialog h2,
+#settingsDialog p,
+#settingsDialog button{
+  color:var(--dialog-text);
+}
+#settingsDialog .subtle,
+#settingsDialog .settings-help{
+  color:var(--dialog-muted)!important;
+}
+#settingsDialog .field select,
+#settingsDialog .field input,
+#settingsDialog .field textarea{
+  background:var(--field-bg)!important;
+  color:var(--field-text)!important;
+  border:1px solid var(--field-border)!important;
+  opacity:1!important;
+  -webkit-text-fill-color:var(--field-text)!important;
+}
+#settingsDialog select option{
+  background:var(--dialog-bg)!important;
+  color:var(--dialog-text)!important;
+}
+#settingsDialog .settings-card{
+  background:var(--card-bg)!important;
+  color:var(--dialog-text)!important;
+  border-color:var(--field-border)!important;
+}
+#settingsDialog .quiet-button,
+#settingsDialog .icon-button{
+  background:var(--button-bg)!important;
+  color:var(--button-text)!important;
+  border-color:var(--field-border)!important;
+}
+#settingsDialog .primary-button{
+  color:#fff!important;
+}
+.settings-help{
+  margin:4px 2px 0!important;
+  font-size:calc(11px * var(--font-scale));
+  line-height:1.75;
+}
+.settings-dot{
+  width:10px;height:10px;border-radius:50%;background:#5ba792;
+  box-shadow:0 0 0 4px color-mix(in srgb,#5ba792 18%,transparent);
+}
+
+/* Remove the old white provider pill. Only meaningful counts/emergency remain. */
+.source-count{
+  margin-left:auto;
+  font-size:calc(9px * var(--font-scale));
+  font-weight:550;
+  color:#6f827d;
+  background:transparent;
+  padding:2px 0;
+}
+html[data-theme="dark"] .source-count{color:#aabdb8}
+.evidence-badge:not(.emergency){display:none!important}
+
+/* Strong readable chat colors */
+html[data-theme="light"] .user-message{
+  background:#d9eee8!important;
+  color:#123d38!important;
+  border-color:#b8d8cf!important;
+}
+html[data-theme="dark"] .user-message{
+  background:#286b61!important;
+  color:#ffffff!important;
+  border-color:#3a8579!important;
+}
+html[data-theme="light"] .assistant-message,
+html[data-theme="light"] .answer-paragraph,
+html[data-theme="light"] .assistant-label{color:#20383a!important}
+html[data-theme="dark"] .assistant-message,
+html[data-theme="dark"] .answer-paragraph,
+html[data-theme="dark"] .assistant-label{color:#edf7f4!important}
+
+/* Dialog helper text and notices must remain legible */
+html[data-theme="light"] .notice-box{background:#eef6f3;color:#496761;border-color:#cfdfda}
+html[data-theme="dark"] .notice-box{background:#2a281c;color:#f0dda1;border-color:#665b36}
+html[data-theme="light"] .inline-error{color:#9c493d}
+html[data-theme="dark"] .inline-error{color:#ffb2a4}
+
+@media(max-width:540px){
+  #settingsDialog{width:calc(100% - 20px);max-height:92dvh}
+  .settings-grid{min-width:0;width:100%}
+  .settings-card{grid-template-columns:1fr auto}
+  .source-count{font-size:calc(10px * var(--font-scale))}
+}
+
+/* =========================================================
+   MEDI v0.5.1 - settings contrast hardening
+   ========================================================= */
+#settingsDialog{
+  color:var(--dialog-text)!important;
+  background:var(--dialog-bg)!important;
+}
+#settingsDialog .dialog-heading h2,
+#settingsDialog .field>span,
+#settingsDialog .settings-card strong,
+#settingsDialog .settings-card p,
+#settingsDialog .settings-help,
+#settingsDialog label,
+#settingsDialog button{
+  opacity:1!important;
+}
+#settingsDialog .dialog-heading h2,
+#settingsDialog .field>span,
+#settingsDialog .settings-card strong{
+  color:var(--dialog-text)!important;
+  font-weight:700!important;
+}
+html[data-theme="light"] #settingsDialog .subtle,
+html[data-theme="light"] #settingsDialog .settings-help{
+  color:#4f6864!important;
+}
+html[data-theme="dark"] #settingsDialog .subtle,
+html[data-theme="dark"] #settingsDialog .settings-help{
+  color:#c2d2ce!important;
+}
+html[data-theme="light"] #settingsDialog .settings-card{
+  background:#f3f8f6!important;
+  border-color:#cbdad6!important;
+}
+html[data-theme="dark"] #settingsDialog .settings-card{
+  background:#1b2a27!important;
+  border-color:#445a55!important;
+}
+html[data-theme="light"] #settingsDialog select{
+  background:#ffffff!important;
+  color:#173638!important;
+  border-color:#bfcfcb!important;
+}
+html[data-theme="dark"] #settingsDialog select{
+  background:#0e1816!important;
+  color:#f6fbfa!important;
+  border-color:#526963!important;
+}
+html[data-theme="light"] #settingsDialog .quiet-button{
+  background:#ffffff!important;
+  color:#1e4541!important;
+  border-color:#bdcfca!important;
+}
+html[data-theme="dark"] #settingsDialog .quiet-button{
+  background:#243532!important;
+  color:#f4fbf9!important;
+  border-color:#526963!important;
+}
+#settingsDialog [hidden]{display:none!important}
+
+/* =========================================================
+   MEDI v0.5.2 - source/reference cards blend with both themes
+   ========================================================= */
+html[data-theme="light"] .source-list{
+  background:#f6faf8!important;
+  border-color:#cfddd9!important;
+  color:#25433f!important;
+}
+html[data-theme="light"] .source-list>summary{
+  color:#45645e!important;
+  background:#f6faf8!important;
+}
+html[data-theme="light"] .source-item{
+  background:#ffffff!important;
+  border-color:#d9e5e1!important;
+}
+html[data-theme="light"] .source-item>summary{
+  color:#24433f!important;
+}
+html[data-theme="light"] .source-meta,
+html[data-theme="light"] .excerpt,
+html[data-theme="light"] .source-warning{
+  color:#58706b!important;
+}
+
+html[data-theme="dark"] .source-list{
+  background:#182623!important;
+  border-color:#40534f!important;
+  color:#e7f3f0!important;
+}
+html[data-theme="dark"] .source-list>summary{
+  color:#bed1cc!important;
+  background:#182623!important;
+}
+html[data-theme="dark"] .source-item{
+  background:#1d2d29!important;
+  border-color:#40534f!important;
+}
+html[data-theme="dark"] .source-item>summary{
+  color:#edf7f4!important;
+}
+html[data-theme="dark"] .source-meta,
+html[data-theme="dark"] .excerpt,
+html[data-theme="dark"] .source-warning{
+  color:#b9cbc7!important;
+}
