@@ -1,16 +1,23 @@
-# MEDI v0.8 QA 요약
+# MEDI v0.9 QA
 
-검사 항목:
+검사한 항목:
 
-- Python 문법 검사: 통과
-- JavaScript 문법 검사: 통과
-- SVG 11개 XML 파싱: 통과
-- `/healthz`: 200 OK
-- `/api/config`: v0.8.0 반환 확인
-- Groq 이미지 요청: `text + image_url` 멀티모달 payload 확인
-- Groq 이미지 모델: `qwen/qwen3.8-27b` 사용 확인
-- Groq 임시 503 발생 시 재시도 후 Gemini로 failover 확인
-- 서버 이미지 채팅 경로: `image_analysis_ok=true` 응답 확인
-- 이미지 분석 실패 시 가짜 분석 대신 재시도 UI를 표시하도록 구현
-- 자동 그림 선택: 현재 질문 문구만 기준으로 선택하도록 변경
-- `왜이래` 같은 짧은 후속 질문이 이전 답변 때문에 무릎 그림을 띄우지 않도록 수정
+- Python 문법 검사: PASS
+  - app/config.py
+  - app/provider.py
+  - app/main.py
+  - app/schemas.py
+- JavaScript 문법 검사: PASS
+  - static/app.js
+  - static/local_ai.js
+- Gemini mock API 멀티모달 payload 검사: PASS
+  - 이미지가 `inline_data`로 전달됨
+  - `responseJsonSchema` 구조화 출력 설정 포함
+  - `gemini_free` ProviderResult 생성 확인
+- MEDI 이미지→검색 핵심어 추출 경로 검사: PASS
+- static/app.js가 참조하는 시각자료 11개 존재 여부: PASS
+- static/local_ai.js 누락 여부: PASS
+- OpenAI API 키를 필수로 요구하지 않음: PASS
+- Groq API 키를 필수로 요구하지 않음: PASS
+
+주의: 실제 Gemini 호출은 사용자의 API 키가 필요하므로 여기서는 키를 사용하지 않고 MockTransport로 요청 구조를 검사했습니다.

@@ -1,12 +1,13 @@
-MEDI_patch_radiology_enable_v1
+MEDI V0.9 GEMINI FREE IMAGE FIX
 
-patched files:
-- app/main.py
-- app/provider.py
-- static/app.js
-
-notes:
-- Enables cautious educational radiology-image explanation
-- Removes backend hard-block for radiology uploads
-- Adds one automatic retry for temporary upstream failures
-- Updates UI label from '판독 미지원' to '설명 지원'
+Main changes:
+- Gemini free-tier API only
+- OpenAI not required
+- Groq not required
+- Image data actually sent to Gemini
+- Radiology kind preserved
+- Missing local_ai.js restored
+- Missing visual assets restored
+- Detailed knee illustration added
+- Render config updated for Gemini
+- Code version mismatch fixed

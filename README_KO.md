@@ -1,88 +1,65 @@
-# MEDI v0.8 이미지 분석·연결 안정화 패치
+# MEDI v0.9 — Gemini 무료 API + 이미지 분석 + 코드 충돌 수정
 
-이번 패치는 현재 MEDI v0.7.x 위에 덮어쓰는 패치입니다. `knowledge_bundle`은 건드리지 않습니다.
+이 패치는 이전 패치에서 서로 다른 버전의 `main.py`, `provider.py`, `config.py`, `app.js`가 섞이면서 생긴 오류를 정리하고, OpenAI/Groq 없이 **Google Gemini API 하나만** 사용하도록 맞춘 일관된 세트입니다.
 
-## 고친 내용
+## 이번에 고친 핵심
 
-- 이미지가 첨부됐는데도 실제 이미지 분석 없이 일반 문장만 나오던 문제 수정
-- Groq/Gemini 호출 실패 시 자동 재시도
-- `MEDI_AI_PROVIDER=auto`에서 한 제공자가 실패하면 다른 제공자로 자동 전환
-- 이미지 분석 실패 시 가짜 분석을 하지 않고 `이미지 다시 분석` 버튼 표시
-- 브라우저가 열려 있는 동안 4분마다 `/healthz`를 가볍게 호출해 사용 중 Render가 잠드는 가능성을 줄임
-- 502/503/504 및 일시적 네트워크 실패 시 브라우저에서도 자동 재연결
-- 짧은 후속질문(`왜이래`)에 이전 답변 단어만 보고 엉뚱한 그림을 붙이던 문제 수정
-- 단순한 그림 11종을 구조·라벨·확인 포인트가 들어간 상세 교육용 도식으로 교체
-- 법률/보험 질문에는 무릎 같은 일반 해부 그림을 억지로 붙이지 않음
-- 모델이 단순 통증을 `응급`으로 과하게 표시하지 않도록 서버에서 한 번 더 제한
-- 캐시 문제 방지를 위해 CSS/JS 버전을 `v=0800`으로 갱신
+1. OpenAI API 의존 제거
+2. Groq API 의존 제거
+3. Gemini 무료 API를 서버 AI 기본값으로 사용
+4. JPG/PNG/WebP 이미지를 Gemini에 실제 `inline_data`로 전송
+5. X-ray/CT/MRI도 이미지 자체를 먼저 보고 참고용 설명을 생성
+6. 이미지에서 뽑은 핵심어를 MEDI 의료지식 DB 검색에 추가해 RAG와 연결
+7. 의료영상 업로드 시 기존 `radiology` 분류를 `photo`로 덮어쓰던 버그 수정
+8. 일시적 Gemini 네트워크/5xx 오류 자동 재시도
+9. v0.8에서 `index.html`은 참조하지만 패치 ZIP에 빠져 있던 `static/local_ai.js`를 다시 포함
+10. app.js가 참조하는 `static/visuals/` 11개 자료를 모두 포함하여 404 오류 제거
+11. 무릎 설명 그림은 더 상세한 `knee_detail.png`로 교체
+12. 정적 파일 캐시 버전을 `v=0900`으로 올림
 
-## GitHub에서 교체할 파일
+## GitHub에서 덮어쓸 파일
 
-ZIP 안의 경로 그대로 덮어쓰세요.
+- app/config.py
+- app/main.py
+- app/provider.py
+- app/schemas.py
+- static/app.js
+- static/app.css
+- static/index.html
+- static/local_ai.js
+- static/visuals/*
+- render.yaml
+- env.example
 
-- `app/config.py`
-- `app/provider.py`
-- `app/main.py`
-- `app/schemas.py`
-- `static/app.js`
-- `static/app.css`
-- `static/index.html`
-- `static/visuals/*.svg` 11개
-- `render.yaml`
-- `env.example` (참고용)
+`knowledge_bundle`은 건드릴 필요 없습니다.
 
-## Render Environment 권장값
+## Gemini API 키 만들기
 
-이미지 분석에는 **최소 하나의 정상적인 멀티모달 AI 키**가 반드시 필요합니다.
+Google AI Studio에 Google 계정으로 로그인한 뒤 API Keys 메뉴에서 새 Gemini API 키를 만듭니다.
 
-### Groq만 쓰는 경우
+무료 티어를 사용할 때는 유료 Billing 업그레이드를 누를 필요가 없습니다. 사용량 한도는 계정/프로젝트/모델에 따라 달라질 수 있으므로 AI Studio의 Rate limits 화면에서 현재 한도를 확인하세요.
 
-```text
-MEDI_AI_PROVIDER=auto
-MEDI_PROVIDER_FAILOVER=true
-MEDI_AI_RETRIES=2
-MEDI_AI_TIMEOUT=90
+## Render 환경변수
 
-GROQ_API_KEY=본인키
-GROQ_MODEL=qwen/qwen3.8-27b
-GROQ_VISION_MODEL=qwen/qwen3.8-27b
-```
-
-### Gemini만 쓰는 경우
+아래 3개를 설정하세요.
 
 ```text
-MEDI_AI_PROVIDER=auto
-MEDI_PROVIDER_FAILOVER=true
-MEDI_AI_RETRIES=2
-MEDI_AI_TIMEOUT=90
-
-GEMINI_API_KEY=본인키
-GEMINI_MODEL=gemini-2.5-flash-lite
+MEDI_AI_PROVIDER=gemini
+GEMINI_API_KEY=발급받은_본인_키
+GEMINI_MODEL=gemini-2.5-flash
 ```
 
-### 가장 안정적인 무료 구성
-
-Groq와 Gemini 키를 **둘 다** 넣고 `MEDI_AI_PROVIDER=auto`로 두면 됩니다.
+기존에 아래 값이 있으면 MEDI v0.9에서는 사용하지 않으므로 삭제해도 됩니다.
 
 ```text
-MEDI_AI_PROVIDER=auto
-MEDI_PROVIDER_FAILOVER=true
-MEDI_AI_RETRIES=2
-MEDI_AI_TIMEOUT=90
-
-GROQ_API_KEY=본인키
-GROQ_MODEL=qwen/qwen3.8-27b
-GROQ_VISION_MODEL=qwen/qwen3.8-27b
-
-GEMINI_API_KEY=본인키
-GEMINI_MODEL=gemini-2.5-flash-lite
+OPENAI_API_KEY
+OPENAI_MODEL
+GROQ_API_KEY
+GROQ_MODEL
+GROQ_VISION_MODEL
 ```
 
-한쪽이 일시적으로 실패하면 다른 쪽으로 넘어갑니다.
-
-## 기존 환경변수는 유지
-
-다음 값은 삭제하지 마세요.
+아래 값은 기존대로 유지하세요.
 
 ```text
 DEPLOYMENT_MODE=public
@@ -90,21 +67,42 @@ SUPABASE_URL=기존값
 SUPABASE_ANON_KEY=기존값
 DATA_ENCRYPTION_KEY=기존값
 ALLOW_OPEN_SIGNUP=true
-DATASET_RIGHTS_CONFIRMED=권한 확인 결과에 따라 true 또는 false
 ```
 
-OpenAI API 키는 사용하지 않습니다.
+본인이 MEDI에 업로드한 의료지식 자료를 공개 서비스에서 사용할 권한을 확인한 경우에만:
 
-## 배포
+```text
+DATASET_RIGHTS_CONFIRMED=true
+```
 
-1. GitHub에 패치 파일 덮어쓰기
-2. Commit
-3. Render → Manual Deploy
-4. `Clear build cache & deploy`
-5. Settings의 Health Check Path가 `/healthz`인지 확인
+로 설정하세요.
 
-## 꼭 알아둘 점
+## 재배포
 
-Render Free는 사용자가 아무도 없을 때 플랫폼 정책상 잠들 수 있습니다. 이 패치는 **페이지를 열어 사용하는 동안** 가벼운 keep-alive와 자동 재시도로 끊김을 줄이지만, 무료 플랜의 장시간 무중단 운영 자체를 보장하지는 못합니다.
+GitHub Commit 후 Render에서:
 
-또한 X-ray/CT/MRI 분석은 멀티모달 언어모델의 참고 설명입니다. 별도로 학습·검증한 영상진단 모델의 판독을 대신하지 않습니다.
+1. Manual Deploy
+2. Clear build cache & deploy
+3. 배포 완료 후 `/api/config`에서 `ai_connected: true`, `ai_backend: "gemini"`, `image_understanding_enabled: true`인지 확인
+
+## 테스트 질문
+
+이미지를 첨부한 뒤:
+
+```text
+이 X-ray에서 보이는 구조와 눈에 띄는 점을 일반인이 이해하기 쉽게 설명해줘.
+```
+
+라고 보내 보세요.
+
+정상이라면 더 이상 `외부 이미지 이해 AI가 응답하지 않았습니다` 같은 고정 답변만 나오지 않고, Gemini가 실제 이미지에서 본 내용을 `이미지에서 보이는 점`으로 표시합니다.
+
+## 의료정보·개인정보 주의
+
+Gemini 무료 티어에서는 입력 데이터가 Google 제품 개선에 사용될 수 있습니다. 따라서 공개 서비스에서 이름, 주민번호, 전화번호, 환자번호, 생년월일 등 개인 식별정보가 들어간 실제 의료영상을 그대로 보내는 용도로 사용하면 안 됩니다. 반드시 가리거나 제거한 뒤 테스트하세요.
+
+이 기능은 교육·참고용 이미지 설명이며 의료진의 최종 판독과 진단을 대체하지 않습니다.
+
+## Dr7.ai에 대해
+
+현재 Dr7.ai의 공식 Free 플랜은 웹 체험 기능은 있지만 무료 API 모델 접근은 제공하지 않습니다. 따라서 무료 공개 MEDI에 붙일 서버 API로는 이번 패치에서 사용하지 않았습니다.
