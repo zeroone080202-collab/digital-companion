@@ -40,9 +40,17 @@ class Settings:
     # Uploaded knowledge may only be exposed when the operator has verified rights.
     dataset_rights_confirmed: bool = field(default_factory=lambda: flag('DATASET_RIGHTS_CONFIRMED'))
 
-    allowed_hosts: tuple[str, ...] = field(default_factory=lambda: tuple(
-        h.strip() for h in os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost,testserver').split(',') if h.strip()
-    ) + ((os.getenv('RENDER_EXTERNAL_HOSTNAME'),) if os.getenv('RENDER_EXTERNAL_HOSTNAME') else ()))
+    # Render sends HTTP health checks with the service's onrender.com Host header.
+    # Include the Render wildcard so TrustedHostMiddleware cannot reject the
+    # readiness probe before it reaches /healthz. Custom domains can still be
+    # added with ALLOWED_HOSTS=example.com,www.example.com.
+    allowed_hosts: tuple[str, ...] = field(default_factory=lambda: tuple(dict.fromkeys(
+        [h.strip() for h in os.getenv(
+            'ALLOWED_HOSTS',
+            '127.0.0.1,localhost,testserver,*.onrender.com'
+        ).split(',') if h.strip()]
+        + ([os.getenv('RENDER_EXTERNAL_HOSTNAME','').strip()] if os.getenv('RENDER_EXTERNAL_HOSTNAME','').strip() else [])
+    )))
     operator_contact: str = field(default_factory=lambda: os.getenv('OPERATOR_CONTACT', ''))
 
     timeout: float = 75.0

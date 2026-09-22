@@ -116,8 +116,16 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
         if not limiter.allow('auth-ip:'+host,18) or not limiter.allow('auth-email:'+hashlib.sha256(email.lower().encode()).hexdigest(),8):
             raise HTTPException(429,'rate_limited')
 
+    # Render deploy/readiness probe. Keep this endpoint intentionally cheap:
+    # no authentication, database query, RAG search, or external AI call.
+    @app.get('/healthz', include_in_schema=False)
+    async def healthz():
+        return {'ok': True, 'service': 'medi-research-chat'}
+
+    # Backward-compatible health endpoint used by older MEDI deployments.
     @app.get('/api/health')
-    async def health(): return {'status':'ok','service':'medi-research-chat'}
+    async def health():
+        return {'status':'ok','service':'medi-research-chat'}
     @app.get('/api/config')
     async def config():
         backend=cfg.free_server_ai
