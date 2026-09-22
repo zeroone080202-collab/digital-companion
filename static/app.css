@@ -288,3 +288,18 @@ html[data-theme="dark"] .source-warning{
 .answer-paragraph h3{font-size:calc(14px * var(--font-scale));margin-bottom:7px}
 .answer-limits{font-size:calc(10px * var(--font-scale));line-height:1.6;opacity:.72}
 @media(max-width:640px){.paste-hint{display:none}.answer-paragraph h3{font-size:calc(13px * var(--font-scale))}}
+
+
+/* v0.7: simpler consumer answer + automatic educational visuals */
+.answer-summary{margin-top:.35rem;padding:1rem 1.1rem;border-radius:16px;background:color-mix(in srgb,var(--green-soft) 75%,var(--paper));border:1px solid color-mix(in srgb,var(--green) 18%,var(--border));}
+.answer-summary h3{margin-top:0}.answer-summary p{font-size:1.04em;line-height:1.72;margin-bottom:0}
+.medi-visual{margin:1rem 0 1.15rem;max-width:680px;border:1px solid var(--border);border-radius:18px;overflow:hidden;background:var(--surface,#fff);box-shadow:0 8px 28px rgba(25,55,60,.06)}
+.medi-visual img{display:block;width:100%;max-height:300px;object-fit:contain;background:#f8fbfa}
+.medi-visual figcaption{display:grid;gap:.25rem;padding:.85rem 1rem 1rem;color:var(--ink)}
+.medi-visual figcaption strong{font-size:.98em}.medi-visual figcaption span{line-height:1.55}.medi-visual figcaption small{color:var(--muted)}
+[data-theme="dark"] .answer-summary{background:#17312f;border-color:#34514e}
+[data-theme="dark"] .medi-visual{background:#142220;border-color:#334844}
+[data-theme="dark"] .medi-visual img{background:#eef6f4}
+[data-theme="dark"] .medi-visual figcaption{color:#eef7f5}
+[data-theme="dark"] .medi-visual figcaption small{color:#a9bbb7}
+@media(max-width:640px){.answer-summary{padding:.9rem}.medi-visual{margin:.85rem 0;border-radius:14px}.medi-visual img{max-height:220px}.medi-visual figcaption{padding:.75rem .85rem .9rem}}

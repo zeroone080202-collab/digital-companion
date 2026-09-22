@@ -115,15 +115,41 @@ function renderAttachments(){$('attachments').replaceChildren();state.images.for
 function setBusy(b){state.busy=b;$('pending').hidden=!b;$('sendButton').hidden=b;$('stopButton').hidden=!b;for(const id of ['question','mode','attachButton','newChat','welcomeImage'])$(id).disabled=b;statusUI();}
 function scrollBottom(){requestAnimationFrame(()=>$('scrollArea').scrollTo({top:$('scrollArea').scrollHeight,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));}
 function answerText(a){return a.paragraphs.map(p=>(p.heading?p.heading+'\n':'')+p.text).join('\n\n')+(a.image_observations.length?'\n\n'+a.image_observations.join('\n'):'')+'\n\n'+a.limitations;}
+const VISUAL_AIDS=[
+ {keys:['인공심폐기','인공심폐','심폐우회','체외순환','heart-lung','cardiopulmonary bypass'],src:'/static/visuals/heart_lung_machine.svg',title:'인공심폐기는 이렇게 도와줘요',caption:'혈액을 기계로 보내 산소를 공급한 뒤 다시 몸으로 돌려보내는 원리예요.'},
+ {keys:['무릎','슬관절','슬개','반월상','십자인대','knee'],src:'/static/visuals/knee.svg',title:'무릎은 이런 구조예요',caption:'뼈와 관절이 만나는 위치를 단순하게 그린 이해용 그림이에요.'},
+ {keys:['고혈압','저혈압','혈압','blood pressure'],src:'/static/visuals/blood_pressure.svg',title:'혈압은 이런 뜻이에요',caption:'혈액이 흐르면서 혈관벽을 미는 힘을 혈압이라고 해요.'},
+ {keys:['당뇨','혈당','인슐린','diabetes','glucose'],src:'/static/visuals/diabetes.svg',title:'혈당과 인슐린의 관계',caption:'인슐린은 혈액 속 포도당이 세포로 들어가도록 돕는 역할을 해요.'},
+ {keys:['천식','폐렴','호흡','기관지','기침','폐','lung','asthma'],src:'/static/visuals/lungs.svg',title:'폐와 기도는 이렇게 이어져요',caption:'공기는 기도를 지나 좌우 폐로 들어가요.'},
+ {keys:['상처','피부','발진','봉합','찰과상','화상','염증','wound','rash'],src:'/static/visuals/wound.svg',title:'상처는 겉모습 변화도 중요해요',caption:'붉음·붓기·열감이 커지는지 함께 살펴보는 게 좋아요.'},
+ {keys:['복통','위염','소화','위','장','stomach','digest'],src:'/static/visuals/stomach.svg',title:'소화기관은 이렇게 이어져요',caption:'음식은 식도를 지나 위와 장으로 이동해요.'},
+ {keys:['허리','척추','디스크','목 통증','요추','경추','spine'],src:'/static/visuals/spine.svg',title:'척추는 몸의 중심을 지지해요',caption:'척추는 몸을 지지하고 안쪽의 신경을 보호해요.'},
+ {keys:['뇌','두통','뇌졸중','마비','신경','brain'],src:'/static/visuals/brain.svg',title:'뇌는 몸의 여러 기능을 조절해요',caption:'움직임·감각·생각과 관련된 신호를 처리해요.'},
+ {keys:['약','복용','처방','알약','캡슐','medicine','drug'],src:'/static/visuals/medicine.svg',title:'약은 복용정보 확인이 중요해요',caption:'이름·용량·횟수·복용시간을 확인하고 임의로 바꾸지 않는 게 중요해요.'},
+ {keys:['심장','심근','협심','심부전','부정맥','맥박','heart'],src:'/static/visuals/heart.svg',title:'심장은 혈액을 보내는 펌프예요',caption:'심장은 온몸으로 혈액을 보내 산소와 영양분이 전달되게 해요.'}
+];
+function pickVisualAid(question,answer,hadImages){
+ if(hadImages)return null;
+ const text=((question||'')+' '+(answer?.paragraphs||[]).map(p=>p.heading+' '+p.text).join(' ')).toLowerCase();
+ for(const item of VISUAL_AIDS){if(item.keys.some(k=>text.includes(k.toLowerCase())))return item;}
+ return null;
+}
+function makeVisualAid(item){
+ const fig=el('figure','medi-visual');
+ const img=el('img');img.src=item.src;img.alt=item.title;img.loading='lazy';img.decoding='async';
+ const cap=el('figcaption','');cap.append(el('strong','',item.title),el('span','',item.caption),el('small','','이해를 돕는 간단 그림'));
+ fig.append(img,cap);return fig;
+}
+
 function renderTurn(t){
  const turn=el('article','turn');turn.dataset.id=t.id;turn.append(el('div','user-message',t.question));if(t.previewImages?.length){const imgs=el('div','user-images');for(const src of t.previewImages){const img=el('img');img.src=src;img.alt=T.image;imgs.append(img);}turn.append(imgs);}if(t.had_images&&!t.previewImages?.length)turn.append(el('p','source-meta','\uc774\ubbf8\uc9c0 \ucca8\ubd80 \uc774\ub825\uc774 \uc788\uc2b5\ub2c8\ub2e4. \uc6d0\ubcf8\uc740 \uc800\uc7a5\ud558\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4.'));
  if(t.response){const r=t.response,a=r.answer,assistant=el('div','assistant-message'),label=el('div','assistant-label'),mark=el('img');mark.src='/static/mark.svg';mark.alt='';label.append(mark,el('span','','MEDI'));
  if(a.urgency==='emergency')label.append(el('span','evidence-badge emergency','즉시 도움 안내'));
- else if(r.sources?.length)label.append(el('span','source-count',`MEDI 근거 ${r.sources.length}건`));
  assistant.append(label);
- for(const p of a.paragraphs){const block=el('div','answer-paragraph');if(p.heading)block.append(el('h3','',p.heading));block.append(el('p','',p.text));for(const sid of p.source_ids){const b=el('button','source-cite',sid);b.onclick=()=>{const target=turn.querySelector('[data-source="'+sid+'"]');if(target){target.parentElement.open=true;target.open=true;target.scrollIntoView({block:'nearest',behavior:'smooth'});}};block.append(b);}assistant.append(block);}
+ const visual=pickVisualAid(t.question,a,t.had_images);
+ a.paragraphs.forEach((p,index)=>{const block=el('div','answer-paragraph'+(index===0?' answer-summary':''));if(p.heading)block.append(el('h3','',p.heading));block.append(el('p','',p.text));assistant.append(block);if(index===0&&visual)assistant.append(makeVisualAid(visual));});
  if(a.image_observations.length){const obs=el('div','answer-paragraph');obs.append(el('h3','',T.observations),el('p','',a.image_observations.join('\n')));assistant.append(obs);}
- if(r.sources.length){const sources=el('details','source-list');sources.append(el('summary','',T.references+' '+r.sources.length+'\uac1c'));for(const s of r.sources){const item=el('details','source-item');item.dataset.source=s.id;item.append(el('summary','',s.id+'  '+s.title),el('p','source-meta',(s.source_label||'\uc5c5\ub85c\ub4dc \uc790\ub8cc')+' \u00b7 '+(s.year||'\uc5f0\ub3c4 \ubbf8\uc0c1')+' \u00b7 '+(s.source_type==='qa'?'\ud559\uc2b5 \ubb38\ud56d':'\ucc38\uace0 \ubb38\uc11c')),el('p','excerpt',s.excerpt));sources.append(item);}sources.append(el('p','source-warning',T.referenceWarning));assistant.append(sources);}
+ if(r.sources.length){const sources=el('details','source-list');sources.append(el('summary','','답변에 참고한 MEDI 자료 '+r.sources.length+'개'));for(const s of r.sources){const item=el('details','source-item');item.dataset.source=s.id;item.append(el('summary','',s.id+'  '+s.title),el('p','source-meta',(s.source_label||'\uc5c5\ub85c\ub4dc \uc790\ub8cc')+' \u00b7 '+(s.year||'\uc5f0\ub3c4 \ubbf8\uc0c1')+' \u00b7 '+(s.source_type==='qa'?'\ud559\uc2b5 \ubb38\ud56d':'\ucc38\uace0 \ubb38\uc11c')),el('p','excerpt',s.excerpt));sources.append(item);}sources.append(el('p','source-warning',T.referenceWarning));assistant.append(sources);}
  if(a.follow_up_questions.length){const fs=el('div','followups');for(const q of a.follow_up_questions){const b=el('button','followup',q);b.onclick=()=>{if(!state.busy){$('question').value=q;updateInput();$('question').focus();}};fs.append(b);}assistant.append(fs);}assistant.append(el('p','answer-limits',a.limitations));
  const actions=el('div','turn-actions');const copy=el('button','turn-action',T.copy);copy.onclick=async()=>{try{await navigator.clipboard.writeText(answerText(a));toast(T.copied);}catch{toast('Clipboard is unavailable.');}};actions.append(copy);if(state.user){const fb=el('button','turn-action',T.feedback);fb.onclick=()=>openFeedback(t);actions.append(fb);}assistant.append(actions);if(r.save_warning)assistant.append(el('p','inline-error',T.notSaved));turn.append(assistant);
  }else if(t.error){turn.append(el('p','inline-error',t.error));}
