@@ -16,3 +16,18 @@ html[data-theme="dark"] .conversation-row.active{background:#203632}
 html[data-theme="dark"] .conversation-delete:hover{background:#3a2b2a}
 html[data-theme="dark"] .dialog-heading{border-color:#2b3b39}
 html[data-theme="dark"] .subtle,html[data-theme="dark"] .disclaimer,html[data-theme="dark"] .char-count,html[data-theme="dark"] .conversation-empty{color:#9eafab}
+
+/* v0.4 free local AI + safety dialog */
+.user-message{background:#dcefe8!important;color:#173a35!important;border:1px solid #c4ddd4!important;font-weight:500}
+.user-message *{color:inherit!important}
+html[data-theme="dark"] .user-message{background:#245f56!important;color:#f5fffc!important;border-color:#34796e!important}
+html[data-theme="dark"] .user-message *{color:#f5fffc!important}
+.settings-card{display:grid;grid-template-columns:1fr auto;gap:10px 14px;align-items:center;border:1px solid var(--border);border-radius:11px;padding:14px 15px;background:color-mix(in srgb,var(--paper) 86%,var(--green-soft) 14%)}
+.settings-card strong{font-size:calc(13px * var(--font-scale))}
+.settings-card .subtle{margin:4px 0 0!important;line-height:1.6!important}
+.settings-card .full{grid-column:1/-1;margin-top:2px}
+.switch{position:relative;width:46px;height:26px;display:inline-block;flex:0 0 auto}.switch input{position:absolute;opacity:0;width:1px;height:1px}.switch span{position:absolute;inset:0;border-radius:999px;background:#aab8b3;transition:.18s}.switch span:before{content:"";position:absolute;width:20px;height:20px;left:3px;top:3px;background:#fff;border-radius:50%;box-shadow:0 1px 4px #0003;transition:.18s}.switch input:checked+span{background:var(--green)}.switch input:checked+span:before{transform:translateX(20px)}
+.safety-dialog .notice-box{line-height:1.8}.safety-actions{flex-wrap:wrap}.local-ai-progress{font-variant-numeric:tabular-nums}
+html[data-theme="dark"] .settings-card{background:#15211f;border-color:#31413e}
+html[data-theme="dark"] .safety-dialog{background:#182421;color:var(--ink)}
+@media(max-width:540px){.settings-card{grid-template-columns:1fr auto;padding:13px}.settings-card #localAiPrepare{grid-column:1/-1;width:100%}.safety-actions{display:grid;grid-template-columns:1fr}.safety-actions button{width:100%}}
