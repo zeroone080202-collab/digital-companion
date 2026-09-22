@@ -1,69 +1,66 @@
-# MEDI v0.5.2 의료 전문 AI 패치
+# MEDI v0.6 — 일반인용 의료 전문 AI 패치
 
-이 패치는 현재 `digital-companion-main` 기준본에서 **교체해야 하는 파일만** 담았습니다.
-`knowledge_bundle`은 건드리거나 다시 올릴 필요가 없습니다.
+이 패치는 v0.5 계열을 기준으로 다음을 한 번에 수정합니다.
 
-## 무엇이 달라졌나
+- 건강지식 / 의학학습 모드를 하나의 의료 AI 대화로 통합
+- `인공심폐기가 뭐야?` 같은 짧고 넓은 의학 질문도 허용
+- 일반인에게 먼저 쉬운 말로 짧게 설명하도록 프롬프트 변경
+- 기존 MEDI 의료자료를 먼저 검색하는 RAG 유지/강화
+- 이미지 파일 업로드 지원
+- 질문창에 이미지를 Ctrl+V로 바로 붙여넣기 지원
+- 글 없이 이미지만 보내기도 지원
+- Groq Qwen 3.8 또는 Gemini가 연결되면 실제 이미지 입력을 멀티모달 모델에 전달
+- 이미지 단독 질문일 때 이미지에서 검색어를 먼저 뽑아 MEDI 자료를 검색한 뒤 최종 답변에 함께 사용
+- 검사결과지/상처사진/의료영상의 내용은 참고 수준으로 설명하고 확정 판독은 하지 않음
+- 이미지 원본은 대화기록에 저장하지 않음. 서버에서 재인코딩하여 EXIF/ICC 메타데이터 제거
+- 단, 이미지 픽셀 안의 이름·환자번호·생년월일은 자동 삭제되지 않으므로 사용자가 가려야 함
 
-- OpenAI 유료 API 의존성 없음
-- MEDI 의료자료를 **먼저 검색(RAG)** 한 뒤 생성 AI에 근거로 전달
-- 건강 질문에서도 QA + 참고문서(train split) 모두 활용
-- `무릎이`, `허리가`, `붓고`, `열감`, `계단` 같은 일상 표현을 의료 용어/동의어와 함께 검색
-- Groq 무료 서버 AI 우선 지원: `qwen/qwen3.8-27b`
-- Gemini 무료 API를 선택적 예비 공급자로 지원
-- 서버 AI가 없거나 실패할 때만 브라우저 WebGPU AI를 보조 수단으로 시도
-- 의미 없던 흰색 `의료자료 검색` 공급자 배지 제거
-- 근거가 있으면 `MEDI 근거 N건` 및 실제 검색 자료를 표시
-- 라이트/다크 설정창 글자 대비 수정
-- 사용자 말풍선 가독성 수정
-- 첫 질문 전 안전 안내 1회 + `다시 보지 않기` + 설정에서 재활성화
-- 비로그인 채팅, 로그인 사용자 대화 저장 구조 유지
-- 이미지 파일은 현재 텍스트 AI로 보내지 않음. X-ray/MRI/상처 분석은 검증된 영상 모델을 별도로 붙이기 전까지 판독하지 않음
+## 교체할 파일
 
-## 1. GitHub에서 교체할 파일
+GitHub 저장소에서 아래 파일의 내용을 패치 파일의 전체 내용으로 교체하세요.
 
-아래 파일을 같은 경로에 **통째로 덮어쓰기** 하세요.
+- `app/config.py`
+- `app/main.py`
+- `app/provider.py`
+- `app/retrieval.py`
+- `app/schemas.py`
+- `app/policy.py`
+- `static/index.html`
+- `static/app.js`
+- `static/app.css`
+- `static/local_ai.js`
+- `render.yaml`
+- `env.example`
 
-```text
-app/config.py
-app/provider.py
-app/main.py
-app/retrieval.py
-static/index.html
-static/app.js
-static/app.css
-static/local_ai.js
-render.yaml
-env.example
-```
+`knowledge_bundle`은 다시 올리지 않습니다.
 
-`knowledge_bundle`은 그대로 둡니다.
+## Render 환경변수
 
-## 2. 가장 추천하는 무료 AI 연결: Groq
-
-OpenAI API 키는 필요하지 않습니다.
-다만 휴대폰/PC 어디서나 안정적으로 생성형 답변을 받으려면 **무료 Groq API 키** 1개가 필요합니다.
-
-Groq Console에서 계정을 만들고 API Key를 만든 뒤, 키는 GitHub 코드에 넣지 말고 Render의 Environment에만 저장하세요.
-
-MEDI v0.5.2는 외부 텍스트 AI로 보내기 전에 주민등록번호 형식, 휴대전화번호, 이메일처럼 명확한 직접 식별자를 한 번 더 마스킹합니다. 다만 완전한 비식별화 기능은 아니므로 실명·환자번호 등 식별 가능한 정보는 처음부터 입력하지 않는 것이 좋습니다. Groq를 사용할 경우 Console의 Data Controls에서 Zero Data Retention(ZDR)을 켤 수 있다면 켜는 것을 권장합니다.
-
-Render > MEDI Web Service > Environment:
+Groq를 사용할 경우:
 
 ```text
 MEDI_AI_PROVIDER=groq
-GROQ_API_KEY=여기에_본인의_Groq_키
+GROQ_API_KEY=본인의_키
 GROQ_MODEL=qwen/qwen3.8-27b
 ```
 
-기존에 아래 값이 있으면 삭제해도 됩니다.
+Gemini를 사용할 경우:
 
 ```text
-OPENAI_API_KEY
-OPENAI_MODEL
+MEDI_AI_PROVIDER=gemini
+GEMINI_API_KEY=본인의_키
+GEMINI_MODEL=gemini-2.5-flash-lite
 ```
 
-다음 값들은 기존 값을 유지하세요.
+둘 다 등록하고 자동 대체를 원하면:
+
+```text
+MEDI_AI_PROVIDER=auto
+```
+
+기존 `OPENAI_API_KEY`, `OPENAI_MODEL`은 필요 없습니다.
+
+기존 Supabase 관련 값은 유지합니다.
 
 ```text
 DEPLOYMENT_MODE=public
@@ -73,86 +70,25 @@ DATA_ENCRYPTION_KEY=기존값
 ALLOW_OPEN_SIGNUP=true
 ```
 
-### 매우 중요: 의료자료 검색 활성화
-
-Render의 `DATASET_RIGHTS_CONFIRMED`가 `false`이면 공개 배포에서는 의료자료를 실제 답변 검색에 사용하지 않습니다.
-화면에 67,485건이 표시돼도 검색은 꺼질 수 있습니다.
-
-**해당 데이터셋을 이 연구 웹서비스에서 사용할 권한을 본인이 확인한 경우에만** 다음처럼 바꾸세요.
+의료 데이터셋을 현재 서비스에서 이용할 권한을 확인한 경우에만:
 
 ```text
 DATASET_RIGHTS_CONFIRMED=true
 ```
 
-이용권한을 확인하지 못했다면 `false`를 유지하세요.
+## 이미지 사용법
 
-## 3. 선택 사항: Gemini를 무료 예비 AI로 같이 사용
+1. `+ 이미지` 버튼으로 JPG/PNG/WebP를 선택합니다.
+2. 또는 질문 입력칸을 클릭하고 이미지 복사 후 `Ctrl+V`를 누릅니다.
+3. 글을 같이 적어도 되고, 이미지만 전송해도 됩니다.
+4. 최대 2장, 장당 5MB입니다.
 
-Groq 무료 한도에 걸렸을 때 Gemini로 자동 전환하려면:
+서버 AI 키가 없거나 멀티모달 제공자 연결이 실패하면 이미지는 첨부되지만 내용 분석은 하지 않습니다. 이때 화면에 연결 상태를 안내합니다.
 
-```text
-MEDI_AI_PROVIDER=auto
-GROQ_API_KEY=본인의_Groq_키
-GROQ_MODEL=qwen/qwen3.8-27b
-GEMINI_API_KEY=본인의_Gemini_키
-GEMINI_MODEL=gemini-2.5-flash-lite
-```
+## 배포
 
-건강 관련 질문에서는 식별 가능한 개인정보를 넣지 않는 것을 권장합니다.
-Gemini 무료 등급은 Google의 공개 가격표상 제품 개선에 사용될 수 있다고 표시되어 있으므로, MEDI 기본 추천은 Groq입니다.
+파일 교체 후 GitHub에 Commit하고 Render에서:
 
-## 4. Render 재배포
+`Manual Deploy → Clear build cache & deploy`
 
-GitHub Commit 후 Render에서:
-
-```text
-Manual Deploy
-→ Clear build cache & deploy
-```
-
-배포가 끝나면 MEDI > 설정에서 아래처럼 보여야 합니다.
-
-```text
-MEDI 의료 AI
-Groq 무료 서버 AI 연결됨 · qwen/qwen3.8-27b
-
-내 의료지식 자료
-MEDI 의료자료 활성 · 67,485건
-```
-
-## 5. 작동 테스트
-
-예를 들어 다음처럼 입력하세요.
-
-```text
-무릎이 너무 아파
-```
-
-정상 흐름은 다음과 같습니다.
-
-```text
-질문
-→ MEDI 의료자료 검색
-→ 관련 QA/참고문서 최대 5개 선별
-→ 해당 근거를 Qwen에 전달
-→ 의료 전문 프롬프트로 답변 생성
-→ 관련 근거/후속 질문 표시
-```
-
-이 버전은 단순 Qwen 챗봇이 아닙니다. 생성 모델 자체를 사용자의 데이터로 새로 파인튜닝한 것은 아니지만, **매 질문마다 사용자가 제공한 MEDI 데이터베이스를 먼저 검색해서 근거로 넣는 RAG 의료 AI**입니다.
-
-## 6. 이미지 기능에 대해
-
-현재 v0.5.2는 X-ray, MRI, 상처 사진을 텍스트 생성 AI에 보내서 진단하는 척하지 않습니다.
-실제 이미지 의료 AI는 다음 단계에서 별도로 진행해야 합니다.
-
-```text
-영상 데이터셋
-→ 학습/검증 분리 점검
-→ 영상 분류/탐지 모델 학습
-→ 성능 평가
-→ Grad-CAM 등 설명가능성 시각화
-→ MEDI 연결
-```
-
-Grad-CAM은 실제로 학습된 영상 모델에 적용해야 하므로, 검증되지 않은 모델로 가짜 히트맵을 만들지 않습니다.
+브라우저에서는 강력 새로고침(Ctrl+Shift+R)을 한 번 해주세요.

@@ -1,11 +1,11 @@
-# MEDI v0.5.2 수정 파일 전체 코드
+# MEDI v0.6 전체 교체 파일 코드
+아래 각 파일은 GitHub에서 같은 경로의 기존 내용을 전부 지우고 통째로 붙여넣을 수 있는 전체 내용입니다.
 
-아래 각 파일의 기존 내용을 전부 지우고, 해당 코드 블록 전체를 그대로 붙여넣으면 됩니다. `knowledge_bundle`은 수정하지 않습니다.
-
+---
 
 ## `app/config.py`
 
-````python
+```python
 """MEDI runtime configuration.
 
 Secrets stay in environment variables. The app can run with no paid AI key:
@@ -102,345 +102,13 @@ class Settings:
 
 
 settings = Settings()
-````
+```
 
-
-## `app/provider.py`
-
-````python
-"""Free text-generation adapters for MEDI.
-
-MEDI retrieves the operator's uploaded medical knowledge first. A configured
-free provider then turns that evidence into a conversational answer. Images are
-NOT sent to these text providers.
-
-Provider order in MEDI_AI_PROVIDER=auto:
-1) Groq free tier, if GROQ_API_KEY is configured
-2) Gemini free tier, if GEMINI_API_KEY is configured
-3) caller falls back to browser-local WebGPU or retrieval-only mode
-"""
-from __future__ import annotations
-
-from dataclasses import dataclass
-import json
-import re
-import httpx
-
-from app.config import Settings
-from app.schemas import ChatRequest, MedicalAnswer, Paragraph
-from app.policy import DISCLAIMER
-
-
-class ProviderError(RuntimeError):
-    def __init__(self, code: str, message: str):
-        self.code = code
-        self.message = message
-        super().__init__(message)
-
-
-@dataclass
-class ProviderResult:
-    answer: MedicalAnswer
-    provider: str
-    model: str
-
-
-
-
-ANSWER_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "in_scope": {"type": "boolean"},
-        "urgency": {"type": "string", "enum": ["emergency", "medical_review", "general_information", "unknown"]},
-        "evidence_status": {"type": "string", "enum": ["supported", "partial", "insufficient", "not_applicable"]},
-        "paragraphs": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "heading": {"type": "string"},
-                    "text": {"type": "string"},
-                    "source_ids": {"type": "array", "items": {"type": "string"}},
-                },
-                "required": ["heading", "text", "source_ids"],
-                "additionalProperties": False,
-            },
-        },
-        "follow_up_questions": {"type": "array", "items": {"type": "string"}},
-        "image_observations": {"type": "array", "items": {"type": "string"}},
-        "limitations": {"type": "string"},
-    },
-    "required": ["in_scope", "urgency", "evidence_status", "paragraphs", "follow_up_questions", "image_observations", "limitations"],
-    "additionalProperties": False,
-}
-
-
-def _normalize_structured_answer(raw: dict, sources: list[dict]) -> MedicalAnswer:
-    """Validate model JSON and refuse invented MEDI citations."""
-    try:
-        answer = MedicalAnswer.model_validate(raw)
-    except Exception as e:
-        raise ProviderError('free_ai_output', '무료 AI의 구조화된 답변을 검증하지 못했습니다.') from e
-
-    allowed = {str(s.get('id')) for s in sources}
-    used = set()
-    cleaned = []
-    for paragraph in answer.paragraphs[:7]:
-        valid_ids = [sid for sid in paragraph.source_ids if sid in allowed]
-        used.update(valid_ids)
-        cleaned.append(Paragraph(heading=paragraph.heading[:80], text=paragraph.text[:6000], source_ids=valid_ids))
-    if not cleaned:
-        raise ProviderError('free_ai_output', '무료 AI가 본문 없이 응답했습니다.')
-
-    evidence = answer.evidence_status
-    if not sources:
-        evidence = 'insufficient'
-    elif not used and evidence == 'supported':
-        evidence = 'partial'
-
-    return answer.model_copy(update={
-        'paragraphs': cleaned,
-        'evidence_status': evidence,
-        'follow_up_questions': answer.follow_up_questions[:5],
-        'image_observations': answer.image_observations[:5],
-        'limitations': (answer.limitations or DISCLAIMER)[:3000],
-    })
-
-
-SYSTEM_PROMPT = """너는 MEDI라는 한국어 의료 전문 연구·학습 보조 AI다.
-
-가장 중요한 원칙:
-1. 사용자가 운영자에게 제공한 'MEDI 의료지식 자료'를 최우선 근거로 사용한다.
-2. 제공된 근거에 있는 사실과 모델의 일반 지식을 섞어서 확정적으로 말하지 않는다.
-3. 근거자료가 있으면 관련 문장 끝에 [S1], [S2]처럼 실제 제공된 ID만 표시한다.
-4. 자료가 부족하면 'MEDI 자료만으로는 충분히 확인되지 않는다'고 분명히 말한 뒤, 필요한 추가 정보나 일반적인 가능성을 조심스럽게 설명한다.
-5. 개인 증상에서 하나의 질환으로 확정 진단하지 않는다. 가능한 원인의 범주와 구분에 도움이 되는 질문을 제시한다.
-6. 처방약 시작·중단·용량 변경을 지시하지 않는다.
-7. 심한 흉통, 심한 호흡곤란, 의식저하, 새로 생긴 마비, 멈추지 않는 출혈 등 응급 신호가 있으면 119 또는 응급의료기관을 우선 안내한다.
-8. 사용자가 '왜 아픈가'라고 물으면 단순 경고문만 반복하지 말고, 증상 위치·시작 시점·외상·붓기/열감·체중부하 가능 여부·동반 증상 등 의학적으로 유용한 구분 정보를 자연스럽게 묻는다.
-9. 설명은 어렵지 않은 한국어로 하되, 필요하면 의학용어를 괄호에 함께 적는다.
-10. 답변은 의료상담 기록처럼 딱딱한 템플릿이 아니라 자연스러운 대화형 설명으로 작성한다.
-11. source_ids에는 실제로 해당 문단의 근거로 사용한 MEDI 자료 ID만 넣는다. 근거가 없으면 빈 배열로 둔다.
-12. 개인 증상 질문에서는 필요한 경우 2~4개의 짧은 후속 질문을 follow_up_questions에 넣는다.
-
-이 시스템은 연구용이며 실제 의료진의 진료·검사·진단·처방을 대신하지 않는다.
-"""
-
-
-def _clip(value: str, n: int) -> str:
-    return str(value or '')[:n]
-
-
-def _redact_identifiers(value: str) -> str:
-    """Remove obvious direct identifiers before text leaves the MEDI server.
-
-    This is a conservative convenience filter, not a complete de-identification
-    system. The UI still tells users not to submit identifying information.
-    """
-    text = str(value or '')
-    patterns = [
-        (r'\b\d{6}[- ]?[1-4]\d{6}\b', '[주민등록번호 제거]'),
-        (r'\b01[016789][- ]?\d{3,4}[- ]?\d{4}\b', '[전화번호 제거]'),
-        (r'[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}', '[이메일 제거]'),
-    ]
-    for pattern, replacement in patterns:
-        text = re.sub(pattern, replacement, text)
-    return text
-
-
-def _reference_text(sources: list[dict]) -> str:
-    if not sources:
-        return '이번 질문에서 직접 연결된 MEDI 업로드 근거자료가 없음.'
-    blocks = []
-    # Keep free-tier prompts comfortably below common TPM limits.
-    for s in sources[:5]:
-        title = _clip(s.get('title') or '업로드 자료', 140)
-        year = _clip(s.get('year') or '', 20)
-        excerpt = _clip(s.get('excerpt') or '', 1050)
-        meta = f" ({year})" if year else ''
-        blocks.append(f"[{s['id']}] {title}{meta}\n{excerpt}")
-    return '\n\n'.join(blocks)
-
-
-def _messages(request: ChatRequest, sources: list[dict]) -> list[dict]:
-    mode = '의학 학습 모드' if request.mode == 'study' else '건강정보 모드'
-    user = (
-        f"현재 모드: {mode}\n\n"
-        f"MEDI 업로드 근거자료:\n{_reference_text(sources)}\n\n"
-        f"사용자 질문:\n{_redact_identifiers(request.message)}\n\n"
-        "위 MEDI 근거자료를 먼저 활용해 답해라. 자료가 관련 있으면 실제 ID로 인용하고, "
-        "관련이 없거나 부족하면 억지로 인용하지 마라. 개인 증상 질문이면 가능한 원인을 확정하지 말고 "
-        "구분에 필요한 질문과 진료가 필요한 신호를 함께 설명해라."
-    )
-    out = [{'role': 'system', 'content': SYSTEM_PROMPT}]
-    for h in request.history[-4:]:
-        out.append({'role': h.role, 'content': _clip(_redact_identifiers(h.content), 1400)})
-    out.append({'role': 'user', 'content': user})
-    return out
-
-
-def _text_to_answer(text: str, sources: list[dict], mode: str) -> MedicalAnswer:
-    text = str(text or '').strip()
-    if not text:
-        raise ProviderError('empty_output', '무료 AI가 빈 답변을 반환했습니다.')
-
-    allowed = {s['id'] for s in sources}
-    chunks = [p.strip() for p in re.split(r'\n\s*\n', text) if p.strip()]
-    if not chunks:
-        chunks = [text]
-    chunks = chunks[:7]
-
-    paragraphs: list[Paragraph] = []
-    used: set[str] = set()
-    for chunk in chunks:
-        ids = []
-        for sid in re.findall(r'\[(S\d+)\]', chunk):
-            if sid in allowed and sid not in ids:
-                ids.append(sid)
-                used.add(sid)
-        # Keep citations visible in text as well as source buttons; this is clearer
-        # when users export the conversation.
-        heading = ''
-        body = chunk
-        first, sep, rest = chunk.partition('\n')
-        if sep and len(first) <= 32 and not first.endswith(('.', '다', '요')):
-            heading = first.strip('# *')
-            body = rest.strip()
-        paragraphs.append(Paragraph(heading=heading, text=body, source_ids=ids))
-
-    evidence = 'supported' if sources and used else ('partial' if sources else 'insufficient')
-    return MedicalAnswer(
-        in_scope=True,
-        urgency='general_information' if mode == 'study' else 'unknown',
-        evidence_status=evidence,
-        paragraphs=paragraphs,
-        follow_up_questions=[],
-        image_observations=[],
-        limitations=DISCLAIMER + ' 생성형 AI의 설명은 오류가 있을 수 있으므로 중요한 의료 판단에는 의료진의 평가가 필요합니다.'
-    )
-
-
-async def _groq(request: ChatRequest, sources: list[dict], settings: Settings, transport=None) -> ProviderResult:
-    payload = {
-        'model': settings.groq_model,
-        'messages': _messages(request, sources),
-        'temperature': 0.2,
-        'top_p': 0.9,
-        'max_tokens': 1300,
-        'stream': False,
-        # Qwen 3.8 on Groq supports strict JSON-schema output. This prevents
-        # UI-breaking ad-hoc formats while the server still checks citations.
-        'response_format': {
-            'type': 'json_schema',
-            'json_schema': {
-                'name': 'medi_medical_answer',
-                'strict': True,
-                'schema': ANSWER_SCHEMA,
-            },
-        },
-    }
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(settings.timeout, connect=10), transport=transport, follow_redirects=False) as client:
-            response = await client.post(
-                'https://api.groq.com/openai/v1/chat/completions',
-                headers={'Authorization': 'Bearer ' + settings.groq_api_key, 'Content-Type': 'application/json'},
-                json=payload,
-            )
-    except httpx.TimeoutException as e:
-        raise ProviderError('free_ai_timeout', 'Groq 무료 AI 응답 시간이 초과되었습니다.') from e
-    except httpx.HTTPError as e:
-        raise ProviderError('free_ai_network', 'Groq 무료 AI에 연결할 수 없습니다.') from e
-
-    if response.status_code == 401:
-        raise ProviderError('free_ai_key', 'GROQ_API_KEY를 확인해 주세요.')
-    if response.status_code == 429:
-        raise ProviderError('free_ai_limit', 'Groq 무료 사용 한도에 도달했습니다. 잠시 후 다시 시도하거나 브라우저 AI를 사용합니다.')
-    if response.status_code >= 400:
-        raise ProviderError('free_ai_upstream', f'Groq 요청 실패 ({response.status_code})')
-    try:
-        data = response.json()
-        raw = json.loads(data['choices'][0]['message']['content'])
-    except Exception as e:
-        raise ProviderError('free_ai_output', 'Groq 구조화 응답 형식을 읽지 못했습니다.') from e
-    return ProviderResult(_normalize_structured_answer(raw, sources), 'groq_free', settings.groq_model)
-
-
-async def _gemini(request: ChatRequest, sources: list[dict], settings: Settings, transport=None) -> ProviderResult:
-    messages = _messages(request, sources)
-    system = messages[0]['content']
-    conversation = []
-    for m in messages[1:]:
-        role = 'model' if m['role'] == 'assistant' else 'user'
-        conversation.append({'role': role, 'parts': [{'text': m['content']}]})
-    payload = {
-        'system_instruction': {'parts': [{'text': system}]},
-        'contents': conversation,
-        'generationConfig': {'temperature': 0.2, 'topP': 0.9, 'maxOutputTokens': 1100},
-    }
-    url = f'https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent'
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(settings.timeout, connect=10), transport=transport, follow_redirects=False) as client:
-            response = await client.post(url, headers={'x-goog-api-key': settings.gemini_api_key, 'Content-Type': 'application/json'}, json=payload)
-    except httpx.TimeoutException as e:
-        raise ProviderError('free_ai_timeout', 'Gemini 무료 AI 응답 시간이 초과되었습니다.') from e
-    except httpx.HTTPError as e:
-        raise ProviderError('free_ai_network', 'Gemini 무료 AI에 연결할 수 없습니다.') from e
-
-    if response.status_code in {400, 401, 403}:
-        raise ProviderError('free_ai_key', 'GEMINI_API_KEY 또는 Gemini 프로젝트 설정을 확인해 주세요.')
-    if response.status_code == 429:
-        raise ProviderError('free_ai_limit', 'Gemini 무료 사용 한도에 도달했습니다. 잠시 후 다시 시도합니다.')
-    if response.status_code >= 400:
-        raise ProviderError('free_ai_upstream', f'Gemini 요청 실패 ({response.status_code})')
-    try:
-        data = response.json()
-        text = ''.join(p.get('text', '') for p in data['candidates'][0]['content']['parts'])
-    except Exception as e:
-        raise ProviderError('free_ai_output', 'Gemini 응답 형식을 읽지 못했습니다.') from e
-    return ProviderResult(_text_to_answer(text, sources, request.mode), 'gemini_free', settings.gemini_model)
-
-
-async def generate(request: ChatRequest, sources: list[dict], settings: Settings, transport=None) -> ProviderResult:
-    """Generate with a configured free provider.
-
-    In auto mode, a provider error falls through to the next configured free
-    provider. If all fail, a ProviderError is raised so the server can use the
-    browser-local model or retrieval-only fallback.
-    """
-    candidates: list[str] = []
-    if settings.ai_provider == 'groq':
-        candidates = ['groq'] if settings.groq_api_key else []
-    elif settings.ai_provider == 'gemini':
-        candidates = ['gemini'] if settings.gemini_api_key else []
-    elif settings.ai_provider == 'browser':
-        candidates = []
-    else:
-        if settings.groq_api_key:
-            candidates.append('groq')
-        if settings.gemini_api_key:
-            candidates.append('gemini')
-
-    if not candidates:
-        raise ProviderError('free_ai_not_configured', '무료 서버 AI가 설정되지 않았습니다.')
-
-    last_error: ProviderError | None = None
-    for name in candidates:
-        try:
-            if name == 'groq':
-                return await _groq(request, sources, settings, transport=transport)
-            if name == 'gemini':
-                return await _gemini(request, sources, settings, transport=transport)
-        except ProviderError as e:
-            last_error = e
-            if settings.ai_provider != 'auto':
-                raise
-    raise last_error or ProviderError('free_ai_unavailable', '사용 가능한 무료 AI가 없습니다.')
-````
-
+---
 
 ## `app/main.py`
 
-````python
+```python
 """MEDI research-chat server. Run one worker; see docs before public deployment."""
 import asyncio
 from contextlib import asynccontextmanager, suppress
@@ -462,7 +130,7 @@ from app.config import Settings, settings as default_settings, ROOT
 from app.cloud import CloudStore, CloudError
 from app.images import sanitize_image, ImageValidationError
 from app.policy import is_medical, emergency_signal, fixed_answer, DISCLAIMER
-from app.provider import generate as provider_generate, ProviderError, ProviderResult
+from app.provider import generate as provider_generate, image_search_query as provider_image_search_query, ProviderError, ProviderResult
 from app.retrieval import KnowledgeStore
 from app.schemas import (ChatRequest, Credentials, NewConversation, FeedbackRequest, DeleteAccount,
                          HistoryMessage, MedicalAnswer, Paragraph, LocalTurnSave)
@@ -565,14 +233,14 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
     async def config():
         backend=cfg.free_server_ai
         model=(cfg.groq_model if backend=='groq' else cfg.gemini_model if backend=='gemini' else None)
-        return {'app':'MEDI','version':'0.5.2','public':cfg.public,'accounts':cfg.has_accounts,
+        return {'app':'MEDI','version':'0.6.0','public':cfg.public,'accounts':cfg.has_accounts,
                 'ai_mode':'server_free' if backend else 'browser_local',
                 'ai_backend':backend,'ai_connected':bool(backend),'ai_model':model,
                 'local_model':'Qwen2.5-0.5B-Instruct-q4f16_1-MLC',
                 'knowledge':app.state.stats,'knowledge_enabled':not cfg.public or cfg.dataset_rights_confirmed,
                 'dataset_rights_confirmed':cfg.dataset_rights_confirmed,
                 'invite_required':False,'guest_chat':True,'max_image_mb':5,'max_images':2,
-                'learning':'consented_feedback_then_human_review','radiology_enabled':False,
+                'learning':'consented_feedback_then_human_review','radiology_enabled':False,'image_understanding_enabled':bool(cfg.free_server_ai),
                 'operator_contact':cfg.operator_contact}
     @app.post('/api/auth/signup')
     async def signup(data: Credentials,request: Request):
@@ -690,23 +358,36 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
             sources=[];image_info=[];provider='guardrail';model=None;provider_warning=None
             if emergency_signal(data.message):
                 answer=fixed_answer('emergency')
-            elif any(i.kind=='radiology' for i in data.images):
-                answer=fixed_answer('radiology')
             elif not is_medical(data.message,data.history,bool(data.images)):
                 answer=fixed_answer('out_of_scope')
             else:
-                # Images are validated/re-encoded locally. Text-only free providers
-                # never receive the image bytes in v0.5.
+                # Re-encode images in memory before any external multimodal call.
+                # EXIF/ICC metadata is removed and the original bytes are not stored.
+                clean_images=[]
                 for image in data.images:
-                    _,info=await asyncio.to_thread(sanitize_image,image.data_url,cfg.max_image_bytes)
+                    clean_url,info=await asyncio.to_thread(sanitize_image,image.data_url,cfg.max_image_bytes)
                     image_info.append(info)
+                    clean_images.append(image.model_copy(update={'data_url':clean_url,'kind':'photo'}))
+                if clean_images:
+                    data=data.model_copy(update={'images':clean_images})
 
-                query=data.message
+                query=(data.message or '').strip()
                 if len(query)<80 and data.history:
                     previous=next((h.content for h in reversed(data.history) if h.role=='user'),'')
-                    query=previous[:250]+' '+query
+                    query=(previous[:220]+' '+query).strip()
+                # Image-only questions get a short, non-diagnostic vision pass so
+                # the operator's MEDI knowledge can still participate in RAG.
+                if data.images and cfg.free_server_ai:
+                    try:
+                        image_hint=await provider_image_search_query(data,cfg)
+                        if image_hint:
+                            query=(query+' '+image_hint).strip()
+                    except Exception:
+                        pass
+                if not query:
+                    query='의료 이미지 검사 결과 상처 의료영상'
                 if not cfg.public or cfg.dataset_rights_confirmed:
-                    sources=await asyncio.to_thread(knowledge.search,query,study=data.mode=='study',limit=5)
+                    sources=await asyncio.to_thread(knowledge.search,query,study=False,limit=5)
 
                 # Prefer a free server-side provider because it works on PCs and
                 # phones even when WebGPU is unavailable. The uploaded MEDI
@@ -723,15 +404,20 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
                             raise ProviderError('free_ai_output','무료 AI 응답 형식이 올바르지 않습니다.')
                     except ProviderError as exc:
                         provider_warning=exc.code
-                        provider='browser_local'
-                        text=('MEDI 의료자료는 찾았지만 무료 서버 AI 연결이 잠시 실패했습니다. '
-                              '브라우저 보조 AI로 답변 생성을 시도합니다.' if sources else
-                              '이번 질문과 직접 연결되는 MEDI 의료자료를 찾지 못했고 무료 서버 AI 연결도 잠시 실패했습니다. '
-                              '브라우저 보조 AI로 일반적인 설명을 시도합니다.')
-                        answer=MedicalAnswer(in_scope=True,urgency='general_information' if data.mode=='study' else 'unknown',
+                        if data.images:
+                            provider='retrieval_only'
+                            text=('이미지는 정상적으로 첨부됐지만 지금은 이미지 이해 AI 연결이 되지 않았어요. '
+                                  '연결된 MEDI 의료자료는 아래에서 확인할 수 있습니다. Groq 또는 Gemini가 연결되면 같은 이미지로 설명할 수 있어요.')
+                        else:
+                            provider='browser_local'
+                            text=('MEDI 의료자료는 찾았지만 무료 서버 AI 연결이 잠시 실패했습니다. '
+                                  '브라우저 보조 AI로 답변 생성을 시도합니다.' if sources else
+                                  '이번 질문과 직접 연결되는 MEDI 의료자료를 찾지 못했고 무료 서버 AI 연결도 잠시 실패했습니다. '
+                                  '브라우저 보조 AI로 일반적인 설명을 시도합니다.')
+                        answer=MedicalAnswer(in_scope=True,urgency='unknown',
                             evidence_status='partial' if sources else 'insufficient',
                             paragraphs=[Paragraph(heading='',text=text,source_ids=[])],
-                            follow_up_questions=[],image_observations=[],limitations=DISCLAIMER)
+                            follow_up_questions=[],image_observations=[],limitations='참고용 의료정보예요. 중요한 판단은 의료진에게 확인하세요.')
                 else:
                     provider='browser_local'
                     if sources:
@@ -740,8 +426,8 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
                     else:
                         text='이번 질문과 직접 연결되는 MEDI 의료자료는 찾지 못했습니다. 브라우저 보조 AI가 일반 의학지식으로 설명하되 근거 부족을 표시합니다.'
                         evidence='insufficient'
-                    image_note=['첨부 이미지는 현재 텍스트 AI에 전달하지 않습니다. 영상 분석은 검증된 별도 모델을 연결한 뒤 활성화합니다.'] if data.images else []
-                    answer=MedicalAnswer(in_scope=True,urgency='general_information' if data.mode=='study' else 'unknown',
+                    image_note=['이미지는 첨부됐지만 현재 연결된 멀티모달 서버 AI가 없어 내용을 분석하지 못했습니다.'] if data.images else []
+                    answer=MedicalAnswer(in_scope=True,urgency='unknown',
                         evidence_status=evidence,
                         paragraphs=[Paragraph(heading='',text=text,source_ids=[])],
                         follow_up_questions=[],image_observations=image_note,limitations=DISCLAIMER)
@@ -750,7 +436,7 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
                     'provider':provider,'model':model,'provider_warning':provider_warning,
                     'image_processing':image_info,'image_bytes_stored':False,'quota':None,
                     'saved':False,'learning_applied':False,
-                    'local_ai_allowed':provider=='browser_local',
+                    'local_ai_allowed':provider=='browser_local' and not bool(data.images),
                     'knowledge_used':bool(sources)}
             results[key]=(time.monotonic(),digest,result)
             return result
@@ -809,12 +495,430 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
     return app
 
 app=create_app()
-````
+```
 
+---
+
+## `app/provider.py`
+
+```python
+"""Free text-generation adapters for MEDI.
+
+MEDI retrieves the operator's uploaded medical knowledge first. A configured
+free provider then turns that evidence into a conversational answer. Vision-capable
+providers can also receive sanitized image copies for visual explanation.
+
+Provider order in MEDI_AI_PROVIDER=auto:
+1) Groq free tier, if GROQ_API_KEY is configured
+2) Gemini free tier, if GEMINI_API_KEY is configured
+3) caller falls back to browser-local WebGPU or retrieval-only mode
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+import json
+import re
+import httpx
+
+from app.config import Settings
+from app.schemas import ChatRequest, MedicalAnswer, Paragraph
+from app.policy import DISCLAIMER
+
+
+class ProviderError(RuntimeError):
+    def __init__(self, code: str, message: str):
+        self.code = code
+        self.message = message
+        super().__init__(message)
+
+
+@dataclass
+class ProviderResult:
+    answer: MedicalAnswer
+    provider: str
+    model: str
+
+
+
+
+ANSWER_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "in_scope": {"type": "boolean"},
+        "urgency": {"type": "string", "enum": ["emergency", "medical_review", "general_information", "unknown"]},
+        "evidence_status": {"type": "string", "enum": ["supported", "partial", "insufficient", "not_applicable"]},
+        "paragraphs": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "heading": {"type": "string"},
+                    "text": {"type": "string"},
+                    "source_ids": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["heading", "text", "source_ids"],
+                "additionalProperties": False,
+            },
+        },
+        "follow_up_questions": {"type": "array", "items": {"type": "string"}},
+        "image_observations": {"type": "array", "items": {"type": "string"}},
+        "limitations": {"type": "string"},
+    },
+    "required": ["in_scope", "urgency", "evidence_status", "paragraphs", "follow_up_questions", "image_observations", "limitations"],
+    "additionalProperties": False,
+}
+
+
+def _normalize_structured_answer(raw: dict, sources: list[dict]) -> MedicalAnswer:
+    """Validate model JSON and refuse invented MEDI citations."""
+    try:
+        answer = MedicalAnswer.model_validate(raw)
+    except Exception as e:
+        raise ProviderError('free_ai_output', '무료 AI의 구조화된 답변을 검증하지 못했습니다.') from e
+
+    allowed = {str(s.get('id')) for s in sources}
+    used = set()
+    cleaned = []
+    for paragraph in answer.paragraphs[:4]:
+        valid_ids = [sid for sid in paragraph.source_ids if sid in allowed]
+        used.update(valid_ids)
+        cleaned.append(Paragraph(heading=paragraph.heading[:80], text=paragraph.text[:6000], source_ids=valid_ids))
+    if not cleaned:
+        raise ProviderError('free_ai_output', '무료 AI가 본문 없이 응답했습니다.')
+
+    evidence = answer.evidence_status
+    if not sources:
+        evidence = 'insufficient'
+    elif not used and evidence == 'supported':
+        evidence = 'partial'
+
+    return answer.model_copy(update={
+        'paragraphs': cleaned,
+        'evidence_status': evidence,
+        'follow_up_questions': answer.follow_up_questions[:3],
+        'image_observations': answer.image_observations[:4],
+        'limitations': '참고용 의료정보예요. 증상이 심하거나 걱정되는 변화가 있으면 의료진에게 확인하세요.',
+    })
+
+
+SYSTEM_PROMPT = """너는 MEDI라는 한국어 의료 전문 AI다. 사용자는 의학 전문가가 아니라 일반인이다.
+
+답변 원칙:
+1. MEDI에 연결된 의료지식 자료를 가장 먼저 참고한다. 관련 근거가 있으면 실제 [S1], [S2] ID만 사용한다.
+2. 질문이 짧아도 넓게 이해한다. 질병, 증상, 검사, 수술, 약, 해부학, 의료기기, 응급처치 원리 등 의학 질문을 자연스럽게 답한다.
+3. 첫 문장은 결론부터 아주 쉽게 말한다. 어려운 전문용어는 꼭 필요할 때만 쉬운 말 뒤 괄호에 붙인다.
+4. 기본 답변은 짧고 읽기 쉽게 쓴다. 보통 2~3개 짧은 문단이면 충분하다. 사용자가 자세히 물을 때만 길게 설명한다.
+5. '인공심폐기가 뭐야?' 같은 개념 질문은 '한마디로 → 언제 쓰는지 → 어떻게 작동하는지' 정도로 설명한다. 시험답안처럼 복잡한 문장이나 과도한 분류를 피한다.
+6. 개인 증상 질문은 확정 진단하지 않는다. 흔한 가능성부터 이해하기 쉽게 설명하고, 꼭 필요한 경우에만 짧은 추가 질문 1~3개를 제시한다.
+7. 처방약을 새로 시작·중단하거나 용량을 바꾸라고 지시하지 않는다.
+8. 심한 흉통, 심한 호흡곤란, 의식저하, 새로 생긴 마비, 멈추지 않는 출혈 등 명확한 응급 신호가 있으면 119 또는 응급의료기관을 우선 안내한다.
+9. 이미지가 있으면 실제로 보이는 내용과 일반적인 의미를 구분해서 설명한다. 검사결과지의 글자는 읽어 쉽게 풀어줄 수 있다. 상처·피부 사진은 보이는 특징을 설명할 수 있다. X-ray·CT·MRI는 보이는 구조나 의심되는 점을 참고 수준으로 설명하되 확정 판독이나 '정상' 보증을 하지 않는다.
+10. 이미지에 보이지 않는 사실을 지어내지 않는다. 화질이 낮거나 판단이 어려우면 솔직하게 말한다.
+11. MEDI 근거가 부족하면 억지로 자료를 끼워 맞추지 말고, 일반 의학지식임을 자연스럽게 구분한다.
+12. source_ids에는 그 문단에서 실제로 사용한 MEDI 자료 ID만 넣는다.
+
+이 시스템은 의료정보 이해를 돕는 도구이며 실제 의료진의 진료·검사·확정 진단·처방을 대신하지 않는다.
+"""
+
+
+def _clip(value: str, n: int) -> str:
+    return str(value or '')[:n]
+
+
+def _redact_identifiers(value: str) -> str:
+    """Remove obvious direct identifiers before text leaves the MEDI server.
+
+    This is a conservative convenience filter, not a complete de-identification
+    system. The UI still tells users not to submit identifying information.
+    """
+    text = str(value or '')
+    patterns = [
+        (r'\b\d{6}[- ]?[1-4]\d{6}\b', '[주민등록번호 제거]'),
+        (r'\b01[016789][- ]?\d{3,4}[- ]?\d{4}\b', '[전화번호 제거]'),
+        (r'[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}', '[이메일 제거]'),
+    ]
+    for pattern, replacement in patterns:
+        text = re.sub(pattern, replacement, text)
+    return text
+
+
+def _reference_text(sources: list[dict]) -> str:
+    if not sources:
+        return '이번 질문에서 직접 연결된 MEDI 업로드 근거자료가 없음.'
+    blocks = []
+    # Keep free-tier prompts comfortably below common TPM limits.
+    for s in sources[:5]:
+        title = _clip(s.get('title') or '업로드 자료', 140)
+        year = _clip(s.get('year') or '', 20)
+        excerpt = _clip(s.get('excerpt') or '', 1050)
+        meta = f" ({year})" if year else ''
+        blocks.append(f"[{s['id']}] {title}{meta}\n{excerpt}")
+    return '\n\n'.join(blocks)
+
+
+def _messages(request: ChatRequest, sources: list[dict]) -> list[dict]:
+    question = _redact_identifiers(request.message).strip() or '첨부한 이미지를 일반인이 이해하기 쉽게 설명해줘.'
+    user = (
+        f"MEDI 의료지식 자료:\n{_reference_text(sources)}\n\n"
+        f"사용자 질문:\n{question}\n\n"
+        "MEDI 자료가 관련되면 먼저 활용하고 실제 source ID만 인용해라. "
+        "답변은 일반인이 읽기 쉽게 짧고 자연스럽게 작성해라. "
+        "이미지가 있으면 보이는 내용을 실제로 확인해서 설명하되 확정 진단처럼 말하지 마라."
+    )
+    out = [{'role': 'system', 'content': SYSTEM_PROMPT}]
+    for h in request.history[-4:]:
+        out.append({'role': h.role, 'content': _clip(_redact_identifiers(h.content), 1200)})
+    out.append({'role': 'user', 'content': user})
+    return out
+
+
+def _data_url_parts(data_url: str) -> tuple[str, str]:
+    match = re.fullmatch(r'data:(image/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)', data_url or '')
+    if not match:
+        raise ProviderError('invalid_image', '이미지 형식을 읽지 못했습니다.')
+    return match.group(1), match.group(2)
+
+
+def _groq_messages(request: ChatRequest, sources: list[dict]) -> list[dict]:
+    messages = _messages(request, sources)
+    if request.images:
+        text = messages[-1]['content'] + (
+            "\n\n첨부 이미지를 함께 확인해라. 반드시 JSON 객체로만 답하고 "
+            "in_scope, urgency, evidence_status, paragraphs, follow_up_questions, image_observations, limitations 키를 모두 포함해라."
+        )
+        content = [{'type': 'text', 'text': text}]
+        for image in request.images[:2]:
+            content.append({'type': 'image_url', 'image_url': {'url': image.data_url}})
+        messages[-1] = {'role': 'user', 'content': content}
+    return messages
+
+
+def _gemini_contents(request: ChatRequest, sources: list[dict]) -> tuple[str, list[dict]]:
+    messages = _messages(request, sources)
+    system = messages[0]['content']
+    conversation = []
+    tail = messages[1:]
+    for index, m in enumerate(tail):
+        role = 'model' if m['role'] == 'assistant' else 'user'
+        parts = [{'text': m['content']}]
+        if index == len(tail) - 1 and request.images:
+            for image in request.images[:2]:
+                mime, data = _data_url_parts(image.data_url)
+                parts.append({'inline_data': {'mime_type': mime, 'data': data}})
+        conversation.append({'role': role, 'parts': parts})
+    return system, conversation
+
+
+def _text_to_answer(text: str, sources: list[dict], mode: str) -> MedicalAnswer:
+    text = str(text or '').strip()
+    if not text:
+        raise ProviderError('empty_output', '무료 AI가 빈 답변을 반환했습니다.')
+
+    allowed = {s['id'] for s in sources}
+    chunks = [p.strip() for p in re.split(r'\n\s*\n', text) if p.strip()]
+    if not chunks:
+        chunks = [text]
+    chunks = chunks[:4]
+
+    paragraphs: list[Paragraph] = []
+    used: set[str] = set()
+    for chunk in chunks:
+        ids = []
+        for sid in re.findall(r'\[(S\d+)\]', chunk):
+            if sid in allowed and sid not in ids:
+                ids.append(sid)
+                used.add(sid)
+        # Keep citations visible in text as well as source buttons; this is clearer
+        # when users export the conversation.
+        heading = ''
+        body = chunk
+        first, sep, rest = chunk.partition('\n')
+        if sep and len(first) <= 32 and not first.endswith(('.', '다', '요')):
+            heading = first.strip('# *')
+            body = rest.strip()
+        paragraphs.append(Paragraph(heading=heading, text=body, source_ids=ids))
+
+    evidence = 'supported' if sources and used else ('partial' if sources else 'insufficient')
+    return MedicalAnswer(
+        in_scope=True,
+        urgency='unknown',
+        evidence_status=evidence,
+        paragraphs=paragraphs,
+        follow_up_questions=[],
+        image_observations=[],
+        limitations='참고용 의료정보예요. 증상이 심하거나 걱정되는 변화가 있으면 의료진에게 확인하세요.'
+    )
+
+
+async def _groq(request: ChatRequest, sources: list[dict], settings: Settings, transport=None) -> ProviderResult:
+    payload = {
+        'model': settings.groq_model,
+        'messages': _groq_messages(request, sources),
+        'temperature': 0.2,
+        'top_p': 0.9,
+        'max_tokens': 1300,
+        'stream': False,
+        'response_format': ({'type': 'json_object'} if request.images else {
+            'type': 'json_schema',
+            'json_schema': {
+                'name': 'medi_medical_answer',
+                'strict': True,
+                'schema': ANSWER_SCHEMA,
+            },
+        }),
+    }
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(settings.timeout, connect=10), transport=transport, follow_redirects=False) as client:
+            response = await client.post(
+                'https://api.groq.com/openai/v1/chat/completions',
+                headers={'Authorization': 'Bearer ' + settings.groq_api_key, 'Content-Type': 'application/json'},
+                json=payload,
+            )
+    except httpx.TimeoutException as e:
+        raise ProviderError('free_ai_timeout', 'Groq 무료 AI 응답 시간이 초과되었습니다.') from e
+    except httpx.HTTPError as e:
+        raise ProviderError('free_ai_network', 'Groq 무료 AI에 연결할 수 없습니다.') from e
+
+    if response.status_code == 401:
+        raise ProviderError('free_ai_key', 'GROQ_API_KEY를 확인해 주세요.')
+    if response.status_code == 429:
+        raise ProviderError('free_ai_limit', 'Groq 무료 사용 한도에 도달했습니다. 잠시 후 다시 시도하거나 브라우저 AI를 사용합니다.')
+    if response.status_code >= 400:
+        raise ProviderError('free_ai_upstream', f'Groq 요청 실패 ({response.status_code})')
+    try:
+        data = response.json()
+        raw = json.loads(data['choices'][0]['message']['content'])
+    except Exception as e:
+        raise ProviderError('free_ai_output', 'Groq 구조화 응답 형식을 읽지 못했습니다.') from e
+    return ProviderResult(_normalize_structured_answer(raw, sources), 'groq_free', settings.groq_model)
+
+
+async def _gemini(request: ChatRequest, sources: list[dict], settings: Settings, transport=None) -> ProviderResult:
+    system, conversation = _gemini_contents(request, sources)
+    payload = {
+        'system_instruction': {'parts': [{'text': system}]},
+        'contents': conversation,
+        'generationConfig': {'temperature': 0.2, 'topP': 0.9, 'maxOutputTokens': 1100},
+    }
+    url = f'https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent'
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(settings.timeout, connect=10), transport=transport, follow_redirects=False) as client:
+            response = await client.post(url, headers={'x-goog-api-key': settings.gemini_api_key, 'Content-Type': 'application/json'}, json=payload)
+    except httpx.TimeoutException as e:
+        raise ProviderError('free_ai_timeout', 'Gemini 무료 AI 응답 시간이 초과되었습니다.') from e
+    except httpx.HTTPError as e:
+        raise ProviderError('free_ai_network', 'Gemini 무료 AI에 연결할 수 없습니다.') from e
+
+    if response.status_code in {400, 401, 403}:
+        raise ProviderError('free_ai_key', 'GEMINI_API_KEY 또는 Gemini 프로젝트 설정을 확인해 주세요.')
+    if response.status_code == 429:
+        raise ProviderError('free_ai_limit', 'Gemini 무료 사용 한도에 도달했습니다. 잠시 후 다시 시도합니다.')
+    if response.status_code >= 400:
+        raise ProviderError('free_ai_upstream', f'Gemini 요청 실패 ({response.status_code})')
+    try:
+        data = response.json()
+        text = ''.join(p.get('text', '') for p in data['candidates'][0]['content']['parts'])
+    except Exception as e:
+        raise ProviderError('free_ai_output', 'Gemini 응답 형식을 읽지 못했습니다.') from e
+    return ProviderResult(_text_to_answer(text, sources, request.mode), 'gemini_free', settings.gemini_model)
+
+
+async def image_search_query(request: ChatRequest, settings: Settings, transport=None) -> str:
+    """Create a short retrieval query from attached images before final RAG.
+
+    This first pass does not diagnose. It extracts visible medical terms, body
+    region, document headings, or modality names so the local MEDI knowledge
+    database can be searched even when the user sends only an image.
+    """
+    if not request.images:
+        return ''
+    prompt = (
+        "이 의료 이미지를 MEDI 내부자료 검색용으로만 요약해라. 진단하지 말고, "
+        "보이는 신체부위·검사명·의료용어·보고서 글자·상처의 겉모습 등 검색에 도움 되는 "
+        "핵심어를 한국어 중심 3~8개로 뽑아 JSON {\"query\":\"...\"} 형식으로만 답해라."
+    )
+    candidates=[]
+    if settings.ai_provider == 'groq':
+        candidates=['groq'] if settings.groq_api_key else []
+    elif settings.ai_provider == 'gemini':
+        candidates=['gemini'] if settings.gemini_api_key else []
+    elif settings.ai_provider == 'auto':
+        if settings.groq_api_key: candidates.append('groq')
+        if settings.gemini_api_key: candidates.append('gemini')
+    for name in candidates:
+        try:
+            if name == 'groq':
+                content=[{'type':'text','text':prompt}]
+                for image in request.images[:2]:
+                    content.append({'type':'image_url','image_url':{'url':image.data_url}})
+                payload={'model':settings.groq_model,'messages':[{'role':'user','content':content}],
+                         'temperature':0,'max_tokens':120,'stream':False,'response_format':{'type':'json_object'}}
+                async with httpx.AsyncClient(timeout=httpx.Timeout(settings.timeout,connect=10),transport=transport,follow_redirects=False) as client:
+                    response=await client.post('https://api.groq.com/openai/v1/chat/completions',headers={'Authorization':'Bearer '+settings.groq_api_key,'Content-Type':'application/json'},json=payload)
+                if response.status_code>=400: continue
+                raw=json.loads(response.json()['choices'][0]['message']['content'])
+                return _clip(raw.get('query',''),300)
+            if name == 'gemini':
+                parts=[{'text':prompt}]
+                for image in request.images[:2]:
+                    mime,data=_data_url_parts(image.data_url)
+                    parts.append({'inline_data':{'mime_type':mime,'data':data}})
+                payload={'contents':[{'role':'user','parts':parts}],
+                         'generationConfig':{'temperature':0,'maxOutputTokens':120,'responseMimeType':'application/json'}}
+                url=f'https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent'
+                async with httpx.AsyncClient(timeout=httpx.Timeout(settings.timeout,connect=10),transport=transport,follow_redirects=False) as client:
+                    response=await client.post(url,headers={'x-goog-api-key':settings.gemini_api_key,'Content-Type':'application/json'},json=payload)
+                if response.status_code>=400: continue
+                text=''.join(p.get('text','') for p in response.json()['candidates'][0]['content']['parts'])
+                raw=json.loads(text)
+                return _clip(raw.get('query',''),300)
+        except Exception:
+            continue
+    return ''
+
+
+async def generate(request: ChatRequest, sources: list[dict], settings: Settings, transport=None) -> ProviderResult:
+    """Generate with a configured free provider.
+
+    In auto mode, a provider error falls through to the next configured free
+    provider. If all fail, a ProviderError is raised so the server can use the
+    browser-local model or retrieval-only fallback.
+    """
+    candidates: list[str] = []
+    if settings.ai_provider == 'groq':
+        candidates = ['groq'] if settings.groq_api_key else []
+    elif settings.ai_provider == 'gemini':
+        candidates = ['gemini'] if settings.gemini_api_key else []
+    elif settings.ai_provider == 'browser':
+        candidates = []
+    else:
+        if settings.groq_api_key:
+            candidates.append('groq')
+        if settings.gemini_api_key:
+            candidates.append('gemini')
+
+    if not candidates:
+        raise ProviderError('free_ai_not_configured', '무료 서버 AI가 설정되지 않았습니다.')
+
+    last_error: ProviderError | None = None
+    for name in candidates:
+        try:
+            if name == 'groq':
+                return await _groq(request, sources, settings, transport=transport)
+            if name == 'gemini':
+                return await _gemini(request, sources, settings, transport=transport)
+        except ProviderError as e:
+            last_error = e
+            if settings.ai_provider != 'auto':
+                raise
+    raise last_error or ProviderError('free_ai_unavailable', '사용 가능한 무료 AI가 없습니다.')
+```
+
+---
 
 ## `app/retrieval.py`
 
-````python
+```python
 """Local bilingual lexical retrieval for MEDI.
 
 The index is intentionally offline: no paid embedding API and no outbound
@@ -842,6 +946,10 @@ ALIASES = {
     '두통':['headache','머리통증'],
     '천식':['asthma'],
     '심근경색':['myocardial infarction','심장'],
+    '인공심폐기':['체외순환','심폐우회','cardiopulmonary bypass','heart lung machine','심장수술'],
+    '인공심폐':['인공심폐기','체외순환','심폐우회','cardiopulmonary bypass'],
+    '심폐우회':['인공심폐기','체외순환','cardiopulmonary bypass'],
+    '체외순환':['인공심폐기','심폐우회','extracorporeal circulation'],
     '무릎':['슬관절','관절','knee','슬개','반월상','십자인대'],
     '슬관절':['무릎','knee','관절'],
     '관절통':['관절','통증','arthralgia'],
@@ -1062,21 +1170,191 @@ class KnowledgeStore:
             if len(selected) >= limit:
                 break
         return selected
-````
+```
 
+---
+
+## `app/schemas.py`
+
+```python
+from typing import Literal
+from uuid import UUID
+from pydantic import BaseModel, Field, ConfigDict, model_validator
+
+class Strict(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+class HistoryMessage(Strict):
+    role: Literal['user', 'assistant']
+    content: str = Field(min_length=1, max_length=6000)
+
+class ImageInput(Strict):
+    name: str = Field(default='image', max_length=160)
+    data_url: str = Field(max_length=7_100_000)
+    kind: Literal['report', 'photo', 'radiology'] = 'photo'
+
+class ChatRequest(Strict):
+    request_id: UUID
+    conversation_id: UUID | None = None
+    message: str = Field(default='', max_length=4000)
+    history: list[HistoryMessage] = Field(default_factory=list, max_length=12)
+    images: list[ImageInput] = Field(default_factory=list, max_length=2)
+    mode: Literal['health', 'study'] = 'health'
+    consent: bool = False
+
+    @model_validator(mode='after')
+    def validate_total(self):
+        self.message = self.message.strip()
+        if not self.message and not self.images:
+            raise ValueError('Message or image is required')
+        if sum(len(m.content) for m in self.history) > 24000:
+            raise ValueError('History too long; start a new conversation')
+        return self
+
+class Paragraph(Strict):
+    heading: str
+    text: str
+    source_ids: list[str]
+
+class MedicalAnswer(Strict):
+    in_scope: bool
+    urgency: Literal['emergency', 'medical_review', 'general_information', 'unknown']
+    evidence_status: Literal['supported', 'partial', 'insufficient', 'not_applicable']
+    paragraphs: list[Paragraph]
+    follow_up_questions: list[str]
+    image_observations: list[str]
+    limitations: str
+
+class Credentials(Strict):
+    email: str = Field(min_length=5, max_length=254)
+    password: str = Field(min_length=5, max_length=128)
+    invite_code: str = Field(default='',max_length=200)
+    terms_accepted: bool = False
+
+class NewConversation(Strict):
+    title: str = Field(default='New conversation',min_length=1,max_length=70)
+
+class FeedbackRequest(Strict):
+    turn_id: str = Field(min_length=36,max_length=36)
+    question: str = Field(min_length=1,max_length=4000)
+    answer: str = Field(min_length=1,max_length=16000)
+    correction: str = Field(default='',max_length=4000)
+    rating: Literal['helpful','needs_review']
+    consent: bool = False
+    deidentified_ack: bool = False
+
+class DeleteAccount(Strict):
+    confirm: Literal['DELETE MY ACCOUNT']
+
+class LocalTurnSave(Strict):
+    request_id: UUID
+    question: str = Field(min_length=1, max_length=4000)
+    mode: Literal['health', 'study'] = 'health'
+    had_images: bool = False
+    response: dict
+```
+
+---
+
+## `app/policy.py`
+
+```python
+"""Prototype guardrails, NOT a validated triage or scope classifier.
+
+These conservative rules miss some emergencies and can over-trigger.
+They must never label a patient safe, normal, or cleared of disease.
+"""
+import re
+from app.schemas import MedicalAnswer, Paragraph
+
+DISCLAIMER='\uc5f0\uad6c\u00b7\ud559\uc2b5\uc6a9 \uc815\ubcf4\uc785\ub2c8\ub2e4. \uc9c4\ub2e8, \ucc98\ubc29, \uc601\uc0c1 \ud310\ub3c5\uc744 \ub300\uccb4\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.'
+
+MEDICAL_TERMS=[
+ '\uc758\ud559','\uc758\ub8cc','\uc99d\uc0c1','\ud1b5\uc99d','\uc544\ud30c','\uc544\ud514','\uc544\ud508','\uac74\uac15','\ubcd1\uc6d0','\uc9c4\ub8cc','\uc9c4\ub2e8','\uac80\uc0ac','\uce58\ub8cc','\ud658\uc790','\ucc98\ubc29','\uc57d\ubb3c','\ubcf5\uc6a9',
+ '\uace8\uc808','\ub2f9\ub1e8','\uace0\ud608\uc555','\uac10\uc5fc','\ub450\ud1b5','\ubc1c\uc5f4','\uc5fc\uc99d','\ud608\uc555','\ud608\ub2f9','\uc554','\ubc1c\ubaa9','\ubb34\ub98e','\ud53c\ubd80','\ub450\ub4dc\ub7ec\uae30','\ucc9c\uc2dd',
+ '\uc228','\ud638\ud761','\uac00\uc2b4','\ubcf5\ud1b5','\uadfc\uc721','\uc720\uc804','\uc138\ud3ec','\ud574\ubd80','\uc218\uc220','\uc751\uae09','\uc784\uc2e0','\uc0dd\ub9ac','\uc18c\uc544','\ud608\uc561','\ud569\ubcd1','\uad00\uc808','\uc57d\uc740',
+ '\uc5fc\uc88c','\uc99d\ud6c4','\ubcf4\ud5d8','\uae30\uce68','\uad6c\ud1a0','\uc124\uc0ac','\ucd9c\ud608','\uc758\uc2dd','\ud604\uae30','\uc5b4\uc9c0','\uc790\ud574','\uc790\uc0b4','\uc8fd\uace0','\uc6b0\uc6b8','\ubd88\uc548','\uc815\uc2e0','\uc790\uad81','\ud3d0\ub834',
+ '인공심폐기','인공심폐','심폐우회','체외순환','의료기기','심장','폐','medical','health','symptom','pain','fracture','disease','diagnos','treatment','blood','drug','medicine','report','x-ray','xray','mri','ct','diabet','asthma','hypertension','anatomy','fever','cancer','injury','suicid']
+UNRELATED=['게임','주식 추천','로또','포켓몬','연애소설','주가','날씨','여행 일정','선거','대통령','파이썬','코딩','프로그래밍','축구','야구','영화 추천','노래 추천','bitcoin','javascript game','travel itinerary']
+GREETINGS=['\uc548\ub155','\uace0\ub9c8\uc6cc','\uac10\uc0ac','hello','hi','thanks','\ub124','\uc751']
+
+EMERGENCY_PATTERNS=[
+ r'\uc228\s*(?:\uc744\s*)?\ubabb\s*\uc26c', r'\ud638\ud761\s*(?:\uc774\s*)?\uc548\s*\ub3fc',
+ r'\uc758\uc2dd\s*(?:\uc774\s*)?(?:\uc5c6|\uc783)',r'\ubc18\uc751\s*(?:\uc774\s*)?\uc5c6',
+ r'\ud53c\s*(?:\uac00\s*)?\uba48\ucd94\uc9c0\s*\uc54a',r'\uc2ec\ud55c\s*\ud638\ud761\uace4\ub780',
+ r"(?:can'?t|cannot)\s+breathe",r'unconscious',r'bleeding\s+(?:will not|won.t)\s+stop',
+ r'\uc9c0\uae08.{0,20}(?:\uc790\uc0b4|\uc790\ud574)',r'\uc57d.{0,10}(?:\ud55c\uaebc\ubc88\uc5d0|\uacfc\ub2e4).{0,12}(?:\uba39|\ubcf5\uc6a9)']
+NEGATION=r'(?:\uc544\ub2c8|\uc544\ub2cc|\uc544\ub2c8\uc5d0\uc694|\uc5c6\uc5b4|\uc5c6\uc2b5|\uc5c6\uc74c|\ud574\uc18c|\uc0ac\ub77c\uc84c)'
+
+
+def emergency_signal(text: str) -> bool:
+    low=text.lower()
+    for pattern in EMERGENCY_PATTERNS:
+        for m in re.finditer(pattern,low):
+            before=low[max(0,m.start()-14):m.start()]
+            after=low[m.end():m.end()+20]
+            if re.search(r'(?:not |no |\uc544\ub2cc )$',before): continue
+            if re.search(NEGATION,after): continue
+            return True
+    # Multiple symptoms in one present-tense utterance; no safety assurance on miss.
+    chest=bool(re.search(r'\uac00\uc2b4.{0,8}(?:\uc544\ud504|\uc544\ud30c|\ud1b5\uc99d)|\ud749\ud1b5|chest pain',low))
+    breath=bool(re.search(r'\uc228.{0,6}(?:\ucc28|\ucc2c)|\ud638\ud761\uace4\ub780|shortness of breath',low))
+    if chest and breath and not re.search(NEGATION,low): return True
+    return False
+
+
+def is_medical(text: str, history=(), has_images=False) -> bool:
+    """Broad medical-domain gate for a consumer-facing medical assistant.
+
+    Uncommon medical terms should not be rejected merely because they are not
+    present in a small whitelist. Clearly unrelated requests are still blocked.
+    """
+    low=(text or '').strip().lower()
+    if has_images:
+        return True
+    if not low:
+        return False
+    if any(term in low for term in UNRELATED):
+        return False
+    if any((bool(re.search(r'\b'+re.escape(term)+r'\b',low)) if term in {'ct','mri'} else term in low) for term in MEDICAL_TERMS):
+        return True
+    if len(low)<24 and any(low.startswith(g) for g in GREETINGS):
+        return True
+    if len(low)<160 and any(any(t in m.content.lower() for t in MEDICAL_TERMS) for m in history if m.role=='user'):
+        return True
+    return len(low) >= 2
+
+
+def fixed_answer(kind: str) -> MedicalAnswer:
+    if kind=='emergency':
+        return MedicalAnswer(in_scope=True,urgency='emergency',evidence_status='not_applicable',
+          paragraphs=[Paragraph(heading='\uc9c0\uae08\uc740 \ub300\uba74 \ub3c4\uc6c0\uc774 \uc6b0\uc120\uc785\ub2c8\ub2e4',
+           text='\uc785\ub825\ud558\uc2e0 \ub0b4\uc6a9\uc5d0 \uc751\uae09\uc0c1\ud669\uc744 \uc758\uc2ec\ud560 \uc218 \uc788\ub294 \ud45c\ud604\uc774 \uc788\uc2b5\ub2c8\ub2e4. \uc2e4\uc81c\ub85c \uc9c0\uae08 \uacaa\uace0 \uacc4\uc2e0 \uc0c1\ud669\uc774\ub77c\uba74 \ucc57\ubd07 \ub2f5\ubcc0\uc744 \uae30\ub2e4\ub9ac\uc9c0 \ub9d0\uace0 \ud55c\uad6d\uc5d0\uc11c\ub294 119, \ud574\uc678\uc5d0\uc11c\ub294 \ud604\uc9c0 \uc751\uae09\ubc88\ud638\ub85c \uc5f0\ub77d\ud558\uc138\uc694. \uac00\uae4c\uc774 \uc788\ub294 \uc0ac\ub78c\uc5d0\uac8c \ub3c4\uc6c0\uc744 \uc694\uccad\ud558\uace0, \uc0c1\ud669\uc2e4\uc758 \uc548\ub0b4\ub97c \ub530\ub974\uc138\uc694.',source_ids=[])],
+          follow_up_questions=[],image_observations=[],limitations='\ubb38\uad6c \uae30\ubc18 \uc8fc\uc758 \uc548\ub0b4\uc774\uba70 \uc758\ub8cc\uc801 \uc911\uc99d\ub3c4 \ud310\uc815\uc774 \uc544\ub2d9\ub2c8\ub2e4. '+DISCLAIMER)
+    if kind=='radiology':
+        return MedicalAnswer(in_scope=True,urgency='unknown',evidence_status='insufficient',
+          paragraphs=[Paragraph(heading='\uc601\uc0c1 \ud310\ub3c5 \ubaa8\ub378\uc740 \uc544\uc9c1 \uc5f0\uacb0\ub418\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4',
+           text='\uc774 \uae30\ubc18 \ubc84\uc804\uc740 X-ray\u00b7CT\u00b7MRI\uc5d0\uc11c \uace8\uc808\uc774\ub098 \uc9c8\ud658\uc758 \uc720\ubb34\ub97c \ud310\uc815\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4. \uc5c5\ub85c\ub4dc \uc601\uc0c1\uc740 \ud310\ub3c5 API\ub85c \uc804\uc1a1\ub418\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4. \uc758\ub8cc\uc9c4\uc758 \ud310\ub3c5\ubb38\uc744 \uac1c\uc778\uc815\ubcf4 \uc5c6\uc774 \uc785\ub825\ud558\uba74 \uc6a9\uc5b4\uc640 \uc9c4\ub8cc \uc2dc \ubb3c\uc5b4\ubcfc \uc9c8\ubb38\uc744 \uc124\uba85\ud558\ub294 \ub370 \uc0ac\uc6a9\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.',source_ids=[])],
+          follow_up_questions=['\uc758\ub8cc\uc9c4\uc758 \ud310\ub3c5\ubb38\uc774 \uc788\ub098\uc694?'],image_observations=[],limitations=DISCLAIMER)
+    return MedicalAnswer(in_scope=False,urgency='unknown',evidence_status='not_applicable',
+      paragraphs=[Paragraph(heading='\uc758\ub8cc\u00b7\uac74\uac15 \uc9c0\uc2dd\uc744 \uc704\ud55c \ub300\ud654\uc785\ub2c8\ub2e4',
+       text='\uc758\ud559 \uac1c\ub150, \uac80\uc0ac \uc6a9\uc5b4, \uc99d\uc0c1 \uc815\ub9ac, \uc9c4\ub8cc \uc804 \uc9c8\ubb38 \uc900\ube44\ub97c \ub3c4\uc640\ub4dc\ub9bd\ub2c8\ub2e4. \uc758\ub8cc\uc640 \uad00\uacc4\uc5c6\ub294 \uc694\uccad\uc740 \uc774 \ucc57\ubd07\uc5d0\uc11c \ub2e4\ub8e8\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.',source_ids=[])],follow_up_questions=[],image_observations=[],limitations=DISCLAIMER)
+```
+
+---
 
 ## `static/index.html`
 
-````html
+```html
 <!doctype html>
 <html lang="ko">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark"><meta name="robots" content="noindex,nofollow">
 <title>MEDI - Medical Research Companion</title>
-<link rel="icon" href="/static/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/app.css?v=0502">
-<script src="/static/local_ai.js?v=0502" defer></script>
-<script src="/static/app.js?v=0502" defer></script>
+<link rel="icon" href="/static/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/app.css?v=0600">
+<script src="/static/local_ai.js?v=0600" defer></script>
+<script src="/static/app.js?v=0600" defer></script>
 </head>
 <body>
 <a class="skip" href="#question" data-i18n="skip"></a>
@@ -1101,8 +1379,8 @@ class KnowledgeStore:
    <p class="eyebrow">A SPACE FOR BETTER UNDERSTANDING</p><h1 data-i18n="welcomeTitle"></h1><p class="welcome-description" data-i18n="welcomeDescription"></p>
    <div class="suggestions">
     <button class="suggestion" data-prompt="promptKnowledge"><span class="card-icon">&#9783;</span><b data-i18n="cardKnowledge"></b><p data-i18n="cardKnowledgeDesc"></p><span class="card-arrow">&#8599;</span></button>
+    <button class="suggestion" data-prompt="promptStudy"><span class="card-icon">&#10022;</span><b data-i18n="cardStudy"></b><p data-i18n="cardStudyDesc"></p><span class="card-arrow">&#8599;</span></button>
     <button class="suggestion" id="welcomeImage"><span class="card-icon">&#9635;</span><b data-i18n="cardImage"></b><p data-i18n="cardImageDesc"></p><span class="card-arrow">&#8599;</span></button>
-    <button class="suggestion" data-prompt="promptStudy" data-mode="study"><span class="card-icon">&#10022;</span><b data-i18n="cardStudy"></b><p data-i18n="cardStudyDesc"></p><span class="card-arrow">&#8599;</span></button>
    </div><p class="welcome-note"><span class="status-dot"></span><span data-i18n="welcomeNote"></span></p>
   </section>
   <section id="messages" class="messages" aria-label="Conversation"></section>
@@ -1111,7 +1389,7 @@ class KnowledgeStore:
  <footer class="composer-area"><form id="chatForm" class="composer">
   <div id="attachments" class="attachments"></div>
   <label class="sr-only" for="question" data-i18n="questionLabel"></label><textarea id="question" rows="2" maxlength="4000" data-placeholder="questionPlaceholder"></textarea>
-  <div class="composer-tools"><div class="tool-group"><button type="button" id="attachButton" class="attach-button" data-title="attach"><span class="plus">+</span><span class="attach-label" data-i18n="image"></span></button><span class="tool-divider"></span><label class="sr-only" for="mode" data-i18n="mode"></label><select id="mode"><option value="health" data-i18n="health"></option><option value="study" data-i18n="study"></option></select></div><div class="tool-group"><span id="charCount" class="char-count">0 / 4000</span><button type="submit" id="sendButton" class="send-button" data-title="send" aria-label="Send message">&#8593;</button><button type="button" id="stopButton" class="stop-button" data-i18n="stop" hidden></button></div></div>
+  <div class="composer-tools"><div class="tool-group"><button type="button" id="attachButton" class="attach-button" data-title="attach"><span class="plus">+</span><span class="attach-label" data-i18n="image"></span></button><span class="paste-hint">이미지는 Ctrl+V로 붙여넣기도 가능</span><input type="hidden" id="mode" value="health"></div><div class="tool-group"><span id="charCount" class="char-count">0 / 4000</span><button type="submit" id="sendButton" class="send-button" data-title="send" aria-label="Send message">&#8593;</button><button type="button" id="stopButton" class="stop-button" data-i18n="stop" hidden></button></div></div>
  </form>
  <div class="composer-options"><label class="save-option"><input type="checkbox" id="saveChat"><span data-i18n="saveChat"></span></label><button id="consentButton" class="text-button" data-i18n="processingInfo"></button></div>
  <p class="disclaimer" data-i18n="disclaimer"></p>
@@ -1130,19 +1408,20 @@ class KnowledgeStore:
 <section class="settings-card"><div><strong>내 의료지식 자료</strong><p id="knowledgeStatus" class="subtle">의료자료 연결 상태를 확인하는 중입니다.</p></div><span class="settings-dot" aria-hidden="true"></span></section>
 <section id="localAiCard" class="settings-card"><div><strong>브라우저 보조 AI</strong><p id="localAiStatus" class="subtle">기기 호환성을 확인하는 중입니다.</p></div><button id="localAiPrepare" class="quiet-button" type="button">보조 AI 준비</button></section>
 <section class="settings-card"><div><strong>첫 질문 전 주의 안내</strong><p id="safetySettingText" class="subtle">첫 질문 전에 한 번 표시합니다.</p></div><label class="switch"><input id="safetyToggle" type="checkbox" checked><span></span></label><button id="showSafetyNow" class="quiet-button full" type="button">주의사항 지금 다시 보기</button></section>
-<p class="settings-help">MEDI는 일반 챗봇처럼 바로 답하지 않고, 먼저 연결된 의료지식 자료를 검색한 뒤 그 근거를 무료 AI에 전달해 답변합니다. 서버 AI가 연결되면 PC·휴대폰 모두 같은 방식으로 동작하며, 브라우저 AI는 서버 AI가 없을 때만 보조 수단으로 사용합니다.</p>
+<p class="settings-help">MEDI는 질문과 이미지를 이해한 뒤 연결된 의료지식 자료를 함께 찾아, 일반인이 이해하기 쉬운 말로 설명합니다. 전문용어는 꼭 필요할 때만 괄호로 덧붙입니다.</p>
 </div><div class="dialog-actions"><button class="primary-button" data-close="settingsDialog">완료</button></div></dialog>
 <dialog id="feedbackDialog"><div class="dialog-heading"><h2 data-i18n="feedbackTitle"></h2><button class="icon-button" data-close="feedbackDialog" aria-label="Close">&#215;</button></div><form id="feedbackForm" class="dialog-body"><p class="notice-box" data-i18n="feedbackDescription"></p><label class="field"><span data-i18n="feedbackQuestion"></span><textarea id="feedbackQuestion" maxlength="4000" rows="2" required></textarea></label><label class="field"><span data-i18n="feedbackAnswer"></span><textarea id="feedbackAnswer" maxlength="16000" rows="4" required></textarea></label><label class="field"><span data-i18n="correction"></span><textarea id="correction" maxlength="4000" rows="3"></textarea></label><label class="field"><span data-i18n="rating"></span><select id="rating"><option value="needs_review" data-i18n="needsReview"></option><option value="helpful" data-i18n="helpful"></option></select></label><label class="check-line"><input id="feedbackConsent" type="checkbox" required><span data-i18n="feedbackConsent"></span></label><label class="check-line"><input id="deidentified" type="checkbox" required><span data-i18n="deidentified"></span></label><button id="feedbackSubmit" class="primary-button full" type="submit" data-i18n="feedbackSend"></button><p id="feedbackError" class="inline-error" role="alert"></p></form></dialog>
 </body></html>
-````
+```
 
+---
 
 ## `static/app.js`
 
-````javascript
+```javascript
 'use strict';
 const T={
- skip:'\uc9c8\ubb38 \uc785\ub825\uc73c\ub85c \uac74\ub108\ub6f0\uae30',newChat:'\uc0c8 \ub300\ud654',history:'\ub098\uc758 \ub300\ud654',loading:'\uc5f0\uacb0 \ud655\uc778 \uc911',knowledgeLabel:'\uc5f0\uacb0\ub41c \uc758\ud559\uc9c0\uc2dd',dataCaution:'\uc784\uc0c1 \uac80\ud1a0 \uc804 \uc5c5\ub85c\ub4dc \uc790\ub8cc',privacy:'\uac1c\uc778\uc815\ubcf4\uc640 \ud559\uc2b5 \uc548\ub0b4',localSession:'\uac8c\uc2a4\ud2b8 \uc0ac\uc6a9',temporary:'\ub85c\uadf8\uc778 \uc5c6\uc774 \ubc14\ub85c \uc0ac\uc6a9 \uac00\ub2a5',export:'\ub300\ud654 \ub0b4\ubcf4\ub0b4\uae30',welcomeTitle:'\uc758\ud559\uc744 \ubb3b\uace0,\n\uadfc\uac70\ub85c \uc774\ud574\ud558\uc138\uc694.',welcomeDescription:'\uc5b4\ub824\uc6b4 \uc758\ud559 \uc6a9\uc5b4\ubd80\ud130 \uac80\uc0ac\uc9c0\uc758 \ubb38\uad6c\uae4c\uc9c0.\n\uc5f0\uacb0\ub41c \uc790\ub8cc\ub97c \ucc38\uace0\ud558\uba70, \ud568\uaed8 \uc774\ud574\ud574 \ub098\uac11\ub2c8\ub2e4.',cardKnowledge:'\uc758\ud559\uc9c0\uc2dd \uc54c\uc544\ubcf4\uae30',cardKnowledgeDesc:'\uc9c8\ud658\uacfc \uac74\uac15 \uac1c\ub150\uc744 \uadfc\uac70 \uc790\ub8cc\uc640 \ud568\uaed8',cardImage:'이미지 기능 확인',cardImageDesc:'현재 무료 버전의 이미지 분석 범위와 제한 확인',cardStudy:'\uc758\ud559 \ud559\uc2b5 \ub3c4\uc6c0\ubc1b\uae30',cardStudyDesc:'\uac1c\ub150\uacfc \ud559\uc2b5\uc6a9 \ubb38\ud56d\uc744 \uc5f0\uacb0\ud574 \uc774\ud574\ud558\uae30',welcomeNote:'\uc5f0\uad6c\u00b7\ud559\uc2b5\uc6a9 \ubca0\ud0c0\uc785\ub2c8\ub2e4. \uc9c4\ub2e8\uc774\ub098 \ucc98\ubc29\uc744 \uc81c\uacf5\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.',pending:'처리하고 있습니다.',questionLabel:'\uc758\ub8cc\u00b7\uac74\uac15 \uc9c8\ubb38',questionPlaceholder:'\uad81\uae08\ud55c \uc758\ud559\uc9c0\uc2dd\uc744 \ubb3c\uc5b4\ubcf4\uc138\uc694. \uc0ac\uc9c4\ub3c4 \ud568\uaed8 \ubcf4\ub0bc \uc218 \uc788\uc5b4\uc694.',attach:'\uc774\ubbf8\uc9c0 \ucca8\ubd80 (JPG, PNG, WebP)',image:'\uc774\ubbf8\uc9c0',mode:'\ub300\ud654 \ubaa8\ub4dc',health:'\uac74\uac15\uc9c0\uc2dd',study:'\uc758\ud559 \ud559\uc2b5',send:'\ubcf4\ub0b4\uae30',stop:'\uc911\ub2e8',saveChat:'\uc774 \ub300\ud654\ub97c \ub0b4 \uacc4\uc815\uc5d0 \uc800\uc7a5',processingInfo:'안전·개인정보 안내',disclaimer:'MEDI\ub294 \uc9c4\ub2e8\u00b7\ucc98\ubc29\u00b7\uc601\uc0c1 \ud310\ub3c5\uc744 \ub300\uccb4\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4. \uc751\uae09\uc0c1\ud669\uc740 \ucc57\ubd07\uc774 \uc544\ub2cc 119\ub85c \uc5f0\ub77d\ud558\uc138\uc694.',close:'\ub2eb\uae30',consentTitle:'MEDI 이용 전 확인해주세요',consentBody:'질문과 최근 대화는 관련 의료자료를 찾기 위해 MEDI 서버로 전송됩니다. 운영자가 무료 서버 AI(Groq 또는 Gemini)를 연결한 경우 질문과 검색된 의료자료 일부가 답변 생성을 위해 해당 제공자에 전송될 수 있습니다. 서버 AI가 없으면 지원되는 기기에서 브라우저 보조 AI를 사용합니다. 첨부 이미지는 현재 텍스트 AI에 전송하지 않습니다.',consentPrivacy:'실명, 주민번호, 연락처, 병원 등록번호 등 개인을 식별할 수 있는 정보는 입력하지 마세요. 심한 흉통, 호흡곤란, 의식저하, 마비, 멈추지 않는 출혈 등 긴급한 증상은 MEDI 답변을 기다리지 말고 119 또는 응급의료기관을 이용하세요.',consentCheck:'안내 내용을 확인했습니다.',cancel:'\ucde8\uc18c',agree:'확인하고 계속',login:'\ub85c\uadf8\uc778',signup:'\ud68c\uc6d0\uac00\uc785',authDescription:'\ub85c\uadf8\uc778\ud558\uc9c0 \uc54a\uc544\ub3c4 \ubc14\ub85c \uc0ac\uc6a9\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4. \ud68c\uc6d0\uac00\uc785\u00b7\ub85c\uadf8\uc778\ud558\uba74 \uc800\uc7a5\uc744 \uc120\ud0dd\ud55c \ub300\ud654 \uae30\ub85d\uc744 \ub0b4 \uacc4\uc815\uc5d0 \ub0a8\uae38 \uc218 \uc788\uc2b5\ub2c8\ub2e4.',email:'\uc774\uba54\uc77c',password:'\ube44\ubc00\ubc88\ud638 (5\uc790 \uc774\uc0c1)',invite:'\ucd08\ub300\ucf54\ub4dc (\uc6b4\uc601\uc790\uac00 \uc81c\ud55c\ud55c \uacbd\uc6b0\uc5d0\ub9cc)',terms:'\uc758\ub8cc \uc11c\ube44\uc2a4\uac00 \uc544\ub2cc \uc5f0\uad6c\uc6a9 \ub3c4\uad6c\uc784\uc744 \uc774\ud574\ud558\uba70, \ube44\uc2dd\ubcc4 \uc815\ubcf4\ub85c\ub9cc \uc2dc\ud5d8\ud569\ub2c8\ub2e4.',toSignup:'\uc544\uc9c1 \uacc4\uc815\uc774 \uc5c6\uc73c\uc2e0\uac00\uc694? \ud68c\uc6d0\uac00\uc785',toLogin:'\uc774\ubbf8 \uacc4\uc815\uc774 \uc788\uc73c\uc2e0\uac00\uc694? \ub85c\uadf8\uc778',feedbackTitle:'\ub354 \ub098\uc740 \ub2f5\ubcc0\uc744 \uc704\ud55c \ud53c\ub4dc\ubc31',feedbackDescription:'\ud53c\ub4dc\ubc31\uc740 \uc989\uc2dc \ud559\uc2b5\ub418\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4. \ub3d9\uc758\ud55c \ub0b4\uc6a9\ub9cc \uc6b4\uc601\uc790\uc758 \uac80\ud1a0 \ub300\uae30\uc5f4\uc5d0 \ubcf4\ub0b4\uba70, \uc758\ud559\u00b7\uac1c\uc778\uc815\ubcf4 \uac80\ud1a0 \ud6c4 \uc218\ub3d9\uc73c\ub85c \ubc18\uc601\ud569\ub2c8\ub2e4. \uc544\ub798 \ub0b4\uc6a9\uc5d0\uc11c \uac1c\uc778\uc815\ubcf4\ub97c \uc0ad\uc81c\ud558\uc138\uc694.',feedbackQuestion:'\uac80\ud1a0\uc6a9 \uc9c8\ubb38 (\uc218\uc815 \uac00\ub2a5)',feedbackAnswer:'\uac80\ud1a0\uc6a9 \ub2f5\ubcc0 (\uc218\uc815 \uac00\ub2a5)',correction:'\uc218\uc815 \uc758\uacac\u00b7\ucc38\uace0 \uadfc\uac70',rating:'\ud3c9\uac00',needsReview:'\uac80\ud1a0\uac00 \ud544\uc694\ud574\uc694',helpful:'\ub3c4\uc6c0\uc774 \ub410\uc5b4\uc694',feedbackConsent:'\uc704 \ud53c\ub4dc\ubc31\uc744 \uc6b4\uc601\uc790\uac00 \uc77d\uace0 \uc11c\ube44\uc2a4 \uac1c\uc120\uc5d0 \uac80\ud1a0\ud558\ub294 \ub370 \ubcc4\ub3c4\ub85c \ub3d9\uc758\ud569\ub2c8\ub2e4.',deidentified:'\uc9c8\ubb38\u00b7\ub2f5\ubcc0\u00b7\uc218\uc815 \uc758\uacac\uc5d0\uc11c \uc2dd\ubcc4 \uac00\ub2a5\ud55c \uac1c\uc778\uc815\ubcf4\ub97c \uc81c\uac70\ud588\uc2b5\ub2c8\ub2e4.',feedbackSend:'\uac80\ud1a0 \ub300\uae30\uc5f4\uc5d0 \ubcf4\ub0b4\uae30',promptKnowledge:'\uace0\ud608\uc555\uacfc \ub2f9\ub1e8\ubcd1\uc740 \uc5b4\ub5a4 \uad00\uacc4\uac00 \uc788\ub098\uc694? \uc5c5\ub85c\ub4dc\ub41c \uc790\ub8cc\ub97c \ucc38\uace0\ud574 \uc124\uba85\ud574 \uc8fc\uc138\uc694.',promptStudy:'\ucc9c\uc2dd\uc758 \uc8fc\uc694 \uc99d\uc0c1\uacfc \ubcd1\ud0dc\uc0dd\ub9ac\ub97c \uc758\ud559 \ud559\uc2b5\uc6a9\uc73c\ub85c \uc124\uba85\ud574 \uc8fc\uc138\uc694.',promptImage:'현재 무료 버전에서 이 이미지로 무엇을 할 수 있는지 알려주세요.',emptyHistory:'\uc800\uc7a5\ud55c \ub300\ud654\uac00 \uc5ec\uae30\uc5d0 \ud45c\uc2dc\ub429\ub2c8\ub2e4.',demo:'MEDI',connected:'MEDI 의료 AI',demoNotice:'MEDI는 연결된 의료지식 자료를 우선 활용합니다.',rightsNotice:'\uc790\ub8cc \uc774\uc6a9\uad8c\ud55c\uc744 \uc6b4\uc601\uc790\uac00 \ud655\uc778\ud558\uae30 \uc804\uae4c\uc9c0 \uc678\ubd80 \uc11c\ube44\uc2a4\uc5d0\uc11c\ub294 \uc790\ub8cc \uac80\uc0c9\uc774 \ube44\ud65c\uc131\ud654\ub429\ub2c8\ub2e4.',noAccounts:'\ub85c\uceec \uccb4\ud5d8\uc5d0\uc11c\ub294 \uacc4\uc815 \uc800\uc7a5\uc744 \uc0ac\uc6a9\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4. Supabase\ub97c \uc5f0\uacb0\ud558\uba74 \ud68c\uc6d0 \uae30\ub2a5\uc744 \uc0ac\uc6a9\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.',loginNeeded:'\ub300\ud654 \uc800\uc7a5 \uae30\ub2a5\uc740 \ub85c\uadf8\uc778 \ud6c4 \uc0ac\uc6a9\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.',copy:'\ubcf5\uc0ac',copied:'\ub2f5\ubcc0\uc744 \ubcf5\uc0ac\ud588\uc2b5\ub2c8\ub2e4.',feedback:'\ud53c\ub4dc\ubc31',references:'\ucc38\uace0\ud55c \uc5c5\ub85c\ub4dc \uc790\ub8cc',referenceWarning:'\ucd9c\ucc98\uba85\u00b7\uc5f0\ub3c4\ub294 \ub370\uc774\ud130\uc14b \ud45c\uae30\uc785\ub2c8\ub2e4. \uc6d0\ubb38\u00b7\ucd5c\uc2e0\uc131\u00b7\uc758\ud559\uc801 \uc815\ud655\uc131\uc740 \ubcc4\ub3c4 \uac80\ud1a0\uac00 \ud544\uc694\ud569\ub2c8\ub2e4.',observations:'\uc774\ubbf8\uc9c0\uc5d0\uc11c \ud655\uc778\ud55c \ubb38\uad6c\u00b7\ud45c\uba74 \ud2b9\uc9d5',notSaved:'\uc800\uc7a5\ud558\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4. \uc774 \ub300\ud654\ub97c \ub0b4\ubcf4\ub0b8 \ub4a4 \uc774\ub3d9\ud574 \uc8fc\uc138\uc694.',imageLimit:'\uc774\ubbf8\uc9c0\ub294 \ud55c \ubc88\uc5d0 2\uc7a5, \uac01 5MB\uae4c\uc9c0\uc785\ub2c8\ub2e4.',imageType:'JPG, PNG, WebP \uc774\ubbf8\uc9c0\ub9cc \uc0ac\uc6a9\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.',report:'\uac80\uc0ac\uc9c0\u00b7\ud310\ub3c5\ubb38',photo:'\ud53c\ubd80 \ub4f1 \uc678\ubd80 \uc0ac\uc9c4',radiology:'X-ray·CT·MRI (현재 판독 미지원)',delete:'\uc0ad\uc81c',logout:'\ub85c\uadf8\uc544\uc6c3',deleteAccount:'\uacc4\uc815\uacfc \uc800\uc7a5 \ub0b4\uc6a9 \uc0ad\uc81c',deleteConfirm:'\uc774 \ub300\ud654\ub97c \uc0ad\uc81c\ud560\uae4c\uc694? \ubcf5\uad6c\ud560 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4.',accountConfirm:'\uacc4\uc815\u00b7\ub300\ud654\u00b7\ubcf4\uad00 \uc911\uc778 \ud53c\ub4dc\ubc31\uc744 \uc0ad\uc81c\ud569\ub2c8\ub2e4. \uacc4\uc18d\ud558\ub824\uba74 DELETE MY ACCOUNT\ub97c \uc785\ub825\ud558\uc138\uc694.',stopped:'처리를 중단했습니다.',unsavedConfirm:'\uc800\uc7a5\ub418\uc9c0 \uc54a\uc740 \ub300\ud654\uac00 \uc788\uc2b5\ub2c8\ub2e4. \ub0b4\ubcf4\ub0b4\uae30 \uc5c6\uc774 \uc774\ub3d9\ud560\uae4c\uc694?',checkEmail:'\uc778\uc99d \uba54\uc77c\uc744 \ud655\uc778\ud55c \ub4a4 \ub2e4\uc2dc \ub85c\uadf8\uc778\ud574 \uc8fc\uc138\uc694.',feedbackSuccess:'\uac80\ud1a0 \ub300\uae30\uc5f4\uc5d0 \uc800\uc7a5\ud588\uc2b5\ub2c8\ub2e4. \uc790\ub3d9\uc73c\ub85c \ud559\uc2b5\ub418\uc9c0\ub294 \uc54a\uc2b5\ub2c8\ub2e4.',feedbackLocal:'\ub85c\uceec \uac80\ud1a0 \ud6c4\ubcf4 \ud30c\uc77c\uc744 \ub9cc\ub4e4\uc5c8\uc2b5\ub2c8\ub2e4. \uc11c\ubc84\uc5d0\ub294 \ubcf4\ub0b4\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4.',saved:'\uacc4\uc815\uc5d0 \uc800\uc7a5\ub428',temporaryChat:'\uc784\uc2dc \ub300\ud654',emptyExport:'\ub0b4\ubcf4\ub0bc \ub300\ud654\uac00 \uc544\uc9c1 \uc5c6\uc2b5\ub2c8\ub2e4.'
+ skip:'\uc9c8\ubb38 \uc785\ub825\uc73c\ub85c \uac74\ub108\ub6f0\uae30',newChat:'\uc0c8 \ub300\ud654',history:'\ub098\uc758 \ub300\ud654',loading:'\uc5f0\uacb0 \ud655\uc778 \uc911',knowledgeLabel:'\uc5f0\uacb0\ub41c \uc758\ud559\uc9c0\uc2dd',dataCaution:'\uc784\uc0c1 \uac80\ud1a0 \uc804 \uc5c5\ub85c\ub4dc \uc790\ub8cc',privacy:'\uac1c\uc778\uc815\ubcf4\uc640 \ud559\uc2b5 \uc548\ub0b4',localSession:'\uac8c\uc2a4\ud2b8 \uc0ac\uc6a9',temporary:'\ub85c\uadf8\uc778 \uc5c6\uc774 \ubc14\ub85c \uc0ac\uc6a9 \uac00\ub2a5',export:'\ub300\ud654 \ub0b4\ubcf4\ub0b4\uae30',welcomeTitle:'의료가 궁금할 때, 편하게 물어보세요.',welcomeDescription:'증상, 질병, 검사, 수술, 약, 의료기기까지 어려운 의학 내용을 쉽게 설명해드려요. 사진을 올리거나 붙여넣어 물어볼 수도 있어요.',cardKnowledge:'증상이 궁금할 때',cardKnowledgeDesc:'아픈 곳과 증상을 말하면 가능한 이유를 쉽게 정리',cardImage:'사진으로 물어보기',cardImageDesc:'검사 결과, 상처 사진, X-ray 등 이미지를 올려 질문',cardStudy:'의학용어 쉽게 알아보기',cardStudyDesc:'인공심폐기 같은 낯선 용어도 일상적인 말로 설명',welcomeNote:'\uc5f0\uad6c\u00b7\ud559\uc2b5\uc6a9 \ubca0\ud0c0\uc785\ub2c8\ub2e4. \uc9c4\ub2e8\uc774\ub098 \ucc98\ubc29\uc744 \uc81c\uacf5\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.',pending:'처리하고 있습니다.',questionLabel:'\uc758\ub8cc\u00b7\uac74\uac15 \uc9c8\ubb38',questionPlaceholder:'예: 인공심폐기가 뭐야? / 무릎이 아픈데 왜 그럴까? 사진은 붙여넣어도 돼요.',attach:'\uc774\ubbf8\uc9c0 \ucca8\ubd80 (JPG, PNG, WebP)',image:'\uc774\ubbf8\uc9c0',mode:'\ub300\ud654 \ubaa8\ub4dc',health:'\uac74\uac15\uc9c0\uc2dd',study:'\uc758\ud559 \ud559\uc2b5',send:'\ubcf4\ub0b4\uae30',stop:'\uc911\ub2e8',saveChat:'\uc774 \ub300\ud654\ub97c \ub0b4 \uacc4\uc815\uc5d0 \uc800\uc7a5',processingInfo:'안전·개인정보 안내',disclaimer:'MEDI\ub294 \uc9c4\ub2e8\u00b7\ucc98\ubc29\u00b7\uc601\uc0c1 \ud310\ub3c5\uc744 \ub300\uccb4\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4. \uc751\uae09\uc0c1\ud669\uc740 \ucc57\ubd07\uc774 \uc544\ub2cc 119\ub85c \uc5f0\ub77d\ud558\uc138\uc694.',close:'\ub2eb\uae30',consentTitle:'MEDI 이용 전 확인해주세요',consentBody:'질문과 최근 대화는 관련 의료자료를 찾기 위해 MEDI 서버로 전송됩니다. Groq 또는 Gemini가 연결된 경우 질문·검색된 의료자료 일부와 첨부 이미지의 메타데이터를 제거한 사본이 답변 생성을 위해 해당 제공자에 전송될 수 있습니다. 원본 이미지는 대화기록에 저장하지 않습니다.',consentPrivacy:'실명, 주민번호, 연락처, 병원 등록번호 등 개인을 식별할 수 있는 정보는 입력하지 마세요. 사진·검사결과지에도 이름, 환자번호, 생년월일 등이 보이지 않도록 가려주세요. 심한 흉통, 호흡곤란, 의식저하, 마비, 멈추지 않는 출혈 등 긴급한 증상은 MEDI 답변을 기다리지 말고 119 또는 응급의료기관을 이용하세요.',consentCheck:'안내 내용을 확인했습니다.',cancel:'\ucde8\uc18c',agree:'확인하고 계속',login:'\ub85c\uadf8\uc778',signup:'\ud68c\uc6d0\uac00\uc785',authDescription:'\ub85c\uadf8\uc778\ud558\uc9c0 \uc54a\uc544\ub3c4 \ubc14\ub85c \uc0ac\uc6a9\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4. \ud68c\uc6d0\uac00\uc785\u00b7\ub85c\uadf8\uc778\ud558\uba74 \uc800\uc7a5\uc744 \uc120\ud0dd\ud55c \ub300\ud654 \uae30\ub85d\uc744 \ub0b4 \uacc4\uc815\uc5d0 \ub0a8\uae38 \uc218 \uc788\uc2b5\ub2c8\ub2e4.',email:'\uc774\uba54\uc77c',password:'\ube44\ubc00\ubc88\ud638 (5\uc790 \uc774\uc0c1)',invite:'\ucd08\ub300\ucf54\ub4dc (\uc6b4\uc601\uc790\uac00 \uc81c\ud55c\ud55c \uacbd\uc6b0\uc5d0\ub9cc)',terms:'\uc758\ub8cc \uc11c\ube44\uc2a4\uac00 \uc544\ub2cc \uc5f0\uad6c\uc6a9 \ub3c4\uad6c\uc784\uc744 \uc774\ud574\ud558\uba70, \ube44\uc2dd\ubcc4 \uc815\ubcf4\ub85c\ub9cc \uc2dc\ud5d8\ud569\ub2c8\ub2e4.',toSignup:'\uc544\uc9c1 \uacc4\uc815\uc774 \uc5c6\uc73c\uc2e0\uac00\uc694? \ud68c\uc6d0\uac00\uc785',toLogin:'\uc774\ubbf8 \uacc4\uc815\uc774 \uc788\uc73c\uc2e0\uac00\uc694? \ub85c\uadf8\uc778',feedbackTitle:'\ub354 \ub098\uc740 \ub2f5\ubcc0\uc744 \uc704\ud55c \ud53c\ub4dc\ubc31',feedbackDescription:'\ud53c\ub4dc\ubc31\uc740 \uc989\uc2dc \ud559\uc2b5\ub418\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4. \ub3d9\uc758\ud55c \ub0b4\uc6a9\ub9cc \uc6b4\uc601\uc790\uc758 \uac80\ud1a0 \ub300\uae30\uc5f4\uc5d0 \ubcf4\ub0b4\uba70, \uc758\ud559\u00b7\uac1c\uc778\uc815\ubcf4 \uac80\ud1a0 \ud6c4 \uc218\ub3d9\uc73c\ub85c \ubc18\uc601\ud569\ub2c8\ub2e4. \uc544\ub798 \ub0b4\uc6a9\uc5d0\uc11c \uac1c\uc778\uc815\ubcf4\ub97c \uc0ad\uc81c\ud558\uc138\uc694.',feedbackQuestion:'\uac80\ud1a0\uc6a9 \uc9c8\ubb38 (\uc218\uc815 \uac00\ub2a5)',feedbackAnswer:'\uac80\ud1a0\uc6a9 \ub2f5\ubcc0 (\uc218\uc815 \uac00\ub2a5)',correction:'\uc218\uc815 \uc758\uacac\u00b7\ucc38\uace0 \uadfc\uac70',rating:'\ud3c9\uac00',needsReview:'\uac80\ud1a0\uac00 \ud544\uc694\ud574\uc694',helpful:'\ub3c4\uc6c0\uc774 \ub410\uc5b4\uc694',feedbackConsent:'\uc704 \ud53c\ub4dc\ubc31\uc744 \uc6b4\uc601\uc790\uac00 \uc77d\uace0 \uc11c\ube44\uc2a4 \uac1c\uc120\uc5d0 \uac80\ud1a0\ud558\ub294 \ub370 \ubcc4\ub3c4\ub85c \ub3d9\uc758\ud569\ub2c8\ub2e4.',deidentified:'\uc9c8\ubb38\u00b7\ub2f5\ubcc0\u00b7\uc218\uc815 \uc758\uacac\uc5d0\uc11c \uc2dd\ubcc4 \uac00\ub2a5\ud55c \uac1c\uc778\uc815\ubcf4\ub97c \uc81c\uac70\ud588\uc2b5\ub2c8\ub2e4.',feedbackSend:'\uac80\ud1a0 \ub300\uae30\uc5f4\uc5d0 \ubcf4\ub0b4\uae30',promptKnowledge:'무릎이 아픈데 어떤 원인이 있을 수 있어?',promptStudy:'인공심폐기가 뭐야? 일반인이 이해하기 쉽게 설명해줘.',promptImage:'이 이미지에서 보이는 내용을 일반인이 이해하기 쉽게 설명해줘.',emptyHistory:'\uc800\uc7a5\ud55c \ub300\ud654\uac00 \uc5ec\uae30\uc5d0 \ud45c\uc2dc\ub429\ub2c8\ub2e4.',demo:'MEDI',connected:'MEDI 의료 AI',demoNotice:'MEDI는 연결된 의료지식 자료를 우선 활용합니다.',rightsNotice:'\uc790\ub8cc \uc774\uc6a9\uad8c\ud55c\uc744 \uc6b4\uc601\uc790\uac00 \ud655\uc778\ud558\uae30 \uc804\uae4c\uc9c0 \uc678\ubd80 \uc11c\ube44\uc2a4\uc5d0\uc11c\ub294 \uc790\ub8cc \uac80\uc0c9\uc774 \ube44\ud65c\uc131\ud654\ub429\ub2c8\ub2e4.',noAccounts:'\ub85c\uceec \uccb4\ud5d8\uc5d0\uc11c\ub294 \uacc4\uc815 \uc800\uc7a5\uc744 \uc0ac\uc6a9\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4. Supabase\ub97c \uc5f0\uacb0\ud558\uba74 \ud68c\uc6d0 \uae30\ub2a5\uc744 \uc0ac\uc6a9\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.',loginNeeded:'\ub300\ud654 \uc800\uc7a5 \uae30\ub2a5\uc740 \ub85c\uadf8\uc778 \ud6c4 \uc0ac\uc6a9\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.',copy:'\ubcf5\uc0ac',copied:'\ub2f5\ubcc0\uc744 \ubcf5\uc0ac\ud588\uc2b5\ub2c8\ub2e4.',feedback:'\ud53c\ub4dc\ubc31',references:'\ucc38\uace0\ud55c \uc5c5\ub85c\ub4dc \uc790\ub8cc',referenceWarning:'\ucd9c\ucc98\uba85\u00b7\uc5f0\ub3c4\ub294 \ub370\uc774\ud130\uc14b \ud45c\uae30\uc785\ub2c8\ub2e4. \uc6d0\ubb38\u00b7\ucd5c\uc2e0\uc131\u00b7\uc758\ud559\uc801 \uc815\ud655\uc131\uc740 \ubcc4\ub3c4 \uac80\ud1a0\uac00 \ud544\uc694\ud569\ub2c8\ub2e4.',observations:'이미지에서 보이는 점',notSaved:'\uc800\uc7a5\ud558\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4. \uc774 \ub300\ud654\ub97c \ub0b4\ubcf4\ub0b8 \ub4a4 \uc774\ub3d9\ud574 \uc8fc\uc138\uc694.',imageLimit:'\uc774\ubbf8\uc9c0\ub294 \ud55c \ubc88\uc5d0 2\uc7a5, \uac01 5MB\uae4c\uc9c0\uc785\ub2c8\ub2e4.',imageType:'JPG, PNG, WebP \uc774\ubbf8\uc9c0\ub9cc \uc0ac\uc6a9\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.',report:'\uac80\uc0ac\uc9c0\u00b7\ud310\ub3c5\ubb38',photo:'\ud53c\ubd80 \ub4f1 \uc678\ubd80 \uc0ac\uc9c4',radiology:'의료영상',delete:'\uc0ad\uc81c',logout:'\ub85c\uadf8\uc544\uc6c3',deleteAccount:'\uacc4\uc815\uacfc \uc800\uc7a5 \ub0b4\uc6a9 \uc0ad\uc81c',deleteConfirm:'\uc774 \ub300\ud654\ub97c \uc0ad\uc81c\ud560\uae4c\uc694? \ubcf5\uad6c\ud560 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4.',accountConfirm:'\uacc4\uc815\u00b7\ub300\ud654\u00b7\ubcf4\uad00 \uc911\uc778 \ud53c\ub4dc\ubc31\uc744 \uc0ad\uc81c\ud569\ub2c8\ub2e4. \uacc4\uc18d\ud558\ub824\uba74 DELETE MY ACCOUNT\ub97c \uc785\ub825\ud558\uc138\uc694.',stopped:'처리를 중단했습니다.',unsavedConfirm:'\uc800\uc7a5\ub418\uc9c0 \uc54a\uc740 \ub300\ud654\uac00 \uc788\uc2b5\ub2c8\ub2e4. \ub0b4\ubcf4\ub0b4\uae30 \uc5c6\uc774 \uc774\ub3d9\ud560\uae4c\uc694?',checkEmail:'\uc778\uc99d \uba54\uc77c\uc744 \ud655\uc778\ud55c \ub4a4 \ub2e4\uc2dc \ub85c\uadf8\uc778\ud574 \uc8fc\uc138\uc694.',feedbackSuccess:'\uac80\ud1a0 \ub300\uae30\uc5f4\uc5d0 \uc800\uc7a5\ud588\uc2b5\ub2c8\ub2e4. \uc790\ub3d9\uc73c\ub85c \ud559\uc2b5\ub418\uc9c0\ub294 \uc54a\uc2b5\ub2c8\ub2e4.',feedbackLocal:'\ub85c\uceec \uac80\ud1a0 \ud6c4\ubcf4 \ud30c\uc77c\uc744 \ub9cc\ub4e4\uc5c8\uc2b5\ub2c8\ub2e4. \uc11c\ubc84\uc5d0\ub294 \ubcf4\ub0b4\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4.',saved:'\uacc4\uc815\uc5d0 \uc800\uc7a5\ub428',temporaryChat:'\uc784\uc2dc \ub300\ud654',emptyExport:'\ub0b4\ubcf4\ub0bc \ub300\ud654\uac00 \uc544\uc9c1 \uc5c6\uc2b5\ub2c8\ub2e4.'
 };
 const ERR={login_required:T.loginNeeded,invalid_invite:'\ucd08\ub300\ucf54\ub4dc\ub97c \ud655\uc778\ud574 \uc8fc\uc138\uc694.',membership_required:'\ucc98\uc74c \ub85c\uadf8\uc778\ud560 \ub54c \uc720\ud6a8\ud55c \ucd08\ub300\ucf54\ub4dc\ub97c \uc785\ub825\ud574 \uc8fc\uc138\uc694.',rate_limited:'\uc694\uccad\uc774 \ub9ce\uc2b5\ub2c8\ub2e4. \uc7a0\uc2dc \ud6c4 \ub2e4\uc2dc \uc2dc\ub3c4\ud574 \uc8fc\uc138\uc694.',daily_limit:'\uc624\ub298\uc758 \uc5f0\uad6c\uc6a9 AI \uc0ac\uc6a9 \ud55c\ub3c4\uc5d0 \ub3c4\ub2ec\ud588\uc2b5\ub2c8\ub2e4.',storage_limit:'\uc800\uc7a5 \ud55c\ub3c4\uc5d0 \ub3c4\ub2ec\ud588\uc2b5\ub2c8\ub2e4. \ubd88\ud544\uc694\ud55c \ub300\ud654\ub97c \uc0ad\uc81c\ud574 \uc8fc\uc138\uc694.',server_busy:'\uc11c\ubc84\uac00 \ub2e4\ub978 \uc694\uccad\uc744 \ucc98\ub9ac \uc911\uc785\ub2c8\ub2e4. \uc790\ub3d9 \uc7ac\uc804\uc1a1\ud558\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4.',auth_failed_check_email_and_password:'\uc774\uba54\uc77c\u00b7\ube44\ubc00\ubc88\ud638\u00b7\uc774\uba54\uc77c \uc778\uc99d \uc5ec\ubd80\ub97c \ud655\uc778\ud574 \uc8fc\uc138\uc694.',cloud_unavailable:'\uacc4\uc815 \uc800\uc7a5\uc18c\uc5d0 \uc5f0\uacb0\ud558\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4.',cloud_request_failed:'\uc800\uc7a5\uc18c \uc124\uc815\uc744 \uc6b4\uc601\uc790\uac00 \ud655\uc778\ud574\uc57c \ud569\ub2c8\ub2e4.',identifiers_detected:'\ud53c\ub4dc\ubc31\uc5d0 \uc5f0\ub77d\ucc98 \ub4f1 \uac1c\uc778\uc815\ubcf4\ub85c \ubcf4\uc774\ub294 \ubb38\uad6c\uac00 \uc788\uc2b5\ub2c8\ub2e4. \uc81c\uac70\ud574 \uc8fc\uc138\uc694.',invalid_image:'\uc774\ubbf8\uc9c0 \ud615\uc2dd\u00b7\ud06c\uae30\ub97c \ud655\uc778\ud574 \uc8fc\uc138\uc694. 5MB, 1,200\ub9cc \ud654\uc18c \uc774\ud558\uc785\ub2c8\ub2e4.',conversation_full:'\uc774 \ub300\ud654\uac00 \uae38\uc5b4\uc838 \uc0c8 \ub300\ud654\ub97c \uc2dc\uc791\ud574\uc57c \ud569\ub2c8\ub2e4.',invalid_request:'\uc785\ub825 \ud56d\ubaa9\uc758 \ud615\uc2dd\uacfc \uae38\uc774\ub97c \ud655\uc778\ud574 \uc8fc\uc138\uc694.',request_in_progress:'\ub3d9\uc77c\ud55c \uc694\uccad\uc744 \uc774\ubbf8 \ucc98\ub9ac \uc911\uc785\ub2c8\ub2e4.',terms_required:'\uc5f0\uad6c\uc6a9 \uc774\uc6a9 \uc548\ub0b4\uc5d0 \ub3d9\uc758\ud574 \uc8fc\uc138\uc694.'};
 function requestId(){
@@ -1231,10 +1510,29 @@ async function loadConversation(cid){if(state.busy)return;if(hasUnsaved()&&!conf
 function updateInput(){$('charCount').textContent=$('question').value.length+' / 4000';$('question').style.height='auto';$('question').style.height=Math.min(120,Math.max(52,$('question').scrollHeight))+'px';}
 $('question').addEventListener('input',updateInput);
 $('question').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&window.innerWidth>540){e.preventDefault();$('chatForm').requestSubmit();}});
-for(const b of document.querySelectorAll('[data-prompt]'))b.onclick=()=>{if(state.busy)return;$('question').value=T[b.dataset.prompt];if(b.dataset.mode)$('mode').value=b.dataset.mode;updateInput();$('question').focus();};
+for(const b of document.querySelectorAll('[data-prompt]'))b.onclick=()=>{if(state.busy)return;$('question').value=T[b.dataset.prompt];updateInput();$('question').focus();};
 $('welcomeImage').onclick=()=>{$('question').value=T.promptImage;updateInput();$('fileInput').click();};$('attachButton').onclick=()=>$('fileInput').click();
-$('fileInput').onchange=async e=>{for(const f of e.target.files){if(state.images.length>=2||f.size>5*1024*1024){toast(T.imageLimit);break;}if(!['image/jpeg','image/png','image/webp'].includes(f.type)){toast(T.imageType);continue;}try{const url=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(f);});state.images.push({name:f.name.slice(0,160),data_url:url,kind:'report'});}catch{toast(T.imageType);}}renderAttachments();e.target.value='';};
-function renderAttachments(){$('attachments').replaceChildren();state.images.forEach((im,i)=>{const card=el('div','attachment'),img=el('img');img.src=im.data_url;img.alt=T.image;const inf=el('div','attachment-info');inf.append(el('span','attachment-name',im.name));const sel=el('select');sel.setAttribute('aria-label',T.image+' '+(i+1)+' \uc885\ub958');for(const value of ['report','photo','radiology']){const o=el('option','',T[value]);o.value=value;sel.append(o);}sel.value=im.kind;sel.onchange=()=>im.kind=sel.value;inf.append(sel);const del=el('button','','\u00d7');del.type='button';del.setAttribute('aria-label',T.delete+' '+im.name);del.onclick=()=>{state.images.splice(i,1);renderAttachments();};card.append(img,inf,del);$('attachments').append(card);});}
+async function addImageFiles(files,label='이미지'){
+ for(const f of files){
+  if(state.images.length>=2){toast(T.imageLimit);break;}
+  if(f.size>5*1024*1024){toast(T.imageLimit);continue;}
+  if(!['image/jpeg','image/png','image/webp'].includes(f.type)){toast(T.imageType);continue;}
+  try{
+   const url=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(f);});
+   state.images.push({name:(f.name||label).slice(0,160),data_url:url,kind:'photo'});
+  }catch{toast(T.imageType);}
+ }
+ renderAttachments();
+}
+$('fileInput').onchange=async e=>{await addImageFiles([...e.target.files]);e.target.value='';};
+$('question').addEventListener('paste',async e=>{
+ const files=[...(e.clipboardData?.items||[])].filter(x=>x.kind==='file'&&x.type.startsWith('image/')).map(x=>x.getAsFile()).filter(Boolean);
+ if(!files.length)return;
+ e.preventDefault();
+ await addImageFiles(files,'붙여넣은 이미지');
+ toast('이미지를 붙여넣었습니다. 바로 질문하거나 이미지만 보내도 됩니다.');
+});
+function renderAttachments(){$('attachments').replaceChildren();state.images.forEach((im,i)=>{const card=el('div','attachment'),img=el('img');img.src=im.data_url;img.alt=T.image;const inf=el('div','attachment-info');inf.append(el('span','attachment-name',im.name),el('small','attachment-kind','첨부 이미지'));const del=el('button','','\u00d7');del.type='button';del.setAttribute('aria-label',T.delete+' '+im.name);del.onclick=()=>{state.images.splice(i,1);renderAttachments();};card.append(img,inf,del);$('attachments').append(card);});}
 function setBusy(b){state.busy=b;$('pending').hidden=!b;$('sendButton').hidden=b;$('stopButton').hidden=!b;for(const id of ['question','mode','attachButton','newChat','welcomeImage'])$(id).disabled=b;statusUI();}
 function scrollBottom(){requestAnimationFrame(()=>$('scrollArea').scrollTo({top:$('scrollArea').scrollHeight,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));}
 function answerText(a){return a.paragraphs.map(p=>(p.heading?p.heading+'\n':'')+p.text).join('\n\n')+(a.image_observations.length?'\n\n'+a.image_observations.join('\n'):'')+'\n\n'+a.limitations;}
@@ -1265,16 +1563,16 @@ $('localAiPrepare').onclick=async()=>{if(!window.MEDILocalAI?.supported?.()){toa
 window.MEDILocalAI?.setProgressHandler?.(info=>{if($('localAiStatus'))$('localAiStatus').textContent=info.message;if(state.busy)setPendingText(info.message);if(info.status==='ready'||info.status==='unsupported'||info.status==='error')statusUI();});
 $('saveChat').onchange=()=>{if($('saveChat').checked&&!state.user){$('saveChat').checked=false;openAuth();}};
 $('chatForm').onsubmit=async e=>{
- e.preventDefault();if(state.busy||!state.config)return;const question=$('question').value.trim();if(!question){$('question').focus();return;}if(!state.consent){askConsent(true);return;}
- const id=requestId(),images=state.images.map(i=>({...i}));const t={id,question,had_images:!!images.length,mode:$('mode').value,previewImages:images.map(i=>i.data_url)};let mounted=false;setBusy(true);state.controller=new AbortController();
+ e.preventDefault();if(state.busy||!state.config)return;const typed=$('question').value.trim();if(!typed&&!state.images.length){$('question').focus();return;}const question=typed||'첨부한 이미지를 일반인이 이해하기 쉽게 설명해줘.';if(!state.consent){askConsent(true);return;}
+ const id=requestId(),images=state.images.map(i=>({...i}));const t={id,question,had_images:!!images.length,mode:'health',previewImages:images.map(i=>i.data_url)};let mounted=false;setBusy(true);state.controller=new AbortController();
  const timer=setTimeout(()=>state.controller?.abort(),100000);
  try{
-  if($('saveChat').checked&&!state.cid){const c=await api('/api/conversations',{method:'POST',body:JSON.stringify({title:question.slice(0,70)})});state.cid=c.id;}
+  if($('saveChat').checked&&!state.cid){const c=await api('/api/conversations',{method:'POST',body:JSON.stringify({title:(typed||'이미지 질문').slice(0,70)})});state.cid=c.id;}
   const history=state.turns.filter(x=>x.response).slice(-4).flatMap(x=>[{role:'user',content:x.question.slice(0,1600)},{role:'assistant',content:answerText(x.response.answer).slice(0,2200)}]);
   state.turns.push(t);mounted=true;$('welcome').hidden=true;renderTurn(t);scrollBottom();setPendingText('관련 의료자료를 찾고 있습니다…');
   const r=await api('/api/chat',{method:'POST',body:JSON.stringify({request_id:id,conversation_id:state.cid,message:question,history:state.cid?[]:history,images,mode:t.mode,consent:true}),signal:state.controller.signal});
   clearTimeout(timer);state.controller=null;
-  if(r.provider==='browser_local'){
+  if(r.provider==='browser_local'&&r.local_ai_allowed){
    if(window.MEDILocalAI?.supported?.()){
     try{setPendingText('무료 기기 AI를 준비하고 있습니다…');const generated=await window.MEDILocalAI.generate({question,mode:t.mode,sources:r.sources||[],history,hadImages:!!images.length});r.answer=generated.answer;r.model=generated.model;r.local_generated=true;}
     catch(err){r.provider='retrieval_only';r.local_ai_error=true;toast('브라우저 보조 AI를 실행하지 못했습니다. 설정에서 무료 서버 AI 연결 상태를 확인해 주세요.');}
@@ -1301,18 +1599,19 @@ $('accountButton').onclick=async()=>{
  try{const r=await api('/api/feedback');const b=$('myFeedback');if(!b)return;b.append(el('h3','','\ub0b4\uac00 \ubcf4\ub0b8 \ud53c\ub4dc\ubc31'));if(!r.feedback.length)para(b,'\uc800\uc7a5\ub41c \ud53c\ub4dc\ubc31\uc774 \uc5c6\uc2b5\ub2c8\ub2e4.','subtle');for(const f of r.feedback){const row=el('div','feedback-row');row.append(el('span','',new Date(f.created_at).toLocaleDateString()+' \u00b7 '+f.id.slice(0,8)));const d=el('button','quiet-button',T.delete);d.onclick=async()=>{try{await api('/api/feedback/'+f.id,{method:'DELETE'});row.remove();}catch(e){toast(failure(e));}};row.append(d);b.append(row);}}catch(e){toast(failure(e));}
 };
 $('dataInfo').onclick=()=>showInfo(T.knowledgeLabel,b=>{stat(b,'\uac80\uc0c9\uc5d0 \uc5f0\uacb0\ub41c \ubb38\uc11c\u00b7\ubb38\ud56d',(state.config?.knowledge.documents||0).toLocaleString());stat(b,'\uac80\uc0c9 \uc870\uac01',(state.config?.knowledge.chunks||0).toLocaleString());stat(b,'\ub370\uc774\ud130\uc14b \uc784\ud3ec\ud2b8',(state.config?.knowledge.datasets||0).toString());para(b,'MEDI는 학습용 QA와 참고 문서를 모두 검색 대상으로 활용하되, 검증·테스트 분할 자료는 대화 검색에서 제외합니다. 검색 결과는 의료적 확신도가 아니라 질문과 자료의 관련도입니다.');para(b,T.referenceWarning,'notice-box');para(b,'\uace8\uc808 \uc601\uc0c1 \uc790\ub8cc 1,539\uc7a5\uc758 \uad6c\uc870\uc640 \ub77c\ubca8\uc744 \uc810\uac80\ud588\uc9c0\ub9cc, \uc601\uc0c1 \ubaa8\ub378\uc744 \ud559\uc2b5\ud55c \uac83\uc740 \uc544\ub2d9\ub2c8\ub2e4. \uc601\uc0c1 \ud310\ub3c5\uc740 \ube44\ud65c\uc131\ud654\ub418\uc5b4 \uc788\uc2b5\ub2c8\ub2e4.');});
-$('privacyButton').onclick=()=>showInfo(T.privacy,b=>{para(b,T.consentBody);para(b,T.consentPrivacy,'notice-box');b.append(el('h3','','저장과 학습은 다릅니다'));para(b,'비로그인 대화는 현재 브라우저 화면에서만 사용합니다. 로그인 후 저장을 선택한 문자 대화만 Supabase에 암호화된 형태로 보관됩니다.');para(b,'무료 서버 AI가 연결된 경우 질문과 검색된 MEDI 근거자료 일부가 답변 생성을 위해 해당 제공자에 전송될 수 있습니다. 첨부 이미지는 현재 텍스트 AI에는 전달하지 않습니다. 서버 AI가 없을 때는 지원되는 브라우저에서 보조 AI를 사용할 수 있습니다.');para(b,T.feedbackDescription);para(b,'사용자 피드백은 자동으로 모델을 재학습시키지 않으며, 검토 후 별도로 반영해야 합니다.');if(state.config?.operator_contact)para(b,'운영자 문의: '+state.config.operator_contact);});
+$('privacyButton').onclick=()=>showInfo(T.privacy,b=>{para(b,T.consentBody);para(b,T.consentPrivacy,'notice-box');b.append(el('h3','','저장과 학습은 다릅니다'));para(b,'비로그인 대화는 현재 브라우저 화면에서만 사용합니다. 로그인 후 저장을 선택한 문자 대화만 Supabase에 암호화된 형태로 보관됩니다.');para(b,'무료 서버 AI가 연결된 경우 질문과 검색된 MEDI 근거자료 일부가 답변 생성을 위해 해당 제공자에 전송될 수 있습니다. 첨부 이미지는 메타데이터를 제거한 사본으로 처리되며, 이미지 이해가 가능한 무료 서버 AI가 연결된 경우 답변 생성을 위해 전송될 수 있습니다. 원본 이미지는 MEDI 대화기록에 저장하지 않습니다.');para(b,T.feedbackDescription);para(b,'사용자 피드백은 자동으로 모델을 재학습시키지 않으며, 검토 후 별도로 반영해야 합니다.');if(state.config?.operator_contact)para(b,'운영자 문의: '+state.config.operator_contact);});
 function openFeedback(t){state.feedbackTurn=t;$('feedbackQuestion').value=t.question;$('feedbackAnswer').value=answerText(t.response.answer);$('correction').value='';$('feedbackConsent').checked=false;$('deidentified').checked=false;$('feedbackError').textContent='';$('feedbackSubmit').textContent=(state.config.accounts&&state.user)?T.feedbackSend:'\ub85c\uceec \uac80\ud1a0 \ud30c\uc77c \ub9cc\ub4e4\uae30';$('feedbackDialog').showModal();}
 $('feedbackForm').onsubmit=async e=>{e.preventDefault();const t=state.feedbackTurn;if(!t)return;const p={turn_id:t.id,question:$('feedbackQuestion').value,answer:$('feedbackAnswer').value,correction:$('correction').value,rating:$('rating').value,consent:$('feedbackConsent').checked,deidentified_ack:$('deidentified').checked};$('feedbackSubmit').disabled=true;try{if(state.config.accounts&&state.user){await api('/api/feedback',{method:'POST',body:JSON.stringify(p)});toast(T.feedbackSuccess);}else{download('MEDI-feedback-candidate.json',{...p,status:'pending_human_review',automatically_trained:false});toast(T.feedbackLocal);}$('feedbackDialog').close();}catch(e){$('feedbackError').textContent=failure(e);}finally{$('feedbackSubmit').disabled=false;}};
 window.addEventListener('beforeunload',e=>{if(state.busy||hasUnsaved()){e.preventDefault();e.returnValue='';}});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenu();});
 (async()=>{try{state.config=await api('/api/config');if(state.config.accounts){state.user=(await api('/api/auth/session',{},false)).user;}statusUI();updateSafetySettings();updateLocalAIStatus();authMode(false);await historyList();}catch(e){$('connection').textContent='연결 실패';toast(failure(e));}})();
-````
+```
 
+---
 
 ## `static/app.css`
 
-````css
+```css
 :root{--font-scale:1;--ink:#263a42;--muted:#74838b;--green:#247d73;--green-soft:#e9f3ef;--border:#e3e9e8;--paper:#fbfcfc;--shadow:0 12px 45px #1a3c4410;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR","Malgun Gothic",sans-serif;color:var(--ink);font-synthesis:none}*{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--paper)}button,input,select,textarea{font:inherit}button{cursor:pointer;touch-action:manipulation}button,a,input,textarea,select{outline-offset:4px}button:focus-visible,a:focus-visible{outline:2px solid var(--green)}button:disabled{cursor:not-allowed;opacity:.5}button{color:inherit}button,a{ -webkit-tap-highlight-color:transparent}button{border:0}button[hidden],[hidden]{display:none!important}a{color:var(--green)}.layout{height:100dvh;display:flex;overflow:hidden}.sidebar{width:252px;flex-shrink:0;display:flex;flex-direction:column;background:#f0f4f3;border-right:1px solid var(--border);padding:30px 18px 18px;gap:20px}.brand{display:flex;align-items:center;gap:11px;text-decoration:none;color:var(--ink);padding:0 10px}.brand>span{font-weight:750;font-size:calc(26px * var(--font-scale));letter-spacing:1px;line-height:1.2}.brand small{display:block;font-size:calc(8px * var(--font-scale));font-weight:650;letter-spacing:1.6px;color:#7d928f;margin-top:4px}.new-chat{display:flex;align-items:center;gap:9px;text-align:left;background:var(--green);color:white;padding:13px 15px;border-radius:10px;margin-top:6px;font-weight:600;font-size:calc(14px * var(--font-scale))}.plus{font-size:calc(23px * var(--font-scale));line-height:1;font-weight:400}.new-chat kbd{margin-left:auto;font-size:calc(10px * var(--font-scale));border:1px solid #ffffff55;padding:2px 5px;border-radius:4px}.nav-caption{font-size:calc(11px * var(--font-scale));letter-spacing:1.1px;color:#82938f;padding:2px 12px 0;font-weight:600}.conversation-list{flex:1;min-height:50px;overflow:auto;margin-top:-10px}.conversation-empty{font-size:calc(12px * var(--font-scale));color:#8d9a97;line-height:1.7;padding:12px}.conversation-row{display:flex;align-items:center;gap:2px;border-radius:8px;margin-bottom:4px}.conversation-row.active{background:#e0ece7}.conversation-row .conversation-open{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:none;font-size:calc(12px * var(--font-scale));text-align:left;padding:11px}.conversation-delete{background:transparent;opacity:.6;width:32px;height:34px;border-radius:6px}.conversation-delete:hover{background:#dae5e1;color:#93443a}.sidebar-bottom{display:flex;flex-direction:column;gap:14px}.data-card{display:flex;flex-direction:column;gap:8px;text-align:left;border:1px solid #dfe8e3;background:#f9fbfa;border-radius:12px;padding:15px;color:var(--ink)}.data-top{display:flex;gap:7px;align-items:center;font-size:calc(10px * var(--font-scale));color:#59756b;font-weight:600}.status-dot{height:6px;width:6px;border-radius:50%;background:#6a9e89;display:inline-block;flex-shrink:0}.arrow{margin-left:auto;font-size:calc(16px * var(--font-scale))}.data-card strong{font-size:calc(23px * var(--font-scale));letter-spacing:-.5px;font-weight:650}.data-card small{font-size:calc(10px * var(--font-scale));line-height:1.6;color:#7c8c85}.data-line{height:1px;background:#e3eae6;display:block;width:100%;margin:2px 0}.side-link{display:flex;gap:9px;background:none;padding:0 10px;font-size:calc(12px * var(--font-scale));color:#758781;text-align:left}.account-button{display:flex;align-items:center;gap:10px;text-align:left;padding:14px 6px 2px;background:none;border-top:1px solid #dfe7e3}.account-button b{display:block;max-width:135px;overflow:hidden;text-overflow:ellipsis;font-size:calc(12px * var(--font-scale));font-weight:600}.account-button small{display:block;color:#83918c;font-size:calc(10px * var(--font-scale));margin-top:4px}.avatar{display:inline-grid;place-items:center;background:#dfeae4;color:#4d7365;border-radius:50%;width:31px;height:31px;font-size:calc(12px * var(--font-scale));font-weight:600}.workspace{min-width:0;flex:1;display:flex;flex-direction:column;position:relative}.topbar{height:74px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 35px;border-bottom:1px solid #edf0ef;gap:10px;background:#fbfcfce8}.top-left,.top-right{display:flex;gap:12px;align-items:center;min-width:0}.top-left>b{font-size:calc(15px * var(--font-scale));letter-spacing:.7px}.version-tag{font-size:calc(9px * var(--font-scale));letter-spacing:1.1px;background:#f1f3f1;color:#8b9790;border:1px solid #e5e9e5;border-radius:4px;padding:4px 6px}.connection{font-size:calc(11px * var(--font-scale));color:#7d8b87}.quiet-button{background:none;border:1px solid var(--border);border-radius:7px;padding:7px 11px;font-size:calc(11px * var(--font-scale))}.icon-button{background:transparent;width:32px;height:32px;border-radius:7px;font-size:calc(22px * var(--font-scale))}.menu-button{display:none}.system-notice{margin:14px auto 0;max-width:830px;width:calc(100% - 64px);border:1px solid #e9e1c7;border-radius:8px;background:#fcf9ef;font-size:calc(12px * var(--font-scale));line-height:1.6;color:#8b7348;padding:9px 14px}.scroll-area{min-height:0;flex:1;overflow:auto;overscroll-behavior:contain;scroll-behavior:smooth}.welcome{max-width:880px;margin:0 auto;padding:76px 42px 35px;text-align:center}.welcome-symbol{margin-bottom:22px}.eyebrow{font-size:calc(9px * var(--font-scale));letter-spacing:2.3px;font-weight:600;color:#8a9d95;margin:0 0 16px}.welcome h1{font-size:calc(36px * var(--font-scale));font-weight:650;letter-spacing:-1.5px;line-height:1.5;white-space:pre-line;margin:0}.welcome-description{font-size:calc(13px * var(--font-scale));color:#809087;line-height:1.9;margin:15px auto 0;max-width:500px;word-break:keep-all;white-space:pre-line}.suggestions{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:39px;text-align:left}.suggestion{padding:21px 18px 18px;text-align:left;background:white;border:1px solid #e0e8e4;border-radius:12px;position:relative;min-height:151px;transition:transform .15s,box-shadow .15s}.suggestion:hover{transform:translateY(-3px);box-shadow:var(--shadow);border-color:#aecfc0}.card-icon{display:block;color:#538272;font-size:calc(21px * var(--font-scale));margin-bottom:14px}.suggestion b{font-size:calc(13px * var(--font-scale));font-weight:650}.suggestion p{font-size:calc(11px * var(--font-scale));color:#84928c;line-height:1.8;margin:9px 8px 0 0;word-break:keep-all}.card-arrow{position:absolute;top:22px;right:18px;color:#a1b1a8;font-size:calc(16px * var(--font-scale))}.welcome-note{display:flex;justify-content:center;align-items:center;gap:7px;color:#8b9892;font-size:calc(10px * var(--font-scale));margin:22px 0 0}.composer-area{padding:14px 36px 15px;background:linear-gradient(#fbfcfc00,#fbfcfc 13%);flex-shrink:0;max-height:53dvh;overflow:auto}.composer{max-width:800px;margin:0 auto;background:white;border:1px solid #d8e3dd;border-radius:15px;box-shadow:0 5px 25px #27473707;padding:13px 16px 10px}.composer:focus-within{border-color:#8cb5a5;box-shadow:0 0 0 3px #e9f3ed80}textarea{resize:vertical}.composer textarea{width:100%;border:0;outline:none;background:transparent;resize:none;font-size:calc(14px * var(--font-scale));color:var(--ink);line-height:1.7;min-height:52px;max-height:120px;display:block;padding:2px}.composer textarea::placeholder{color:#a0aca6}.composer-tools{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:6px}.tool-group{display:flex;gap:9px;align-items:center}.attach-button{display:flex;align-items:center;gap:5px;background:none;font-size:calc(11px * var(--font-scale));color:#647e71;padding:4px}.tool-divider{height:15px;width:1px;background:#e1e7e3}.composer select{border:0;background:#f0f5f2;font-size:calc(11px * var(--font-scale));padding:6px 8px;border-radius:6px;color:#6e8579;max-width:115px}.send-button{width:33px;height:33px;display:grid;place-items:center;border-radius:9px;background:var(--green);color:white;font-size:calc(23px * var(--font-scale))}.stop-button{border-radius:7px;background:#edf0ef;color:#47645a;font-size:calc(11px * var(--font-scale));padding:8px}.char-count{font-size:calc(9px * var(--font-scale));color:#99a79f}.composer-options{max-width:800px;display:flex;align-items:center;justify-content:space-between;margin:9px auto 0;gap:10px}.save-option{font-size:calc(10px * var(--font-scale));color:#82918a;display:flex;gap:5px;align-items:center}.save-option input{accent-color:var(--green);margin:0;width:12px;height:12px}.text-button{background:none;color:#658475;font-size:calc(11px * var(--font-scale));padding:4px}.disclaimer{text-align:center;color:#9aa69e;font-size:calc(9px * var(--font-scale));line-height:1.7;margin:7px 0 0}.messages{max-width:840px;margin:0 auto;padding:22px 30px 6px}.turn{margin:18px 0 35px}.user-message{margin-left:auto;max-width:87%;width:fit-content;padding:14px 19px;background:#ecf3ef;border-radius:17px 17px 4px 17px;line-height:1.8;font-size:calc(14px * var(--font-scale));white-space:pre-wrap;overflow-wrap:anywhere}.user-images{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}.user-images img{width:80px;height:70px;object-fit:contain;border-radius:8px;border:1px solid var(--border)}.assistant-message{padding-top:25px}.assistant-label{display:flex;align-items:center;gap:9px;font-size:calc(12px * var(--font-scale));font-weight:650;margin-bottom:15px}.assistant-label img{height:24px;width:24px}.evidence-badge{font-size:calc(9px * var(--font-scale));font-weight:500;border-radius:5px;padding:3px 7px;background:#f0f2ef;color:#819083;margin-left:auto}.evidence-badge.emergency{color:#9b5541;background:#fff0e7}.answer-paragraph{margin:0 0 16px;font-size:calc(14px * var(--font-scale));line-height:1.95;overflow-wrap:anywhere}.answer-paragraph h3{font-size:calc(14px * var(--font-scale));font-weight:650;margin:0 0 6px}.answer-paragraph p{white-space:pre-wrap;margin:0}.source-cite{display:inline-block;background:#e7f0eb;color:#527961;font-size:calc(10px * var(--font-scale));padding:2px 6px;border-radius:4px;margin:6px 5px 0 0}.source-list{margin-top:17px;border:1px solid var(--border);border-radius:10px;padding:12px 14px;background:#fff}.source-list>summary{font-size:calc(12px * var(--font-scale));cursor:pointer;color:#617a69;list-style:none}.source-item{border-top:1px solid var(--border);padding:12px 0 1px;margin-top:11px}.source-item summary{cursor:pointer;overflow-wrap:anywhere;font-size:calc(12px * var(--font-scale));line-height:1.6}.source-meta{font-size:calc(10px * var(--font-scale));color:#8b968c;line-height:1.6;margin:5px 0}.excerpt{white-space:pre-wrap;overflow-wrap:anywhere;font-size:calc(12px * var(--font-scale));line-height:1.85;margin:8px 0;color:#69796e;max-height:310px;overflow:auto}.source-warning{font-size:calc(10px * var(--font-scale));color:#988872;line-height:1.6;margin:9px 0 0}.answer-limits{font-size:calc(10px * var(--font-scale));line-height:1.8;color:#8f9b94;border-left:2px solid #dce6df;padding-left:10px;margin-top:15px}.followups{display:flex;gap:7px;flex-wrap:wrap;margin-top:13px}.followup{font-size:calc(11px * var(--font-scale));text-align:left;padding:7px 10px;border-radius:7px;background:#f0f5f1;color:#587b63;border:1px solid #e2ebe3}.turn-actions{display:flex;gap:10px;margin-top:12px}.turn-action{font-size:calc(10px * var(--font-scale));background:none;padding:4px 2px;color:#8a9890}.pending{max-width:780px;margin:15px auto 25px;padding:15px;font-size:calc(12px * var(--font-scale));color:#769183;display:flex;align-items:center;gap:10px}.pulse{height:8px;width:8px;background:#8daf9c;border-radius:50%;animation:pulse 1.1s ease-in-out infinite}.attachments{display:flex;gap:10px;overflow:auto}.attachment{display:flex;gap:8px;align-items:center;border:1px solid var(--border);border-radius:8px;padding:7px;margin-bottom:9px;max-width:290px;flex-shrink:0}.attachment img{width:44px;height:48px;object-fit:contain;background:#f5f7f5;border-radius:5px}.attachment-info{min-width:0}.attachment-name{display:block;max-width:140px;text-overflow:ellipsis;white-space:nowrap;overflow:hidden;font-size:calc(10px * var(--font-scale));color:#748278}.attachment select{max-width:170px;font-size:calc(10px * var(--font-scale));margin-top:5px}.attachment button{font-size:calc(16px * var(--font-scale));background:none;color:#8a9790;padding:2px}.toast{position:fixed;bottom:25px;left:50%;transform:translateX(-50%);z-index:100;max-width:min(550px,90vw);background:#294b3f;color:#fff;box-shadow:var(--shadow);border-radius:9px;padding:13px 20px;font-size:calc(12px * var(--font-scale));line-height:1.7}.dialog-heading{display:flex;justify-content:space-between;align-items:center;gap:15px;padding:20px 23px;border-bottom:1px solid var(--border)}.dialog-heading h2{font-size:calc(18px * var(--font-scale));margin:0;font-weight:650;line-height:1.5}.dialog-body{padding:19px 24px 23px;font-size:calc(13px * var(--font-scale));line-height:1.9;overflow-wrap:anywhere}.dialog-body p{margin:0 0 16px}.dialog-body h3{font-size:calc(14px * var(--font-scale));margin:18px 0 7px}.dialog-body .field{display:flex;flex-direction:column;gap:5px;font-size:calc(12px * var(--font-scale));margin-bottom:14px}.field input,.field textarea,.field select{width:100%;border:1px solid #dbe4dd;border-radius:7px;padding:10px 11px;background:#fcfdfc;color:var(--ink);font-size:calc(13px * var(--font-scale))}.dialog-body textarea{min-height:65px}.dialog-body .subtle{color:#8b9990;font-size:calc(12px * var(--font-scale))}.notice-box{background:#f3f7f3;border:1px solid #e2e9e0;border-radius:8px;padding:13px 14px;font-size:calc(12px * var(--font-scale));color:#708271}.check-line{display:flex;align-items:flex-start;gap:8px;font-size:calc(12px * var(--font-scale));line-height:1.7;margin:14px 0}.check-line input{flex-shrink:0;margin-top:4px;accent-color:var(--green)}dialog{max-width:560px;width:calc(100% - 32px);border:1px solid var(--border);padding:0;border-radius:15px;color:var(--ink);max-height:88dvh;overflow:auto;box-shadow:0 24px 90px #162e3530}dialog::backdrop{background:#18342e55;backdrop-filter:blur(3px)}.dialog-actions{padding:0 24px 21px;display:flex;justify-content:flex-end;gap:9px}.primary-button{background:var(--green);color:white;padding:10px 16px;border-radius:8px;font-size:calc(13px * var(--font-scale))}.full{width:100%;margin-top:9px}.inline-error{font-size:calc(12px * var(--font-scale));color:#a55c47;line-height:1.7}.danger{color:#a35945}.stat-row{display:flex;justify-content:space-between;padding:10px 0;gap:14px;border-bottom:1px solid var(--border);font-size:calc(12px * var(--font-scale))}.stat-row span:last-child{text-align:right}.feedback-row{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:calc(11px * var(--font-scale))}.skip{position:fixed;top:-80px;z-index:200;background:white;padding:12px}.skip:focus{top:8px}.sr-only{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}.shade{display:none}@keyframes pulse{50%{opacity:.25}}@media(min-width:1600px){.welcome{padding-top:110px}.welcome h1{font-size:calc(42px * var(--font-scale))}.welcome-description{font-size:calc(15px * var(--font-scale))}.suggestion b{font-size:calc(15px * var(--font-scale))}.suggestion p{font-size:calc(12px * var(--font-scale))}.sidebar{width:270px}.composer-area{padding-bottom:25px}}@media(max-height:780px) and (min-width:861px){.welcome{padding-top:25px}.welcome-symbol{margin-bottom:12px}.welcome h1{font-size:calc(31px * var(--font-scale))}.suggestions{margin-top:22px}.suggestion{min-height:130px;padding:16px}.welcome-note{margin-top:12px}}@media(max-width:1100px){.sidebar{width:222px;padding:25px 14px 15px}.topbar{padding:0 24px}.welcome{padding-left:28px;padding-right:28px}.welcome h1{font-size:calc(32px * var(--font-scale))}.suggestion{padding:18px 13px}.composer-area{padding-left:26px;padding-right:26px}.connection{font-size:calc(10px * var(--font-scale))}.data-top{font-size:calc(9px * var(--font-scale))}}@media(max-width:860px){.sidebar{position:fixed;inset:0 auto 0 0;width:265px;z-index:31;transform:translateX(-100%);transition:transform .18s;box-shadow:20px 0 70px #263e3522}.sidebar.open{transform:translateX(0)}.shade{display:block;position:fixed;inset:0;background:#112e3440;z-index:30}.menu-button{display:block}.topbar{height:63px;padding:0 18px}.welcome{padding-top:50px}.composer-area{padding-left:20px;padding-right:20px}.system-notice{width:calc(100% - 40px)}.top-right{gap:7px}}@media(max-width:540px){.version-tag{font-size:calc(7px * var(--font-scale));padding:3px 4px;letter-spacing:.5px}.top-left,.top-right{gap:6px}.top-left>b{font-size:calc(13px * var(--font-scale))}.topbar{padding:0 11px}.top-right .quiet-button{font-size:calc(9px * var(--font-scale));padding:6px}.connection{font-size:calc(9px * var(--font-scale));max-width:87px;text-align:right;line-height:1.5}.welcome{padding:36px 22px 15px}.welcome-symbol{margin-bottom:16px}.welcome h1{font-size:calc(28px * var(--font-scale));letter-spacing:-1px}.eyebrow{font-size:calc(8px * var(--font-scale));letter-spacing:1.5px}.welcome-description{font-size:calc(12px * var(--font-scale));line-height:1.85}.suggestions{grid-template-columns:1fr;gap:9px;margin-top:25px}.suggestion{min-height:79px;padding:15px 35px 14px 55px}.card-icon{position:absolute;left:19px;top:18px;font-size:calc(23px * var(--font-scale));margin:0}.suggestion b{font-size:calc(12px * var(--font-scale))}.suggestion p{font-size:calc(10px * var(--font-scale));margin:5px 0 0;line-height:1.6}.card-arrow{right:17px;top:20px}.welcome-note{font-size:calc(9px * var(--font-scale));line-height:1.7;margin-top:17px}.composer-area{padding:9px 12px 10px}.composer{padding:10px 12px 9px;border-radius:12px}.composer textarea{font-size:calc(13px * var(--font-scale));min-height:48px}.composer-options{margin-top:8px}.save-option{font-size:calc(9px * var(--font-scale))}.text-button{font-size:calc(10px * var(--font-scale))}.disclaimer{font-size:calc(8px * var(--font-scale));margin-top:5px;line-height:1.65;padding:0 2px}.messages{padding:10px 19px}.user-message{font-size:calc(13px * var(--font-scale));max-width:94%;padding:11px 15px}.answer-paragraph{font-size:calc(13px * var(--font-scale));line-height:1.95}.answer-paragraph h3{font-size:calc(13px * var(--font-scale))}.assistant-message{padding-top:21px}.system-notice{font-size:calc(10px * var(--font-scale));padding:8px 11px;width:calc(100% - 26px);margin-top:10px}.dialog-body{padding:17px 18px}.dialog-heading{padding:17px 18px}.dialog-heading h2{font-size:calc(16px * var(--font-scale))}.char-count{display:none}.attachments{gap:7px}.attachment{max-width:245px}.attachment-name{max-width:110px}.attachment select{max-width:145px}.pending{font-size:calc(11px * var(--font-scale));margin:12px 12px 18px}.welcome-description{white-space:normal}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
 @media(max-width:540px){.composer textarea{font-size:calc(16px * var(--font-scale))}.answer-paragraph{font-size:calc(15px * var(--font-scale))}.answer-paragraph h3{font-size:calc(15px * var(--font-scale))}.user-message{font-size:calc(15px * var(--font-scale))}.field input,.field textarea,.field select{font-size:calc(16px * var(--font-scale))}.composer-area{padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))}.suggestion b{font-size:calc(13px * var(--font-scale))}.suggestion p{font-size:calc(11px * var(--font-scale))}}
 
@@ -1593,12 +1892,23 @@ html[data-theme="dark"] .excerpt,
 html[data-theme="dark"] .source-warning{
   color:#b9cbc7!important;
 }
-````
 
+
+/* MEDI v0.6 - consumer mode + clipboard image UI */
+.paste-hint{font-size:calc(10px * var(--font-scale));color:var(--muted);white-space:nowrap}
+.attachment-kind{display:block;margin-top:4px;color:var(--muted);font-size:calc(9px * var(--font-scale))}
+.attachment-info{min-width:0}
+.answer-paragraph p{line-height:1.75}
+.answer-paragraph h3{font-size:calc(14px * var(--font-scale));margin-bottom:7px}
+.answer-limits{font-size:calc(10px * var(--font-scale));line-height:1.6;opacity:.72}
+@media(max-width:640px){.paste-hint{display:none}.answer-paragraph h3{font-size:calc(13px * var(--font-scale))}}
+```
+
+---
 
 ## `static/local_ai.js`
 
-````javascript
+```javascript
 'use strict';
 
 (() => {
@@ -1791,12 +2101,13 @@ html[data-theme="dark"] .source-warning{
     }
   };
 })();
-````
+```
 
+---
 
 ## `render.yaml`
 
-````yaml
+```text
 services:
   - type: web
     name: medi-research-chat
@@ -1834,12 +2145,13 @@ services:
         value: "true"
       - key: GUEST_DAILY_LIMIT
         value: "8"
-````
+```
 
+---
 
 ## `env.example`
 
-````dotenv
+```text
 DEPLOYMENT_MODE=local
 MEDI_AI_PROVIDER=auto
 # Recommended free server AI (choose one or both):
@@ -1856,4 +2168,4 @@ ALLOW_OPEN_SIGNUP=true
 DATASET_RIGHTS_CONFIRMED=false
 OPERATOR_CONTACT=
 GUEST_DAILY_LIMIT=8
-````
+```
