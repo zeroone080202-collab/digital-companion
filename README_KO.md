@@ -1,17 +1,40 @@
-# MEDI v0.7 — 쉬운 답변 + 자동 이해 그림 패치
+# MEDI v0.7.2 - Render Timed Out 수정 패치
 
-## 이번 수정
-- 일반 사용자용 답변을 더 짧고 쉽게 제한합니다.
-- 기본 답변은 최대 3개 짧은 문단이며, 긴 전문용어 목록을 피합니다.
-- 질문 주제에 그림이 도움이 되면 답변 중간에 **클릭 없이 바로** 교육용 그림을 표시합니다.
-- 현재 자동 그림: 인공심폐기, 무릎, 심장, 폐/기도, 혈압, 당뇨/인슐린, 상처, 위/소화, 척추, 뇌, 약 복용.
-- 그림은 MEDI가 직접 포함한 단순 교육용 SVG이며 환자 영상이나 진단 그림이 아닙니다.
-- 사용자가 이미 사진/X-ray/검사지를 첨부한 경우에는 그 첨부 이미지를 우선 표시하고 자동 설명 그림은 중복으로 띄우지 않습니다.
-- MEDI 의료지식 RAG와 Groq/Gemini 연결 구조는 그대로 유지합니다.
+이번 패치는 Render 로그에서 Uvicorn이 정상적으로 `0.0.0.0:$PORT`에 올라왔는데도 배포가 `Timed Out` 되는 경우를 위한 패치입니다.
 
-## 적용
-ZIP 안의 파일을 GitHub의 같은 경로에 덮어쓰고 Render에서 **Clear build cache & deploy** 하세요.
-`knowledge_bundle`은 다시 올릴 필요가 없습니다.
+## 교체 파일
+GitHub에서 아래 3개 파일을 같은 경로에 **통째로 덮어쓰기** 하세요.
 
-## 환경변수
-기존 v0.6 설정을 그대로 사용합니다. Groq 또는 Gemini 중 하나만 연결하면 됩니다.
+- `app/main.py`
+- `app/config.py`
+- `render.yaml`
+
+`knowledge_bundle`, `static`, 의료자료 DB는 건드리지 않습니다.
+
+## 무엇이 바뀌었나
+1. `/healthz` 추가
+   - 로그인 없음
+   - Supabase 조회 없음
+   - 의료자료 검색 없음
+   - Groq/Gemini 호출 없음
+   - 즉시 200 응답만 반환
+2. `render.yaml`의 `healthCheckPath`를 `/healthz`로 변경
+3. TrustedHost에 `*.onrender.com`을 허용해 Render 헬스체크가 Host 검사에서 막히는 상황을 방지
+
+## Render에서 확인할 것
+GitHub에 3개 파일을 Commit한 뒤:
+
+1. Render > MEDI Web Service > Settings
+2. Health Check Path가 `/healthz`인지 확인
+3. 다르면 직접 `/healthz`로 수정 후 Save Changes
+4. Manual Deploy > Clear build cache & deploy
+
+정상이라면 배포 중 `/healthz`가 2xx로 응답하고 서비스가 Live로 전환됩니다.
+
+## 사용자 지정 도메인을 쓰는 경우
+별도 도메인(예: `medi.example.com`)을 연결했다면 Render Environment에 다음처럼 추가할 수 있습니다.
+
+`ALLOWED_HOSTS=medi.example.com,www.medi.example.com,*.onrender.com,localhost,127.0.0.1`
+
+## 기존 환경변수
+Groq, Gemini, Supabase 등 기존 환경변수는 그대로 두세요. 이 패치는 API 설정을 바꾸지 않습니다.
