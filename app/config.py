@@ -1,9 +1,8 @@
 """MEDI runtime configuration.
 
-Secrets stay in environment variables. The app can run with no paid AI key:
-- Groq free-tier key (optional, recommended for reliable text generation)
-- Gemini free-tier key (optional fallback)
-- Browser WebGPU local model (fallback when no server provider is configured)
+All secrets stay in environment variables. MEDI can use Groq and/or Gemini free
+API tiers and automatically fail over between them. Browser-local AI remains a
+text-only last resort when no server provider is available.
 """
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,15 +17,29 @@ def flag(name: str, default: bool = False) -> bool:
     return os.getenv(name, str(default)).strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
+def integer(name: str, default: int, low: int, high: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except ValueError:
+        value = default
+    return max(low, min(high, value))
+
+
 @dataclass(frozen=True)
 class Settings:
     database: Path = field(default_factory=lambda: Path(os.getenv('KNOWLEDGE_DB', str(ROOT / 'data/knowledge.sqlite'))))
     deployment: str = field(default_factory=lambda: os.getenv('DEPLOYMENT_MODE', 'public' if os.getenv('RENDER') else 'local'))
 
-    # Optional free text-generation providers. These are NOT OpenAI keys.
+    # Free AI providers. These are NOT OpenAI keys.
     ai_provider: str = field(default_factory=lambda: os.getenv('MEDI_AI_PROVIDER', 'auto').strip().lower())
+    provider_failover: bool = field(default_factory=lambda: flag('MEDI_PROVIDER_FAILOVER', True))
+    ai_request_retries: int = field(default_factory=lambda: integer('MEDI_AI_RETRIES', 2, 0, 3))
+
     groq_api_key: str = field(default_factory=lambda: os.getenv('GROQ_API_KEY', '').strip())
     groq_model: str = field(default_factory=lambda: os.getenv('GROQ_MODEL', 'qwen/qwen3.8-27b').strip())
+    # Keep a dedicated vision model so text-model changes cannot silently break image input.
+    groq_vision_model: str = field(default_factory=lambda: os.getenv('GROQ_VISION_MODEL', 'qwen/qwen3.8-27b').strip())
+
     gemini_api_key: str = field(default_factory=lambda: os.getenv('GEMINI_API_KEY', '').strip())
     gemini_model: str = field(default_factory=lambda: os.getenv('GEMINI_MODEL', 'gemini-2.5-flash-lite').strip())
 
@@ -37,28 +50,23 @@ class Settings:
     invite_code: str = field(default_factory=lambda: os.getenv('SIGNUP_INVITE_CODE', ''))
     open_signup: bool = field(default_factory=lambda: flag('ALLOW_OPEN_SIGNUP', True))
 
-    # Uploaded knowledge may only be exposed when the operator has verified rights.
     dataset_rights_confirmed: bool = field(default_factory=lambda: flag('DATASET_RIGHTS_CONFIRMED'))
 
-    # Render sends HTTP health checks with the service's onrender.com Host header.
-    # Include the Render wildcard so TrustedHostMiddleware cannot reject the
-    # readiness probe before it reaches /healthz. Custom domains can still be
-    # added with ALLOWED_HOSTS=example.com,www.example.com.
     allowed_hosts: tuple[str, ...] = field(default_factory=lambda: tuple(dict.fromkeys(
         [h.strip() for h in os.getenv(
             'ALLOWED_HOSTS',
             '127.0.0.1,localhost,testserver,*.onrender.com'
         ).split(',') if h.strip()]
-        + ([os.getenv('RENDER_EXTERNAL_HOSTNAME','').strip()] if os.getenv('RENDER_EXTERNAL_HOSTNAME','').strip() else [])
+        + ([os.getenv('RENDER_EXTERNAL_HOSTNAME', '').strip()] if os.getenv('RENDER_EXTERNAL_HOSTNAME', '').strip() else [])
     )))
     operator_contact: str = field(default_factory=lambda: os.getenv('OPERATOR_CONTACT', ''))
 
-    timeout: float = 75.0
+    timeout: float = field(default_factory=lambda: float(os.getenv('MEDI_AI_TIMEOUT', '90')))
     max_body_bytes: int = 15 * 1024 * 1024
     max_image_bytes: int = 5 * 1024 * 1024
     requests_per_minute: int = 8
     max_concurrency: int = 2
-    guest_daily_limit: int = field(default_factory=lambda: max(1, min(50, int(os.getenv('GUEST_DAILY_LIMIT', '8')))))
+    guest_daily_limit: int = field(default_factory=lambda: integer('GUEST_DAILY_LIMIT', 8, 1, 50))
 
     @property
     def has_accounts(self) -> bool:
@@ -69,21 +77,28 @@ class Settings:
         return self.deployment == 'public'
 
     @property
+    def configured_backends(self) -> tuple[str, ...]:
+        out: list[str] = []
+        if self.groq_api_key:
+            out.append('groq')
+        if self.gemini_api_key:
+            out.append('gemini')
+        return tuple(out)
+
+    @property
     def free_server_ai(self) -> str | None:
-        """Return the configured free provider name, in preferred order."""
+        if self.ai_provider == 'browser':
+            return None
         if self.ai_provider == 'groq':
             return 'groq' if self.groq_api_key else None
         if self.ai_provider == 'gemini':
             return 'gemini' if self.gemini_api_key else None
-        if self.ai_provider == 'browser':
-            return None
-        if self.ai_provider == 'auto':
-            if self.groq_api_key:
-                return 'groq'
-            if self.gemini_api_key:
-                return 'gemini'
-            return None
-        return None
+        return self.configured_backends[0] if self.configured_backends else None
+
+    @property
+    def image_ai_available(self) -> bool:
+        # Both configured providers support image input in MEDI's adapter.
+        return bool(self.groq_api_key or self.gemini_api_key)
 
     def validate(self):
         if self.deployment not in {'local', 'public'}:

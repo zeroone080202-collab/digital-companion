@@ -12,12 +12,12 @@ class HistoryMessage(Strict):
 class ImageInput(Strict):
     name: str = Field(default='image', max_length=160)
     data_url: str = Field(max_length=7_100_000)
-    kind: Literal['report', 'photo', 'radiology'] = 'photo'
+    kind: Literal['report', 'photo', 'radiology']
 
 class ChatRequest(Strict):
     request_id: UUID
     conversation_id: UUID | None = None
-    message: str = Field(default='', max_length=4000)
+    message: str = Field(min_length=1, max_length=4000)
     history: list[HistoryMessage] = Field(default_factory=list, max_length=12)
     images: list[ImageInput] = Field(default_factory=list, max_length=2)
     mode: Literal['health', 'study'] = 'health'
@@ -26,8 +26,8 @@ class ChatRequest(Strict):
     @model_validator(mode='after')
     def validate_total(self):
         self.message = self.message.strip()
-        if not self.message and not self.images:
-            raise ValueError('Message or image is required')
+        if not self.message:
+            raise ValueError('Message cannot be blank')
         if sum(len(m.content) for m in self.history) > 24000:
             raise ValueError('History too long; start a new conversation')
         return self
