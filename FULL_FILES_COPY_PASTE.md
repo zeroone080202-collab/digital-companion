@@ -1,110 +1,463 @@
-# MEDI v0.6 전체 교체 파일 코드
-아래 각 파일은 GitHub에서 같은 경로의 기존 내용을 전부 지우고 통째로 붙여넣을 수 있는 전체 내용입니다.
+# MEDI v0.7 수정 파일 전체 코드
 
----
+각 제목 아래 내용을 GitHub의 같은 경로 파일에 통째로 덮어쓰면 됩니다.
 
-## `app/config.py`
+## `app/provider.py`
 
 ```python
-"""MEDI runtime configuration.
+"""Free text-generation adapters for MEDI.
 
-Secrets stay in environment variables. The app can run with no paid AI key:
-- Groq free-tier key (optional, recommended for reliable text generation)
-- Gemini free-tier key (optional fallback)
-- Browser WebGPU local model (fallback when no server provider is configured)
+MEDI retrieves the operator's uploaded medical knowledge first. A configured
+free provider then turns that evidence into a conversational answer. Vision-capable
+providers can also receive sanitized image copies for visual explanation.
+
+Provider order in MEDI_AI_PROVIDER=auto:
+1) Groq free tier, if GROQ_API_KEY is configured
+2) Gemini free tier, if GEMINI_API_KEY is configured
+3) caller falls back to browser-local WebGPU or retrieval-only mode
 """
-from dataclasses import dataclass, field
-from pathlib import Path
-import os
-from dotenv import load_dotenv
+from __future__ import annotations
 
-ROOT = Path(__file__).resolve().parents[1]
-load_dotenv(ROOT / '.env', override=False)
+from dataclasses import dataclass
+import json
+import re
+import httpx
 
-
-def flag(name: str, default: bool = False) -> bool:
-    return os.getenv(name, str(default)).strip().lower() in {'1', 'true', 'yes', 'on'}
-
-
-@dataclass(frozen=True)
-class Settings:
-    database: Path = field(default_factory=lambda: Path(os.getenv('KNOWLEDGE_DB', str(ROOT / 'data/knowledge.sqlite'))))
-    deployment: str = field(default_factory=lambda: os.getenv('DEPLOYMENT_MODE', 'public' if os.getenv('RENDER') else 'local'))
-
-    # Optional free text-generation providers. These are NOT OpenAI keys.
-    ai_provider: str = field(default_factory=lambda: os.getenv('MEDI_AI_PROVIDER', 'auto').strip().lower())
-    groq_api_key: str = field(default_factory=lambda: os.getenv('GROQ_API_KEY', '').strip())
-    groq_model: str = field(default_factory=lambda: os.getenv('GROQ_MODEL', 'qwen/qwen3.8-27b').strip())
-    gemini_api_key: str = field(default_factory=lambda: os.getenv('GEMINI_API_KEY', '').strip())
-    gemini_model: str = field(default_factory=lambda: os.getenv('GEMINI_MODEL', 'gemini-2.5-flash-lite').strip())
-
-    # Account/history storage.
-    supabase_url: str = field(default_factory=lambda: os.getenv('SUPABASE_URL', '').rstrip('/'))
-    supabase_key: str = field(default_factory=lambda: os.getenv('SUPABASE_ANON_KEY', ''))
-    encryption_key: str = field(default_factory=lambda: os.getenv('DATA_ENCRYPTION_KEY', ''))
-    invite_code: str = field(default_factory=lambda: os.getenv('SIGNUP_INVITE_CODE', ''))
-    open_signup: bool = field(default_factory=lambda: flag('ALLOW_OPEN_SIGNUP', True))
-
-    # Uploaded knowledge may only be exposed when the operator has verified rights.
-    dataset_rights_confirmed: bool = field(default_factory=lambda: flag('DATASET_RIGHTS_CONFIRMED'))
-
-    allowed_hosts: tuple[str, ...] = field(default_factory=lambda: tuple(
-        h.strip() for h in os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost,testserver').split(',') if h.strip()
-    ) + ((os.getenv('RENDER_EXTERNAL_HOSTNAME'),) if os.getenv('RENDER_EXTERNAL_HOSTNAME') else ()))
-    operator_contact: str = field(default_factory=lambda: os.getenv('OPERATOR_CONTACT', ''))
-
-    timeout: float = 75.0
-    max_body_bytes: int = 15 * 1024 * 1024
-    max_image_bytes: int = 5 * 1024 * 1024
-    requests_per_minute: int = 8
-    max_concurrency: int = 2
-    guest_daily_limit: int = field(default_factory=lambda: max(1, min(50, int(os.getenv('GUEST_DAILY_LIMIT', '8')))))
-
-    @property
-    def has_accounts(self) -> bool:
-        return bool(self.supabase_url and self.supabase_key and self.encryption_key)
-
-    @property
-    def public(self) -> bool:
-        return self.deployment == 'public'
-
-    @property
-    def free_server_ai(self) -> str | None:
-        """Return the configured free provider name, in preferred order."""
-        if self.ai_provider == 'groq':
-            return 'groq' if self.groq_api_key else None
-        if self.ai_provider == 'gemini':
-            return 'gemini' if self.gemini_api_key else None
-        if self.ai_provider == 'browser':
-            return None
-        if self.ai_provider == 'auto':
-            if self.groq_api_key:
-                return 'groq'
-            if self.gemini_api_key:
-                return 'gemini'
-            return None
-        return None
-
-    def validate(self):
-        if self.deployment not in {'local', 'public'}:
-            raise RuntimeError('Invalid DEPLOYMENT_MODE')
-        if self.ai_provider not in {'auto', 'groq', 'gemini', 'browser'}:
-            raise RuntimeError('MEDI_AI_PROVIDER must be auto, groq, gemini, or browser')
-        if os.getenv('RENDER') and not self.public:
-            raise RuntimeError('Render must use DEPLOYMENT_MODE=public; anonymous local mode must not be exposed.')
-        if self.public and not self.has_accounts:
-            raise RuntimeError('Public mode requires SUPABASE_URL, SUPABASE_ANON_KEY and DATA_ENCRYPTION_KEY.')
-        if self.has_accounts:
-            from cryptography.fernet import Fernet
-            Fernet(self.encryption_key.encode())
-            if not self.supabase_url.startswith('https://'):
-                raise RuntimeError('Supabase requires HTTPS')
+from app.config import Settings
+from app.schemas import ChatRequest, MedicalAnswer, Paragraph
+from app.policy import DISCLAIMER
 
 
-settings = Settings()
+class ProviderError(RuntimeError):
+    def __init__(self, code: str, message: str):
+        self.code = code
+        self.message = message
+        super().__init__(message)
+
+
+@dataclass
+class ProviderResult:
+    answer: MedicalAnswer
+    provider: str
+    model: str
+
+
+
+
+ANSWER_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "in_scope": {"type": "boolean"},
+        "urgency": {"type": "string", "enum": ["emergency", "medical_review", "general_information", "unknown"]},
+        "evidence_status": {"type": "string", "enum": ["supported", "partial", "insufficient", "not_applicable"]},
+        "paragraphs": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "heading": {"type": "string"},
+                    "text": {"type": "string"},
+                    "source_ids": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["heading", "text", "source_ids"],
+                "additionalProperties": False,
+            },
+        },
+        "follow_up_questions": {"type": "array", "items": {"type": "string"}},
+        "image_observations": {"type": "array", "items": {"type": "string"}},
+        "limitations": {"type": "string"},
+    },
+    "required": ["in_scope", "urgency", "evidence_status", "paragraphs", "follow_up_questions", "image_observations", "limitations"],
+    "additionalProperties": False,
+}
+
+
+def _trim_for_consumer(value: str, max_chars: int = 430, max_sentences: int = 4) -> str:
+    """Keep default answers short enough for non-medical users to scan.
+
+    The model still receives the full MEDI evidence. This only limits how much
+    of a default answer is shown unless the user explicitly asks for detail.
+    """
+    text = re.sub(r'[ \t]+', ' ', str(value or '')).strip()
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    if len(text) <= max_chars:
+        return text
+    parts = re.split(r'(?<=[.!?。！？요다])\s+|\n+', text)
+    kept = []
+    total = 0
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        if kept and (len(kept) >= max_sentences or total + len(part) > max_chars):
+            break
+        kept.append(part)
+        total += len(part) + 1
+    out = ' '.join(kept).strip()
+    if not out:
+        out = text[:max_chars].rstrip()
+    if len(out) < len(text) and out[-1:] not in '.!?。！？요다':
+        out = out.rstrip(' ,;:') + '…'
+    return out
+
+
+def _normalize_structured_answer(raw: dict, sources: list[dict]) -> MedicalAnswer:
+    """Validate model JSON, refuse invented citations, and simplify display."""
+    try:
+        answer = MedicalAnswer.model_validate(raw)
+    except Exception as e:
+        raise ProviderError('free_ai_output', '무료 AI의 구조화된 답변을 검증하지 못했습니다.') from e
+
+    allowed = {str(s.get('id')) for s in sources}
+    used = set()
+    cleaned = []
+    for paragraph in answer.paragraphs[:3]:
+        valid_ids = [sid for sid in paragraph.source_ids if sid in allowed]
+        used.update(valid_ids)
+        heading = paragraph.heading[:30].strip()
+        text = _trim_for_consumer(paragraph.text, 430, 4)
+        if text:
+            cleaned.append(Paragraph(heading=heading, text=text, source_ids=valid_ids))
+    if not cleaned:
+        raise ProviderError('free_ai_output', '무료 AI가 본문 없이 응답했습니다.')
+
+    evidence = answer.evidence_status
+    if not sources:
+        evidence = 'insufficient'
+    elif not used and evidence == 'supported':
+        evidence = 'partial'
+
+    return answer.model_copy(update={
+        'paragraphs': cleaned,
+        'evidence_status': evidence,
+        'follow_up_questions': [_trim_for_consumer(q, 100, 1) for q in answer.follow_up_questions[:2]],
+        'image_observations': [_trim_for_consumer(x, 220, 2) for x in answer.image_observations[:2]],
+        'limitations': '참고용 정보예요. 증상이 심하거나 계속되면 의료진에게 확인하세요.',
+    })
+
+
+SYSTEM_PROMPT = """너는 MEDI라는 한국어 의료 전문 AI다. 사용자는 의학 전문가가 아니라 일반인이다.
+
+가장 중요한 목표는 '정확한 의료정보를 쉬운 말로 짧게 설명하는 것'이다.
+
+답변 규칙:
+1. MEDI에 연결된 의료지식 자료를 먼저 참고한다. 관련 근거가 있으면 실제 [S1], [S2] ID만 source_ids에 넣고, 본문에는 [S1] 같은 표기를 넣지 않는다.
+2. 첫 문장에서 질문에 바로 답한다. 서론, 교과서식 정의, 장황한 주의문구로 시작하지 않는다.
+3. 기본 답변은 전체 250~500자 정도를 목표로 한다. 최대 3개 짧은 문단, 문단당 1~3문장 정도로 쓴다.
+4. 사용자가 '자세히', '전문적으로', '논문', '기전'처럼 상세 설명을 요청한 경우에만 길게 설명한다.
+5. 어려운 전문용어는 되도록 쓰지 않는다. 꼭 필요하면 '쉬운 말 (전문용어)' 순서로 한 번만 적는다.
+6. 단순 개념 질문은 보통 '한마디로 → 어디에/언제 쓰는지 → 핵심 원리'만 설명한다.
+7. 증상 질문은 흔한 가능성 2~3개까지만 말하고, 꼭 필요한 확인 질문은 최대 2개만 제시한다.
+8. 긴 원인 목록, 드문 질환 나열, 병태생리 단계 나열, 논문 문체, 같은 의미 반복을 피한다.
+9. 사용자가 올린 이미지가 있으면 실제로 보이는 것부터 쉬운 말로 설명한다. 글자가 있는 검사결과·약봉투는 읽어서 뜻을 풀어준다. 상처·피부 사진은 눈에 보이는 특징을 설명한다. X-ray·CT·MRI는 참고 수준으로만 설명하고 확정 판독이나 정상 보증을 하지 않는다.
+10. 이미지에 없는 사실을 지어내지 않는다. 화질이나 범위가 부족하면 무엇이 부족한지만 짧게 말한다.
+11. 처방약을 새로 시작·중단하거나 용량을 바꾸라고 지시하지 않는다.
+12. 심한 흉통, 심한 호흡곤란, 의식저하, 새 마비, 멈추지 않는 출혈처럼 명확한 응급 신호가 있으면 다른 설명보다 119 또는 응급의료기관 안내를 먼저 한다.
+13. MEDI 자료가 부족하면 억지로 근거를 끼워 맞추지 않는다.
+14. 마지막에 긴 면책문구를 반복하지 않는다. UI가 별도로 짧은 주의문구를 보여준다.
+
+좋은 예:
+- '인공심폐기가 뭐야?' → '심장 수술 중 잠시 심장과 폐 역할을 대신해주는 기계예요. 혈액을 몸 밖으로 빼내 산소를 넣고 다시 몸으로 보내, 의사가 심장을 멈춘 상태에서도 수술할 수 있게 도와줍니다.'
+- '무릎이 아파' → 먼저 흔한 원인 몇 가지를 쉬운 말로 설명하고, 붓기·다친 적 같은 핵심 질문만 묻는다.
+
+이 시스템은 의료정보 이해를 돕는 도구이며 실제 의료진의 진료·검사·확정 진단·처방을 대신하지 않는다.
+"""
+
+
+def _clip(value: str, n: int) -> str:
+    return str(value or '')[:n]
+
+
+def _redact_identifiers(value: str) -> str:
+    """Remove obvious direct identifiers before text leaves the MEDI server.
+
+    This is a conservative convenience filter, not a complete de-identification
+    system. The UI still tells users not to submit identifying information.
+    """
+    text = str(value or '')
+    patterns = [
+        (r'\b\d{6}[- ]?[1-4]\d{6}\b', '[주민등록번호 제거]'),
+        (r'\b01[016789][- ]?\d{3,4}[- ]?\d{4}\b', '[전화번호 제거]'),
+        (r'[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}', '[이메일 제거]'),
+    ]
+    for pattern, replacement in patterns:
+        text = re.sub(pattern, replacement, text)
+    return text
+
+
+def _reference_text(sources: list[dict]) -> str:
+    if not sources:
+        return '이번 질문에서 직접 연결된 MEDI 업로드 근거자료가 없음.'
+    blocks = []
+    # Keep free-tier prompts comfortably below common TPM limits.
+    for s in sources[:5]:
+        title = _clip(s.get('title') or '업로드 자료', 140)
+        year = _clip(s.get('year') or '', 20)
+        excerpt = _clip(s.get('excerpt') or '', 1050)
+        meta = f" ({year})" if year else ''
+        blocks.append(f"[{s['id']}] {title}{meta}\n{excerpt}")
+    return '\n\n'.join(blocks)
+
+
+def _messages(request: ChatRequest, sources: list[dict]) -> list[dict]:
+    question = _redact_identifiers(request.message).strip() or '첨부한 이미지를 일반인이 이해하기 쉽게 설명해줘.'
+    user = (
+        f"MEDI 의료지식 자료:\n{_reference_text(sources)}\n\n"
+        f"사용자 질문:\n{question}\n\n"
+        "MEDI 자료가 관련되면 먼저 활용하고 실제 source ID만 사용해라. "
+        "기본 답변은 250~500자 정도로, 최대 3개 짧은 문단으로 작성해라. "
+        "첫 문장에 바로 답하고 전문용어·긴 목록·교과서식 설명을 줄여라. "
+        "이미지가 있으면 보이는 내용을 먼저 설명하되 확정 진단처럼 말하지 마라."
+    )
+    out = [{'role': 'system', 'content': SYSTEM_PROMPT}]
+    for h in request.history[-4:]:
+        out.append({'role': h.role, 'content': _clip(_redact_identifiers(h.content), 1200)})
+    out.append({'role': 'user', 'content': user})
+    return out
+
+
+def _data_url_parts(data_url: str) -> tuple[str, str]:
+    match = re.fullmatch(r'data:(image/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)', data_url or '')
+    if not match:
+        raise ProviderError('invalid_image', '이미지 형식을 읽지 못했습니다.')
+    return match.group(1), match.group(2)
+
+
+def _groq_messages(request: ChatRequest, sources: list[dict]) -> list[dict]:
+    messages = _messages(request, sources)
+    if request.images:
+        text = messages[-1]['content'] + (
+            "\n\n첨부 이미지를 함께 확인해라. 반드시 JSON 객체로만 답하고 "
+            "in_scope, urgency, evidence_status, paragraphs, follow_up_questions, image_observations, limitations 키를 모두 포함해라."
+        )
+        content = [{'type': 'text', 'text': text}]
+        for image in request.images[:2]:
+            content.append({'type': 'image_url', 'image_url': {'url': image.data_url}})
+        messages[-1] = {'role': 'user', 'content': content}
+    return messages
+
+
+def _gemini_contents(request: ChatRequest, sources: list[dict]) -> tuple[str, list[dict]]:
+    messages = _messages(request, sources)
+    system = messages[0]['content']
+    conversation = []
+    tail = messages[1:]
+    for index, m in enumerate(tail):
+        role = 'model' if m['role'] == 'assistant' else 'user'
+        parts = [{'text': m['content']}]
+        if index == len(tail) - 1 and request.images:
+            for image in request.images[:2]:
+                mime, data = _data_url_parts(image.data_url)
+                parts.append({'inline_data': {'mime_type': mime, 'data': data}})
+        conversation.append({'role': role, 'parts': parts})
+    return system, conversation
+
+
+def _text_to_answer(text: str, sources: list[dict], mode: str) -> MedicalAnswer:
+    text = str(text or '').strip()
+    if not text:
+        raise ProviderError('empty_output', '무료 AI가 빈 답변을 반환했습니다.')
+
+    allowed = {s['id'] for s in sources}
+    chunks = [p.strip() for p in re.split(r'\n\s*\n', text) if p.strip()]
+    if not chunks:
+        chunks = [text]
+    chunks = chunks[:3]
+
+    paragraphs: list[Paragraph] = []
+    used: set[str] = set()
+    for chunk in chunks:
+        ids = []
+        for sid in re.findall(r'\[(S\d+)\]', chunk):
+            if sid in allowed and sid not in ids:
+                ids.append(sid)
+                used.add(sid)
+        # Keep citations visible in text as well as source buttons; this is clearer
+        # when users export the conversation.
+        heading = ''
+        body = chunk
+        first, sep, rest = chunk.partition('\n')
+        if sep and len(first) <= 32 and not first.endswith(('.', '다', '요')):
+            heading = first.strip('# *')
+            body = rest.strip()
+        body = re.sub(r'\[(?:S\d+)\]', '', body).strip()
+        paragraphs.append(Paragraph(heading=heading[:30], text=_trim_for_consumer(body, 430, 4), source_ids=ids))
+
+    evidence = 'supported' if sources and used else ('partial' if sources else 'insufficient')
+    return MedicalAnswer(
+        in_scope=True,
+        urgency='unknown',
+        evidence_status=evidence,
+        paragraphs=paragraphs,
+        follow_up_questions=[],
+        image_observations=[],
+        limitations='참고용 의료정보예요. 증상이 심하거나 걱정되는 변화가 있으면 의료진에게 확인하세요.'
+    )
+
+
+async def _groq(request: ChatRequest, sources: list[dict], settings: Settings, transport=None) -> ProviderResult:
+    payload = {
+        'model': settings.groq_model,
+        'messages': _groq_messages(request, sources),
+        'temperature': 0.2,
+        'top_p': 0.9,
+        'max_tokens': 800,
+        'stream': False,
+        'response_format': ({'type': 'json_object'} if request.images else {
+            'type': 'json_schema',
+            'json_schema': {
+                'name': 'medi_medical_answer',
+                'strict': True,
+                'schema': ANSWER_SCHEMA,
+            },
+        }),
+    }
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(settings.timeout, connect=10), transport=transport, follow_redirects=False) as client:
+            response = await client.post(
+                'https://api.groq.com/openai/v1/chat/completions',
+                headers={'Authorization': 'Bearer ' + settings.groq_api_key, 'Content-Type': 'application/json'},
+                json=payload,
+            )
+    except httpx.TimeoutException as e:
+        raise ProviderError('free_ai_timeout', 'Groq 무료 AI 응답 시간이 초과되었습니다.') from e
+    except httpx.HTTPError as e:
+        raise ProviderError('free_ai_network', 'Groq 무료 AI에 연결할 수 없습니다.') from e
+
+    if response.status_code == 401:
+        raise ProviderError('free_ai_key', 'GROQ_API_KEY를 확인해 주세요.')
+    if response.status_code == 429:
+        raise ProviderError('free_ai_limit', 'Groq 무료 사용 한도에 도달했습니다. 잠시 후 다시 시도하거나 브라우저 AI를 사용합니다.')
+    if response.status_code >= 400:
+        raise ProviderError('free_ai_upstream', f'Groq 요청 실패 ({response.status_code})')
+    try:
+        data = response.json()
+        raw = json.loads(data['choices'][0]['message']['content'])
+    except Exception as e:
+        raise ProviderError('free_ai_output', 'Groq 구조화 응답 형식을 읽지 못했습니다.') from e
+    return ProviderResult(_normalize_structured_answer(raw, sources), 'groq_free', settings.groq_model)
+
+
+async def _gemini(request: ChatRequest, sources: list[dict], settings: Settings, transport=None) -> ProviderResult:
+    system, conversation = _gemini_contents(request, sources)
+    payload = {
+        'system_instruction': {'parts': [{'text': system}]},
+        'contents': conversation,
+        'generationConfig': {'temperature': 0.2, 'topP': 0.9, 'maxOutputTokens': 760},
+    }
+    url = f'https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent'
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(settings.timeout, connect=10), transport=transport, follow_redirects=False) as client:
+            response = await client.post(url, headers={'x-goog-api-key': settings.gemini_api_key, 'Content-Type': 'application/json'}, json=payload)
+    except httpx.TimeoutException as e:
+        raise ProviderError('free_ai_timeout', 'Gemini 무료 AI 응답 시간이 초과되었습니다.') from e
+    except httpx.HTTPError as e:
+        raise ProviderError('free_ai_network', 'Gemini 무료 AI에 연결할 수 없습니다.') from e
+
+    if response.status_code in {400, 401, 403}:
+        raise ProviderError('free_ai_key', 'GEMINI_API_KEY 또는 Gemini 프로젝트 설정을 확인해 주세요.')
+    if response.status_code == 429:
+        raise ProviderError('free_ai_limit', 'Gemini 무료 사용 한도에 도달했습니다. 잠시 후 다시 시도합니다.')
+    if response.status_code >= 400:
+        raise ProviderError('free_ai_upstream', f'Gemini 요청 실패 ({response.status_code})')
+    try:
+        data = response.json()
+        text = ''.join(p.get('text', '') for p in data['candidates'][0]['content']['parts'])
+    except Exception as e:
+        raise ProviderError('free_ai_output', 'Gemini 응답 형식을 읽지 못했습니다.') from e
+    return ProviderResult(_text_to_answer(text, sources, request.mode), 'gemini_free', settings.gemini_model)
+
+
+async def image_search_query(request: ChatRequest, settings: Settings, transport=None) -> str:
+    """Create a short retrieval query from attached images before final RAG.
+
+    This first pass does not diagnose. It extracts visible medical terms, body
+    region, document headings, or modality names so the local MEDI knowledge
+    database can be searched even when the user sends only an image.
+    """
+    if not request.images:
+        return ''
+    prompt = (
+        "이 의료 이미지를 MEDI 내부자료 검색용으로만 요약해라. 진단하지 말고, "
+        "보이는 신체부위·검사명·의료용어·보고서 글자·상처의 겉모습 등 검색에 도움 되는 "
+        "핵심어를 한국어 중심 3~8개로 뽑아 JSON {\"query\":\"...\"} 형식으로만 답해라."
+    )
+    candidates=[]
+    if settings.ai_provider == 'groq':
+        candidates=['groq'] if settings.groq_api_key else []
+    elif settings.ai_provider == 'gemini':
+        candidates=['gemini'] if settings.gemini_api_key else []
+    elif settings.ai_provider == 'auto':
+        if settings.groq_api_key: candidates.append('groq')
+        if settings.gemini_api_key: candidates.append('gemini')
+    for name in candidates:
+        try:
+            if name == 'groq':
+                content=[{'type':'text','text':prompt}]
+                for image in request.images[:2]:
+                    content.append({'type':'image_url','image_url':{'url':image.data_url}})
+                payload={'model':settings.groq_model,'messages':[{'role':'user','content':content}],
+                         'temperature':0,'max_tokens':120,'stream':False,'response_format':{'type':'json_object'}}
+                async with httpx.AsyncClient(timeout=httpx.Timeout(settings.timeout,connect=10),transport=transport,follow_redirects=False) as client:
+                    response=await client.post('https://api.groq.com/openai/v1/chat/completions',headers={'Authorization':'Bearer '+settings.groq_api_key,'Content-Type':'application/json'},json=payload)
+                if response.status_code>=400: continue
+                raw=json.loads(response.json()['choices'][0]['message']['content'])
+                return _clip(raw.get('query',''),300)
+            if name == 'gemini':
+                parts=[{'text':prompt}]
+                for image in request.images[:2]:
+                    mime,data=_data_url_parts(image.data_url)
+                    parts.append({'inline_data':{'mime_type':mime,'data':data}})
+                payload={'contents':[{'role':'user','parts':parts}],
+                         'generationConfig':{'temperature':0,'maxOutputTokens':120,'responseMimeType':'application/json'}}
+                url=f'https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent'
+                async with httpx.AsyncClient(timeout=httpx.Timeout(settings.timeout,connect=10),transport=transport,follow_redirects=False) as client:
+                    response=await client.post(url,headers={'x-goog-api-key':settings.gemini_api_key,'Content-Type':'application/json'},json=payload)
+                if response.status_code>=400: continue
+                text=''.join(p.get('text','') for p in response.json()['candidates'][0]['content']['parts'])
+                raw=json.loads(text)
+                return _clip(raw.get('query',''),300)
+        except Exception:
+            continue
+    return ''
+
+
+async def generate(request: ChatRequest, sources: list[dict], settings: Settings, transport=None) -> ProviderResult:
+    """Generate with a configured free provider.
+
+    In auto mode, a provider error falls through to the next configured free
+    provider. If all fail, a ProviderError is raised so the server can use the
+    browser-local model or retrieval-only fallback.
+    """
+    candidates: list[str] = []
+    if settings.ai_provider == 'groq':
+        candidates = ['groq'] if settings.groq_api_key else []
+    elif settings.ai_provider == 'gemini':
+        candidates = ['gemini'] if settings.gemini_api_key else []
+    elif settings.ai_provider == 'browser':
+        candidates = []
+    else:
+        if settings.groq_api_key:
+            candidates.append('groq')
+        if settings.gemini_api_key:
+            candidates.append('gemini')
+
+    if not candidates:
+        raise ProviderError('free_ai_not_configured', '무료 서버 AI가 설정되지 않았습니다.')
+
+    last_error: ProviderError | None = None
+    for name in candidates:
+        try:
+            if name == 'groq':
+                return await _groq(request, sources, settings, transport=transport)
+            if name == 'gemini':
+                return await _gemini(request, sources, settings, transport=transport)
+        except ProviderError as e:
+            last_error = e
+            if settings.ai_provider != 'auto':
+                raise
+    raise last_error or ProviderError('free_ai_unavailable', '사용 가능한 무료 AI가 없습니다.')
 ```
-
----
 
 ## `app/main.py`
 
@@ -233,7 +586,7 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
     async def config():
         backend=cfg.free_server_ai
         model=(cfg.groq_model if backend=='groq' else cfg.gemini_model if backend=='gemini' else None)
-        return {'app':'MEDI','version':'0.6.0','public':cfg.public,'accounts':cfg.has_accounts,
+        return {'app':'MEDI','version':'0.7.0','public':cfg.public,'accounts':cfg.has_accounts,
                 'ai_mode':'server_free' if backend else 'browser_local',
                 'ai_backend':backend,'ai_connected':bool(backend),'ai_model':model,
                 'local_model':'Qwen2.5-0.5B-Instruct-q4f16_1-MLC',
@@ -497,852 +850,6 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
 app=create_app()
 ```
 
----
-
-## `app/provider.py`
-
-```python
-"""Free text-generation adapters for MEDI.
-
-MEDI retrieves the operator's uploaded medical knowledge first. A configured
-free provider then turns that evidence into a conversational answer. Vision-capable
-providers can also receive sanitized image copies for visual explanation.
-
-Provider order in MEDI_AI_PROVIDER=auto:
-1) Groq free tier, if GROQ_API_KEY is configured
-2) Gemini free tier, if GEMINI_API_KEY is configured
-3) caller falls back to browser-local WebGPU or retrieval-only mode
-"""
-from __future__ import annotations
-
-from dataclasses import dataclass
-import json
-import re
-import httpx
-
-from app.config import Settings
-from app.schemas import ChatRequest, MedicalAnswer, Paragraph
-from app.policy import DISCLAIMER
-
-
-class ProviderError(RuntimeError):
-    def __init__(self, code: str, message: str):
-        self.code = code
-        self.message = message
-        super().__init__(message)
-
-
-@dataclass
-class ProviderResult:
-    answer: MedicalAnswer
-    provider: str
-    model: str
-
-
-
-
-ANSWER_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "in_scope": {"type": "boolean"},
-        "urgency": {"type": "string", "enum": ["emergency", "medical_review", "general_information", "unknown"]},
-        "evidence_status": {"type": "string", "enum": ["supported", "partial", "insufficient", "not_applicable"]},
-        "paragraphs": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "heading": {"type": "string"},
-                    "text": {"type": "string"},
-                    "source_ids": {"type": "array", "items": {"type": "string"}},
-                },
-                "required": ["heading", "text", "source_ids"],
-                "additionalProperties": False,
-            },
-        },
-        "follow_up_questions": {"type": "array", "items": {"type": "string"}},
-        "image_observations": {"type": "array", "items": {"type": "string"}},
-        "limitations": {"type": "string"},
-    },
-    "required": ["in_scope", "urgency", "evidence_status", "paragraphs", "follow_up_questions", "image_observations", "limitations"],
-    "additionalProperties": False,
-}
-
-
-def _normalize_structured_answer(raw: dict, sources: list[dict]) -> MedicalAnswer:
-    """Validate model JSON and refuse invented MEDI citations."""
-    try:
-        answer = MedicalAnswer.model_validate(raw)
-    except Exception as e:
-        raise ProviderError('free_ai_output', '무료 AI의 구조화된 답변을 검증하지 못했습니다.') from e
-
-    allowed = {str(s.get('id')) for s in sources}
-    used = set()
-    cleaned = []
-    for paragraph in answer.paragraphs[:4]:
-        valid_ids = [sid for sid in paragraph.source_ids if sid in allowed]
-        used.update(valid_ids)
-        cleaned.append(Paragraph(heading=paragraph.heading[:80], text=paragraph.text[:6000], source_ids=valid_ids))
-    if not cleaned:
-        raise ProviderError('free_ai_output', '무료 AI가 본문 없이 응답했습니다.')
-
-    evidence = answer.evidence_status
-    if not sources:
-        evidence = 'insufficient'
-    elif not used and evidence == 'supported':
-        evidence = 'partial'
-
-    return answer.model_copy(update={
-        'paragraphs': cleaned,
-        'evidence_status': evidence,
-        'follow_up_questions': answer.follow_up_questions[:3],
-        'image_observations': answer.image_observations[:4],
-        'limitations': '참고용 의료정보예요. 증상이 심하거나 걱정되는 변화가 있으면 의료진에게 확인하세요.',
-    })
-
-
-SYSTEM_PROMPT = """너는 MEDI라는 한국어 의료 전문 AI다. 사용자는 의학 전문가가 아니라 일반인이다.
-
-답변 원칙:
-1. MEDI에 연결된 의료지식 자료를 가장 먼저 참고한다. 관련 근거가 있으면 실제 [S1], [S2] ID만 사용한다.
-2. 질문이 짧아도 넓게 이해한다. 질병, 증상, 검사, 수술, 약, 해부학, 의료기기, 응급처치 원리 등 의학 질문을 자연스럽게 답한다.
-3. 첫 문장은 결론부터 아주 쉽게 말한다. 어려운 전문용어는 꼭 필요할 때만 쉬운 말 뒤 괄호에 붙인다.
-4. 기본 답변은 짧고 읽기 쉽게 쓴다. 보통 2~3개 짧은 문단이면 충분하다. 사용자가 자세히 물을 때만 길게 설명한다.
-5. '인공심폐기가 뭐야?' 같은 개념 질문은 '한마디로 → 언제 쓰는지 → 어떻게 작동하는지' 정도로 설명한다. 시험답안처럼 복잡한 문장이나 과도한 분류를 피한다.
-6. 개인 증상 질문은 확정 진단하지 않는다. 흔한 가능성부터 이해하기 쉽게 설명하고, 꼭 필요한 경우에만 짧은 추가 질문 1~3개를 제시한다.
-7. 처방약을 새로 시작·중단하거나 용량을 바꾸라고 지시하지 않는다.
-8. 심한 흉통, 심한 호흡곤란, 의식저하, 새로 생긴 마비, 멈추지 않는 출혈 등 명확한 응급 신호가 있으면 119 또는 응급의료기관을 우선 안내한다.
-9. 이미지가 있으면 실제로 보이는 내용과 일반적인 의미를 구분해서 설명한다. 검사결과지의 글자는 읽어 쉽게 풀어줄 수 있다. 상처·피부 사진은 보이는 특징을 설명할 수 있다. X-ray·CT·MRI는 보이는 구조나 의심되는 점을 참고 수준으로 설명하되 확정 판독이나 '정상' 보증을 하지 않는다.
-10. 이미지에 보이지 않는 사실을 지어내지 않는다. 화질이 낮거나 판단이 어려우면 솔직하게 말한다.
-11. MEDI 근거가 부족하면 억지로 자료를 끼워 맞추지 말고, 일반 의학지식임을 자연스럽게 구분한다.
-12. source_ids에는 그 문단에서 실제로 사용한 MEDI 자료 ID만 넣는다.
-
-이 시스템은 의료정보 이해를 돕는 도구이며 실제 의료진의 진료·검사·확정 진단·처방을 대신하지 않는다.
-"""
-
-
-def _clip(value: str, n: int) -> str:
-    return str(value or '')[:n]
-
-
-def _redact_identifiers(value: str) -> str:
-    """Remove obvious direct identifiers before text leaves the MEDI server.
-
-    This is a conservative convenience filter, not a complete de-identification
-    system. The UI still tells users not to submit identifying information.
-    """
-    text = str(value or '')
-    patterns = [
-        (r'\b\d{6}[- ]?[1-4]\d{6}\b', '[주민등록번호 제거]'),
-        (r'\b01[016789][- ]?\d{3,4}[- ]?\d{4}\b', '[전화번호 제거]'),
-        (r'[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}', '[이메일 제거]'),
-    ]
-    for pattern, replacement in patterns:
-        text = re.sub(pattern, replacement, text)
-    return text
-
-
-def _reference_text(sources: list[dict]) -> str:
-    if not sources:
-        return '이번 질문에서 직접 연결된 MEDI 업로드 근거자료가 없음.'
-    blocks = []
-    # Keep free-tier prompts comfortably below common TPM limits.
-    for s in sources[:5]:
-        title = _clip(s.get('title') or '업로드 자료', 140)
-        year = _clip(s.get('year') or '', 20)
-        excerpt = _clip(s.get('excerpt') or '', 1050)
-        meta = f" ({year})" if year else ''
-        blocks.append(f"[{s['id']}] {title}{meta}\n{excerpt}")
-    return '\n\n'.join(blocks)
-
-
-def _messages(request: ChatRequest, sources: list[dict]) -> list[dict]:
-    question = _redact_identifiers(request.message).strip() or '첨부한 이미지를 일반인이 이해하기 쉽게 설명해줘.'
-    user = (
-        f"MEDI 의료지식 자료:\n{_reference_text(sources)}\n\n"
-        f"사용자 질문:\n{question}\n\n"
-        "MEDI 자료가 관련되면 먼저 활용하고 실제 source ID만 인용해라. "
-        "답변은 일반인이 읽기 쉽게 짧고 자연스럽게 작성해라. "
-        "이미지가 있으면 보이는 내용을 실제로 확인해서 설명하되 확정 진단처럼 말하지 마라."
-    )
-    out = [{'role': 'system', 'content': SYSTEM_PROMPT}]
-    for h in request.history[-4:]:
-        out.append({'role': h.role, 'content': _clip(_redact_identifiers(h.content), 1200)})
-    out.append({'role': 'user', 'content': user})
-    return out
-
-
-def _data_url_parts(data_url: str) -> tuple[str, str]:
-    match = re.fullmatch(r'data:(image/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)', data_url or '')
-    if not match:
-        raise ProviderError('invalid_image', '이미지 형식을 읽지 못했습니다.')
-    return match.group(1), match.group(2)
-
-
-def _groq_messages(request: ChatRequest, sources: list[dict]) -> list[dict]:
-    messages = _messages(request, sources)
-    if request.images:
-        text = messages[-1]['content'] + (
-            "\n\n첨부 이미지를 함께 확인해라. 반드시 JSON 객체로만 답하고 "
-            "in_scope, urgency, evidence_status, paragraphs, follow_up_questions, image_observations, limitations 키를 모두 포함해라."
-        )
-        content = [{'type': 'text', 'text': text}]
-        for image in request.images[:2]:
-            content.append({'type': 'image_url', 'image_url': {'url': image.data_url}})
-        messages[-1] = {'role': 'user', 'content': content}
-    return messages
-
-
-def _gemini_contents(request: ChatRequest, sources: list[dict]) -> tuple[str, list[dict]]:
-    messages = _messages(request, sources)
-    system = messages[0]['content']
-    conversation = []
-    tail = messages[1:]
-    for index, m in enumerate(tail):
-        role = 'model' if m['role'] == 'assistant' else 'user'
-        parts = [{'text': m['content']}]
-        if index == len(tail) - 1 and request.images:
-            for image in request.images[:2]:
-                mime, data = _data_url_parts(image.data_url)
-                parts.append({'inline_data': {'mime_type': mime, 'data': data}})
-        conversation.append({'role': role, 'parts': parts})
-    return system, conversation
-
-
-def _text_to_answer(text: str, sources: list[dict], mode: str) -> MedicalAnswer:
-    text = str(text or '').strip()
-    if not text:
-        raise ProviderError('empty_output', '무료 AI가 빈 답변을 반환했습니다.')
-
-    allowed = {s['id'] for s in sources}
-    chunks = [p.strip() for p in re.split(r'\n\s*\n', text) if p.strip()]
-    if not chunks:
-        chunks = [text]
-    chunks = chunks[:4]
-
-    paragraphs: list[Paragraph] = []
-    used: set[str] = set()
-    for chunk in chunks:
-        ids = []
-        for sid in re.findall(r'\[(S\d+)\]', chunk):
-            if sid in allowed and sid not in ids:
-                ids.append(sid)
-                used.add(sid)
-        # Keep citations visible in text as well as source buttons; this is clearer
-        # when users export the conversation.
-        heading = ''
-        body = chunk
-        first, sep, rest = chunk.partition('\n')
-        if sep and len(first) <= 32 and not first.endswith(('.', '다', '요')):
-            heading = first.strip('# *')
-            body = rest.strip()
-        paragraphs.append(Paragraph(heading=heading, text=body, source_ids=ids))
-
-    evidence = 'supported' if sources and used else ('partial' if sources else 'insufficient')
-    return MedicalAnswer(
-        in_scope=True,
-        urgency='unknown',
-        evidence_status=evidence,
-        paragraphs=paragraphs,
-        follow_up_questions=[],
-        image_observations=[],
-        limitations='참고용 의료정보예요. 증상이 심하거나 걱정되는 변화가 있으면 의료진에게 확인하세요.'
-    )
-
-
-async def _groq(request: ChatRequest, sources: list[dict], settings: Settings, transport=None) -> ProviderResult:
-    payload = {
-        'model': settings.groq_model,
-        'messages': _groq_messages(request, sources),
-        'temperature': 0.2,
-        'top_p': 0.9,
-        'max_tokens': 1300,
-        'stream': False,
-        'response_format': ({'type': 'json_object'} if request.images else {
-            'type': 'json_schema',
-            'json_schema': {
-                'name': 'medi_medical_answer',
-                'strict': True,
-                'schema': ANSWER_SCHEMA,
-            },
-        }),
-    }
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(settings.timeout, connect=10), transport=transport, follow_redirects=False) as client:
-            response = await client.post(
-                'https://api.groq.com/openai/v1/chat/completions',
-                headers={'Authorization': 'Bearer ' + settings.groq_api_key, 'Content-Type': 'application/json'},
-                json=payload,
-            )
-    except httpx.TimeoutException as e:
-        raise ProviderError('free_ai_timeout', 'Groq 무료 AI 응답 시간이 초과되었습니다.') from e
-    except httpx.HTTPError as e:
-        raise ProviderError('free_ai_network', 'Groq 무료 AI에 연결할 수 없습니다.') from e
-
-    if response.status_code == 401:
-        raise ProviderError('free_ai_key', 'GROQ_API_KEY를 확인해 주세요.')
-    if response.status_code == 429:
-        raise ProviderError('free_ai_limit', 'Groq 무료 사용 한도에 도달했습니다. 잠시 후 다시 시도하거나 브라우저 AI를 사용합니다.')
-    if response.status_code >= 400:
-        raise ProviderError('free_ai_upstream', f'Groq 요청 실패 ({response.status_code})')
-    try:
-        data = response.json()
-        raw = json.loads(data['choices'][0]['message']['content'])
-    except Exception as e:
-        raise ProviderError('free_ai_output', 'Groq 구조화 응답 형식을 읽지 못했습니다.') from e
-    return ProviderResult(_normalize_structured_answer(raw, sources), 'groq_free', settings.groq_model)
-
-
-async def _gemini(request: ChatRequest, sources: list[dict], settings: Settings, transport=None) -> ProviderResult:
-    system, conversation = _gemini_contents(request, sources)
-    payload = {
-        'system_instruction': {'parts': [{'text': system}]},
-        'contents': conversation,
-        'generationConfig': {'temperature': 0.2, 'topP': 0.9, 'maxOutputTokens': 1100},
-    }
-    url = f'https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent'
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(settings.timeout, connect=10), transport=transport, follow_redirects=False) as client:
-            response = await client.post(url, headers={'x-goog-api-key': settings.gemini_api_key, 'Content-Type': 'application/json'}, json=payload)
-    except httpx.TimeoutException as e:
-        raise ProviderError('free_ai_timeout', 'Gemini 무료 AI 응답 시간이 초과되었습니다.') from e
-    except httpx.HTTPError as e:
-        raise ProviderError('free_ai_network', 'Gemini 무료 AI에 연결할 수 없습니다.') from e
-
-    if response.status_code in {400, 401, 403}:
-        raise ProviderError('free_ai_key', 'GEMINI_API_KEY 또는 Gemini 프로젝트 설정을 확인해 주세요.')
-    if response.status_code == 429:
-        raise ProviderError('free_ai_limit', 'Gemini 무료 사용 한도에 도달했습니다. 잠시 후 다시 시도합니다.')
-    if response.status_code >= 400:
-        raise ProviderError('free_ai_upstream', f'Gemini 요청 실패 ({response.status_code})')
-    try:
-        data = response.json()
-        text = ''.join(p.get('text', '') for p in data['candidates'][0]['content']['parts'])
-    except Exception as e:
-        raise ProviderError('free_ai_output', 'Gemini 응답 형식을 읽지 못했습니다.') from e
-    return ProviderResult(_text_to_answer(text, sources, request.mode), 'gemini_free', settings.gemini_model)
-
-
-async def image_search_query(request: ChatRequest, settings: Settings, transport=None) -> str:
-    """Create a short retrieval query from attached images before final RAG.
-
-    This first pass does not diagnose. It extracts visible medical terms, body
-    region, document headings, or modality names so the local MEDI knowledge
-    database can be searched even when the user sends only an image.
-    """
-    if not request.images:
-        return ''
-    prompt = (
-        "이 의료 이미지를 MEDI 내부자료 검색용으로만 요약해라. 진단하지 말고, "
-        "보이는 신체부위·검사명·의료용어·보고서 글자·상처의 겉모습 등 검색에 도움 되는 "
-        "핵심어를 한국어 중심 3~8개로 뽑아 JSON {\"query\":\"...\"} 형식으로만 답해라."
-    )
-    candidates=[]
-    if settings.ai_provider == 'groq':
-        candidates=['groq'] if settings.groq_api_key else []
-    elif settings.ai_provider == 'gemini':
-        candidates=['gemini'] if settings.gemini_api_key else []
-    elif settings.ai_provider == 'auto':
-        if settings.groq_api_key: candidates.append('groq')
-        if settings.gemini_api_key: candidates.append('gemini')
-    for name in candidates:
-        try:
-            if name == 'groq':
-                content=[{'type':'text','text':prompt}]
-                for image in request.images[:2]:
-                    content.append({'type':'image_url','image_url':{'url':image.data_url}})
-                payload={'model':settings.groq_model,'messages':[{'role':'user','content':content}],
-                         'temperature':0,'max_tokens':120,'stream':False,'response_format':{'type':'json_object'}}
-                async with httpx.AsyncClient(timeout=httpx.Timeout(settings.timeout,connect=10),transport=transport,follow_redirects=False) as client:
-                    response=await client.post('https://api.groq.com/openai/v1/chat/completions',headers={'Authorization':'Bearer '+settings.groq_api_key,'Content-Type':'application/json'},json=payload)
-                if response.status_code>=400: continue
-                raw=json.loads(response.json()['choices'][0]['message']['content'])
-                return _clip(raw.get('query',''),300)
-            if name == 'gemini':
-                parts=[{'text':prompt}]
-                for image in request.images[:2]:
-                    mime,data=_data_url_parts(image.data_url)
-                    parts.append({'inline_data':{'mime_type':mime,'data':data}})
-                payload={'contents':[{'role':'user','parts':parts}],
-                         'generationConfig':{'temperature':0,'maxOutputTokens':120,'responseMimeType':'application/json'}}
-                url=f'https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent'
-                async with httpx.AsyncClient(timeout=httpx.Timeout(settings.timeout,connect=10),transport=transport,follow_redirects=False) as client:
-                    response=await client.post(url,headers={'x-goog-api-key':settings.gemini_api_key,'Content-Type':'application/json'},json=payload)
-                if response.status_code>=400: continue
-                text=''.join(p.get('text','') for p in response.json()['candidates'][0]['content']['parts'])
-                raw=json.loads(text)
-                return _clip(raw.get('query',''),300)
-        except Exception:
-            continue
-    return ''
-
-
-async def generate(request: ChatRequest, sources: list[dict], settings: Settings, transport=None) -> ProviderResult:
-    """Generate with a configured free provider.
-
-    In auto mode, a provider error falls through to the next configured free
-    provider. If all fail, a ProviderError is raised so the server can use the
-    browser-local model or retrieval-only fallback.
-    """
-    candidates: list[str] = []
-    if settings.ai_provider == 'groq':
-        candidates = ['groq'] if settings.groq_api_key else []
-    elif settings.ai_provider == 'gemini':
-        candidates = ['gemini'] if settings.gemini_api_key else []
-    elif settings.ai_provider == 'browser':
-        candidates = []
-    else:
-        if settings.groq_api_key:
-            candidates.append('groq')
-        if settings.gemini_api_key:
-            candidates.append('gemini')
-
-    if not candidates:
-        raise ProviderError('free_ai_not_configured', '무료 서버 AI가 설정되지 않았습니다.')
-
-    last_error: ProviderError | None = None
-    for name in candidates:
-        try:
-            if name == 'groq':
-                return await _groq(request, sources, settings, transport=transport)
-            if name == 'gemini':
-                return await _gemini(request, sources, settings, transport=transport)
-        except ProviderError as e:
-            last_error = e
-            if settings.ai_provider != 'auto':
-                raise
-    raise last_error or ProviderError('free_ai_unavailable', '사용 가능한 무료 AI가 없습니다.')
-```
-
----
-
-## `app/retrieval.py`
-
-```python
-"""Local bilingual lexical retrieval for MEDI.
-
-The index is intentionally offline: no paid embedding API and no outbound
-transmission are needed to search the operator's uploaded knowledge. Scores are
-retrieval relevance only, never clinical confidence.
-"""
-from contextlib import closing
-import re
-import sqlite3
-from pathlib import Path
-
-STOP = {
-    'what','which','when','does','have','with','this','that','tell','about','please','would','could','and','the','for','are','how','can',
-    '알려','주세요','설명','해줘','궁금','대해','알려줘','알려주세요','무엇','어떤','그거','이건','뭐야','쉽게','의학적으로','가요','인가요',
-    '너무','정말','많이','조금','좀','계속','자꾸','왜','원인','이유','아파','아픈데','아픕니다','통증이','있어요','있는데','같아요',
-    '제가','나는','내가','저는','그리고','또한','혹시','지금','오늘','어제','최근'
-}
-
-# Small, auditable concept expansion.  This is not a diagnostic ontology; it
-# merely lets everyday Korean wording find medical terms in the uploaded data.
-ALIASES = {
-    '골절':['fracture','뼈'],
-    '당뇨':['diabetes','당뇨병'],
-    '고혈압':['hypertension','혈압'],
-    '두통':['headache','머리통증'],
-    '천식':['asthma'],
-    '심근경색':['myocardial infarction','심장'],
-    '인공심폐기':['체외순환','심폐우회','cardiopulmonary bypass','heart lung machine','심장수술'],
-    '인공심폐':['인공심폐기','체외순환','심폐우회','cardiopulmonary bypass'],
-    '심폐우회':['인공심폐기','체외순환','cardiopulmonary bypass'],
-    '체외순환':['인공심폐기','심폐우회','extracorporeal circulation'],
-    '무릎':['슬관절','관절','knee','슬개','반월상','십자인대'],
-    '슬관절':['무릎','knee','관절'],
-    '관절통':['관절','통증','arthralgia'],
-    '허리':['요통','척추','lumbar','요추'],
-    '요통':['허리','lumbar','요추'],
-    '어깨':['견관절','shoulder','회전근개'],
-    '발목':['족관절','ankle'],
-    '손목':['수근관절','wrist'],
-    '상처':['창상','wound','열상','찰과상'],
-    '붓기':['부종','종창','swelling'],
-    '부종':['붓기','종창','swelling'],
-    '아파':['통증','pain'], '아픈':['통증','pain'], '통증':['pain'],
-    '계단':['보행','체중부하','슬개대퇴','stairs'],
-    '열감':['염증','발적'],
-    '피부':['피부과','dermatology'],
-    '가슴':['흉통','chest pain','심장'],
-    '숨':['호흡곤란','dyspnea','호흡'],
-    '복통':['배','복부','abdominal pain'],
-    'fracture':['골절'], 'diabetes':['당뇨','당뇨병'], 'hypertension':['고혈압'],
-    'asthma':['천식'], 'headache':['두통'], 'knee':['무릎','슬관절'],
-}
-
-# Common particles/endings that make short symptom queries miss exact concepts
-# (e.g. "무릎이" -> "무릎"). We only strip when the stem stays >= 2 chars.
-KOREAN_SUFFIXES = (
-    '에서는','에게서','으로부터','까지는','부터는','한테서',
-    '에서','에게','한테','으로','로는','에는','와는','과는',
-    '이랑','랑은','까지','부터','처럼','보다',
-    '은','는','이','가','을','를','에','의','도','만','과','와','로'
-)
-
-
-def _surface_words(text: str) -> list[str]:
-    return re.findall(r'[a-zA-Z][a-zA-Z0-9-]*|[\uac00-\ud7a3]+|\d+(?:\.\d+)?', text.lower())
-
-
-def _query_forms(text: str) -> list[str]:
-    """Return original query words plus conservative Korean particle stems."""
-    out: list[str] = []
-    for word in _surface_words(text):
-        out.append(word)
-        if re.fullmatch(r'[\uac00-\ud7a3]+', word):
-            for suffix in KOREAN_SUFFIXES:
-                if word.endswith(suffix) and len(word) - len(suffix) >= 2:
-                    out.append(word[:-len(suffix)])
-                    break
-    return list(dict.fromkeys(out))
-
-
-def tokens(text: str, query: bool = False) -> list[str]:
-    words = _query_forms(text) if query else _surface_words(text)
-    out: list[str] = []
-    for w in words:
-        if query and w in STOP:
-            continue
-        if re.fullmatch(r'[\uac00-\ud7a3]+', w):
-            if len(w) == 1:
-                continue
-            # Prefix keeps Hangul bigrams separate from Latin whole-word tokens.
-            out.extend('k' + w[i:i+2] for i in range(len(w)-1))
-        elif len(w) > 1:
-            out.append(w)
-    return list(dict.fromkeys(out))
-
-
-def _alias_tokens(query: str) -> list[str]:
-    low = query.lower()
-    extra: list[str] = []
-    # Match aliases against both the raw query and particle-stripped forms.
-    forms = set(_query_forms(low))
-    for key, values in ALIASES.items():
-        if key in low or key in forms:
-            for value in values:
-                extra.extend(tokens(value))
-    return list(dict.fromkeys(extra))
-
-
-def open_db(path: Path, readonly: bool = False) -> sqlite3.Connection:
-    if readonly:
-        con = sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True, timeout=10)
-    else:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        con = sqlite3.connect(path, timeout=30)
-    con.row_factory = sqlite3.Row
-    return con
-
-
-def create_schema(con: sqlite3.Connection):
-    con.executescript('''
-    PRAGMA journal_mode=WAL;
-    CREATE TABLE IF NOT EXISTS chunks (
-      rowid INTEGER PRIMARY KEY, chunk_id TEXT UNIQUE NOT NULL,
-      dataset_id TEXT NOT NULL, source_key TEXT NOT NULL, record_id TEXT,
-      source_type TEXT NOT NULL, split TEXT NOT NULL, language TEXT,
-      title TEXT NOT NULL, source_label TEXT, year TEXT,
-      body TEXT NOT NULL, content_hash TEXT NOT NULL);
-    CREATE INDEX IF NOT EXISTS ix_chunk_dataset ON chunks(dataset_id);
-    CREATE INDEX IF NOT EXISTS ix_chunk_hash ON chunks(content_hash,source_type,split);
-    CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(terms, content='');
-    CREATE TABLE IF NOT EXISTS imports (
-      dataset_id TEXT PRIMARY KEY, name TEXT, sha256 TEXT, completed_at TEXT, report TEXT);
-    CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-    ''')
-    con.commit()
-
-
-class KnowledgeStore:
-    def __init__(self, path: Path):
-        self.path = path
-
-    def stats(self) -> dict:
-        if not self.path.exists():
-            return {'chunks':0,'documents':0,'datasets':0,'by_type':{},'available':False}
-        with closing(open_db(self.path, True)) as con:
-            return {
-                'chunks': con.execute('SELECT count(*) FROM chunks').fetchone()[0],
-                'documents': con.execute("SELECT count(DISTINCT dataset_id || ':' || source_key) FROM chunks").fetchone()[0],
-                'datasets': con.execute('SELECT count(*) FROM imports').fetchone()[0],
-                'by_type': dict(con.execute('SELECT source_type,count(*) FROM chunks GROUP BY source_type')),
-                'available': True,
-            }
-
-    def search(self, query: str, *, study: bool = False, limit: int = 5) -> list[dict]:
-        if not self.path.exists():
-            return []
-
-        base = tokens(query, query=True)[:36]
-        if not base:
-            return []
-        aliases = _alias_tokens(query)[:36]
-        wanted = list(dict.fromkeys(base + aliases))[:60]
-        expression = ' OR '.join('"' + t.replace('"','') + '"' for t in wanted)
-
-        # Train material only. QA is useful medical knowledge too, so it is no
-        # longer thrown away in health mode; reference documents merely receive
-        # a small preference below. Held-out/validation material stays excluded.
-        with closing(open_db(self.path, True)) as con:
-            rows = con.execute('''
-                SELECT c.*, bm25(search_index) AS rank FROM search_index
-                JOIN chunks c ON c.rowid=search_index.rowid
-                WHERE search_index MATCH ? AND c.split='train'
-                ORDER BY rank LIMIT 180
-            ''', (expression,)).fetchall()
-
-        base_set = set(base)
-        alias_set = set(aliases)
-        scored: list[dict] = []
-        for row in rows:
-            r = dict(row)
-            title_set = set(tokens(r['title'] or ''))
-            body_set = set(tokens(r['body'] or ''))
-            tset = title_set | body_set
-            base_hits = len(base_set & tset)
-            alias_hits = len(alias_set & tset)
-            title_base_hits = len(base_set & title_set)
-            title_alias_hits = len(alias_set & title_set)
-            body_base_hits = len(base_set & body_set)
-            body_alias_hits = len(alias_set & body_set)
-
-            # Short conversational queries should match either the user's term
-            # or a medical synonym. Longer queries still need meaningful overlap.
-            if len(base_set) <= 3:
-                if base_hits == 0 and alias_hits == 0:
-                    continue
-            else:
-                base_coverage = base_hits / max(1, len(base_set))
-                if base_coverage < 0.10 and alias_hits == 0:
-                    continue
-
-            # bm25() is usually negative for good matches; abs() keeps this a
-            # bounded tie-breaker while explicit term hits dominate.
-            lexical = min(abs(float(r['rank'] or 0)), 30.0) / 30.0
-            score = (
-                title_base_hits * 4.5 + title_alias_hits * 1.8 +
-                body_base_hits * 2.2 + body_alias_hits * 0.85 + lexical
-            )
-            if r['source_type'] != 'qa':
-                score += 0.35
-            elif study:
-                score += 0.35
-            else:
-                score -= 0.35
-            r['_score'] = score
-            scored.append(r)
-
-        scored.sort(key=lambda r: r['_score'], reverse=True)
-
-        selected: list[dict] = []
-        seen_docs: set[tuple[str,str]] = set()
-        seen_hashes: set[str] = set()
-        qa_count = 0
-        for r in scored:
-            group = (r['dataset_id'], r['source_key'])
-            # Prefer diverse documents and avoid duplicate chunks. In health
-            # mode, keep at most two learning-QA items so general references
-            # still anchor the answer.
-            if group in seen_docs or r['content_hash'] in seen_hashes:
-                continue
-            if not study and r['source_type'] == 'qa' and qa_count >= 2:
-                continue
-            seen_docs.add(group)
-            seen_hashes.add(r['content_hash'])
-            if r['source_type'] == 'qa':
-                qa_count += 1
-            selected.append({
-                'id': f'S{len(selected)+1}',
-                'chunk_id': r['chunk_id'],
-                'title': r['title'],
-                'source_label': r['source_label'],
-                'year': r['year'],
-                'source_type': r['source_type'],
-                'source_file': r['source_key'],
-                'record_id': r['record_id'],
-                'excerpt': r['body'],
-                'split': r['split'],
-                'review_status': 'unreviewed_uploaded_data',
-            })
-            if len(selected) >= limit:
-                break
-        return selected
-```
-
----
-
-## `app/schemas.py`
-
-```python
-from typing import Literal
-from uuid import UUID
-from pydantic import BaseModel, Field, ConfigDict, model_validator
-
-class Strict(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-
-class HistoryMessage(Strict):
-    role: Literal['user', 'assistant']
-    content: str = Field(min_length=1, max_length=6000)
-
-class ImageInput(Strict):
-    name: str = Field(default='image', max_length=160)
-    data_url: str = Field(max_length=7_100_000)
-    kind: Literal['report', 'photo', 'radiology'] = 'photo'
-
-class ChatRequest(Strict):
-    request_id: UUID
-    conversation_id: UUID | None = None
-    message: str = Field(default='', max_length=4000)
-    history: list[HistoryMessage] = Field(default_factory=list, max_length=12)
-    images: list[ImageInput] = Field(default_factory=list, max_length=2)
-    mode: Literal['health', 'study'] = 'health'
-    consent: bool = False
-
-    @model_validator(mode='after')
-    def validate_total(self):
-        self.message = self.message.strip()
-        if not self.message and not self.images:
-            raise ValueError('Message or image is required')
-        if sum(len(m.content) for m in self.history) > 24000:
-            raise ValueError('History too long; start a new conversation')
-        return self
-
-class Paragraph(Strict):
-    heading: str
-    text: str
-    source_ids: list[str]
-
-class MedicalAnswer(Strict):
-    in_scope: bool
-    urgency: Literal['emergency', 'medical_review', 'general_information', 'unknown']
-    evidence_status: Literal['supported', 'partial', 'insufficient', 'not_applicable']
-    paragraphs: list[Paragraph]
-    follow_up_questions: list[str]
-    image_observations: list[str]
-    limitations: str
-
-class Credentials(Strict):
-    email: str = Field(min_length=5, max_length=254)
-    password: str = Field(min_length=5, max_length=128)
-    invite_code: str = Field(default='',max_length=200)
-    terms_accepted: bool = False
-
-class NewConversation(Strict):
-    title: str = Field(default='New conversation',min_length=1,max_length=70)
-
-class FeedbackRequest(Strict):
-    turn_id: str = Field(min_length=36,max_length=36)
-    question: str = Field(min_length=1,max_length=4000)
-    answer: str = Field(min_length=1,max_length=16000)
-    correction: str = Field(default='',max_length=4000)
-    rating: Literal['helpful','needs_review']
-    consent: bool = False
-    deidentified_ack: bool = False
-
-class DeleteAccount(Strict):
-    confirm: Literal['DELETE MY ACCOUNT']
-
-class LocalTurnSave(Strict):
-    request_id: UUID
-    question: str = Field(min_length=1, max_length=4000)
-    mode: Literal['health', 'study'] = 'health'
-    had_images: bool = False
-    response: dict
-```
-
----
-
-## `app/policy.py`
-
-```python
-"""Prototype guardrails, NOT a validated triage or scope classifier.
-
-These conservative rules miss some emergencies and can over-trigger.
-They must never label a patient safe, normal, or cleared of disease.
-"""
-import re
-from app.schemas import MedicalAnswer, Paragraph
-
-DISCLAIMER='\uc5f0\uad6c\u00b7\ud559\uc2b5\uc6a9 \uc815\ubcf4\uc785\ub2c8\ub2e4. \uc9c4\ub2e8, \ucc98\ubc29, \uc601\uc0c1 \ud310\ub3c5\uc744 \ub300\uccb4\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.'
-
-MEDICAL_TERMS=[
- '\uc758\ud559','\uc758\ub8cc','\uc99d\uc0c1','\ud1b5\uc99d','\uc544\ud30c','\uc544\ud514','\uc544\ud508','\uac74\uac15','\ubcd1\uc6d0','\uc9c4\ub8cc','\uc9c4\ub2e8','\uac80\uc0ac','\uce58\ub8cc','\ud658\uc790','\ucc98\ubc29','\uc57d\ubb3c','\ubcf5\uc6a9',
- '\uace8\uc808','\ub2f9\ub1e8','\uace0\ud608\uc555','\uac10\uc5fc','\ub450\ud1b5','\ubc1c\uc5f4','\uc5fc\uc99d','\ud608\uc555','\ud608\ub2f9','\uc554','\ubc1c\ubaa9','\ubb34\ub98e','\ud53c\ubd80','\ub450\ub4dc\ub7ec\uae30','\ucc9c\uc2dd',
- '\uc228','\ud638\ud761','\uac00\uc2b4','\ubcf5\ud1b5','\uadfc\uc721','\uc720\uc804','\uc138\ud3ec','\ud574\ubd80','\uc218\uc220','\uc751\uae09','\uc784\uc2e0','\uc0dd\ub9ac','\uc18c\uc544','\ud608\uc561','\ud569\ubcd1','\uad00\uc808','\uc57d\uc740',
- '\uc5fc\uc88c','\uc99d\ud6c4','\ubcf4\ud5d8','\uae30\uce68','\uad6c\ud1a0','\uc124\uc0ac','\ucd9c\ud608','\uc758\uc2dd','\ud604\uae30','\uc5b4\uc9c0','\uc790\ud574','\uc790\uc0b4','\uc8fd\uace0','\uc6b0\uc6b8','\ubd88\uc548','\uc815\uc2e0','\uc790\uad81','\ud3d0\ub834',
- '인공심폐기','인공심폐','심폐우회','체외순환','의료기기','심장','폐','medical','health','symptom','pain','fracture','disease','diagnos','treatment','blood','drug','medicine','report','x-ray','xray','mri','ct','diabet','asthma','hypertension','anatomy','fever','cancer','injury','suicid']
-UNRELATED=['게임','주식 추천','로또','포켓몬','연애소설','주가','날씨','여행 일정','선거','대통령','파이썬','코딩','프로그래밍','축구','야구','영화 추천','노래 추천','bitcoin','javascript game','travel itinerary']
-GREETINGS=['\uc548\ub155','\uace0\ub9c8\uc6cc','\uac10\uc0ac','hello','hi','thanks','\ub124','\uc751']
-
-EMERGENCY_PATTERNS=[
- r'\uc228\s*(?:\uc744\s*)?\ubabb\s*\uc26c', r'\ud638\ud761\s*(?:\uc774\s*)?\uc548\s*\ub3fc',
- r'\uc758\uc2dd\s*(?:\uc774\s*)?(?:\uc5c6|\uc783)',r'\ubc18\uc751\s*(?:\uc774\s*)?\uc5c6',
- r'\ud53c\s*(?:\uac00\s*)?\uba48\ucd94\uc9c0\s*\uc54a',r'\uc2ec\ud55c\s*\ud638\ud761\uace4\ub780',
- r"(?:can'?t|cannot)\s+breathe",r'unconscious',r'bleeding\s+(?:will not|won.t)\s+stop',
- r'\uc9c0\uae08.{0,20}(?:\uc790\uc0b4|\uc790\ud574)',r'\uc57d.{0,10}(?:\ud55c\uaebc\ubc88\uc5d0|\uacfc\ub2e4).{0,12}(?:\uba39|\ubcf5\uc6a9)']
-NEGATION=r'(?:\uc544\ub2c8|\uc544\ub2cc|\uc544\ub2c8\uc5d0\uc694|\uc5c6\uc5b4|\uc5c6\uc2b5|\uc5c6\uc74c|\ud574\uc18c|\uc0ac\ub77c\uc84c)'
-
-
-def emergency_signal(text: str) -> bool:
-    low=text.lower()
-    for pattern in EMERGENCY_PATTERNS:
-        for m in re.finditer(pattern,low):
-            before=low[max(0,m.start()-14):m.start()]
-            after=low[m.end():m.end()+20]
-            if re.search(r'(?:not |no |\uc544\ub2cc )$',before): continue
-            if re.search(NEGATION,after): continue
-            return True
-    # Multiple symptoms in one present-tense utterance; no safety assurance on miss.
-    chest=bool(re.search(r'\uac00\uc2b4.{0,8}(?:\uc544\ud504|\uc544\ud30c|\ud1b5\uc99d)|\ud749\ud1b5|chest pain',low))
-    breath=bool(re.search(r'\uc228.{0,6}(?:\ucc28|\ucc2c)|\ud638\ud761\uace4\ub780|shortness of breath',low))
-    if chest and breath and not re.search(NEGATION,low): return True
-    return False
-
-
-def is_medical(text: str, history=(), has_images=False) -> bool:
-    """Broad medical-domain gate for a consumer-facing medical assistant.
-
-    Uncommon medical terms should not be rejected merely because they are not
-    present in a small whitelist. Clearly unrelated requests are still blocked.
-    """
-    low=(text or '').strip().lower()
-    if has_images:
-        return True
-    if not low:
-        return False
-    if any(term in low for term in UNRELATED):
-        return False
-    if any((bool(re.search(r'\b'+re.escape(term)+r'\b',low)) if term in {'ct','mri'} else term in low) for term in MEDICAL_TERMS):
-        return True
-    if len(low)<24 and any(low.startswith(g) for g in GREETINGS):
-        return True
-    if len(low)<160 and any(any(t in m.content.lower() for t in MEDICAL_TERMS) for m in history if m.role=='user'):
-        return True
-    return len(low) >= 2
-
-
-def fixed_answer(kind: str) -> MedicalAnswer:
-    if kind=='emergency':
-        return MedicalAnswer(in_scope=True,urgency='emergency',evidence_status='not_applicable',
-          paragraphs=[Paragraph(heading='\uc9c0\uae08\uc740 \ub300\uba74 \ub3c4\uc6c0\uc774 \uc6b0\uc120\uc785\ub2c8\ub2e4',
-           text='\uc785\ub825\ud558\uc2e0 \ub0b4\uc6a9\uc5d0 \uc751\uae09\uc0c1\ud669\uc744 \uc758\uc2ec\ud560 \uc218 \uc788\ub294 \ud45c\ud604\uc774 \uc788\uc2b5\ub2c8\ub2e4. \uc2e4\uc81c\ub85c \uc9c0\uae08 \uacaa\uace0 \uacc4\uc2e0 \uc0c1\ud669\uc774\ub77c\uba74 \ucc57\ubd07 \ub2f5\ubcc0\uc744 \uae30\ub2e4\ub9ac\uc9c0 \ub9d0\uace0 \ud55c\uad6d\uc5d0\uc11c\ub294 119, \ud574\uc678\uc5d0\uc11c\ub294 \ud604\uc9c0 \uc751\uae09\ubc88\ud638\ub85c \uc5f0\ub77d\ud558\uc138\uc694. \uac00\uae4c\uc774 \uc788\ub294 \uc0ac\ub78c\uc5d0\uac8c \ub3c4\uc6c0\uc744 \uc694\uccad\ud558\uace0, \uc0c1\ud669\uc2e4\uc758 \uc548\ub0b4\ub97c \ub530\ub974\uc138\uc694.',source_ids=[])],
-          follow_up_questions=[],image_observations=[],limitations='\ubb38\uad6c \uae30\ubc18 \uc8fc\uc758 \uc548\ub0b4\uc774\uba70 \uc758\ub8cc\uc801 \uc911\uc99d\ub3c4 \ud310\uc815\uc774 \uc544\ub2d9\ub2c8\ub2e4. '+DISCLAIMER)
-    if kind=='radiology':
-        return MedicalAnswer(in_scope=True,urgency='unknown',evidence_status='insufficient',
-          paragraphs=[Paragraph(heading='\uc601\uc0c1 \ud310\ub3c5 \ubaa8\ub378\uc740 \uc544\uc9c1 \uc5f0\uacb0\ub418\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4',
-           text='\uc774 \uae30\ubc18 \ubc84\uc804\uc740 X-ray\u00b7CT\u00b7MRI\uc5d0\uc11c \uace8\uc808\uc774\ub098 \uc9c8\ud658\uc758 \uc720\ubb34\ub97c \ud310\uc815\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4. \uc5c5\ub85c\ub4dc \uc601\uc0c1\uc740 \ud310\ub3c5 API\ub85c \uc804\uc1a1\ub418\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4. \uc758\ub8cc\uc9c4\uc758 \ud310\ub3c5\ubb38\uc744 \uac1c\uc778\uc815\ubcf4 \uc5c6\uc774 \uc785\ub825\ud558\uba74 \uc6a9\uc5b4\uc640 \uc9c4\ub8cc \uc2dc \ubb3c\uc5b4\ubcfc \uc9c8\ubb38\uc744 \uc124\uba85\ud558\ub294 \ub370 \uc0ac\uc6a9\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.',source_ids=[])],
-          follow_up_questions=['\uc758\ub8cc\uc9c4\uc758 \ud310\ub3c5\ubb38\uc774 \uc788\ub098\uc694?'],image_observations=[],limitations=DISCLAIMER)
-    return MedicalAnswer(in_scope=False,urgency='unknown',evidence_status='not_applicable',
-      paragraphs=[Paragraph(heading='\uc758\ub8cc\u00b7\uac74\uac15 \uc9c0\uc2dd\uc744 \uc704\ud55c \ub300\ud654\uc785\ub2c8\ub2e4',
-       text='\uc758\ud559 \uac1c\ub150, \uac80\uc0ac \uc6a9\uc5b4, \uc99d\uc0c1 \uc815\ub9ac, \uc9c4\ub8cc \uc804 \uc9c8\ubb38 \uc900\ube44\ub97c \ub3c4\uc640\ub4dc\ub9bd\ub2c8\ub2e4. \uc758\ub8cc\uc640 \uad00\uacc4\uc5c6\ub294 \uc694\uccad\uc740 \uc774 \ucc57\ubd07\uc5d0\uc11c \ub2e4\ub8e8\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.',source_ids=[])],follow_up_questions=[],image_observations=[],limitations=DISCLAIMER)
-```
-
----
-
 ## `static/index.html`
 
 ```html
@@ -1352,9 +859,9 @@ def fixed_answer(kind: str) -> MedicalAnswer:
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark"><meta name="robots" content="noindex,nofollow">
 <title>MEDI - Medical Research Companion</title>
-<link rel="icon" href="/static/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/app.css?v=0600">
-<script src="/static/local_ai.js?v=0600" defer></script>
-<script src="/static/app.js?v=0600" defer></script>
+<link rel="icon" href="/static/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/app.css?v=0700">
+<script src="/static/local_ai.js?v=0700" defer></script>
+<script src="/static/app.js?v=0700" defer></script>
 </head>
 <body>
 <a class="skip" href="#question" data-i18n="skip"></a>
@@ -1408,13 +915,11 @@ def fixed_answer(kind: str) -> MedicalAnswer:
 <section class="settings-card"><div><strong>내 의료지식 자료</strong><p id="knowledgeStatus" class="subtle">의료자료 연결 상태를 확인하는 중입니다.</p></div><span class="settings-dot" aria-hidden="true"></span></section>
 <section id="localAiCard" class="settings-card"><div><strong>브라우저 보조 AI</strong><p id="localAiStatus" class="subtle">기기 호환성을 확인하는 중입니다.</p></div><button id="localAiPrepare" class="quiet-button" type="button">보조 AI 준비</button></section>
 <section class="settings-card"><div><strong>첫 질문 전 주의 안내</strong><p id="safetySettingText" class="subtle">첫 질문 전에 한 번 표시합니다.</p></div><label class="switch"><input id="safetyToggle" type="checkbox" checked><span></span></label><button id="showSafetyNow" class="quiet-button full" type="button">주의사항 지금 다시 보기</button></section>
-<p class="settings-help">MEDI는 질문과 이미지를 이해한 뒤 연결된 의료지식 자료를 함께 찾아, 일반인이 이해하기 쉬운 말로 설명합니다. 전문용어는 꼭 필요할 때만 괄호로 덧붙입니다.</p>
+<p class="settings-help">MEDI는 먼저 짧고 쉬운 말로 답합니다. 그림이 이해에 도움이 되는 질문이면 답변 안에 간단한 설명 그림도 자동으로 보여줍니다.</p>
 </div><div class="dialog-actions"><button class="primary-button" data-close="settingsDialog">완료</button></div></dialog>
 <dialog id="feedbackDialog"><div class="dialog-heading"><h2 data-i18n="feedbackTitle"></h2><button class="icon-button" data-close="feedbackDialog" aria-label="Close">&#215;</button></div><form id="feedbackForm" class="dialog-body"><p class="notice-box" data-i18n="feedbackDescription"></p><label class="field"><span data-i18n="feedbackQuestion"></span><textarea id="feedbackQuestion" maxlength="4000" rows="2" required></textarea></label><label class="field"><span data-i18n="feedbackAnswer"></span><textarea id="feedbackAnswer" maxlength="16000" rows="4" required></textarea></label><label class="field"><span data-i18n="correction"></span><textarea id="correction" maxlength="4000" rows="3"></textarea></label><label class="field"><span data-i18n="rating"></span><select id="rating"><option value="needs_review" data-i18n="needsReview"></option><option value="helpful" data-i18n="helpful"></option></select></label><label class="check-line"><input id="feedbackConsent" type="checkbox" required><span data-i18n="feedbackConsent"></span></label><label class="check-line"><input id="deidentified" type="checkbox" required><span data-i18n="deidentified"></span></label><button id="feedbackSubmit" class="primary-button full" type="submit" data-i18n="feedbackSend"></button><p id="feedbackError" class="inline-error" role="alert"></p></form></dialog>
 </body></html>
 ```
-
----
 
 ## `static/app.js`
 
@@ -1536,15 +1041,41 @@ function renderAttachments(){$('attachments').replaceChildren();state.images.for
 function setBusy(b){state.busy=b;$('pending').hidden=!b;$('sendButton').hidden=b;$('stopButton').hidden=!b;for(const id of ['question','mode','attachButton','newChat','welcomeImage'])$(id).disabled=b;statusUI();}
 function scrollBottom(){requestAnimationFrame(()=>$('scrollArea').scrollTo({top:$('scrollArea').scrollHeight,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));}
 function answerText(a){return a.paragraphs.map(p=>(p.heading?p.heading+'\n':'')+p.text).join('\n\n')+(a.image_observations.length?'\n\n'+a.image_observations.join('\n'):'')+'\n\n'+a.limitations;}
+const VISUAL_AIDS=[
+ {keys:['인공심폐기','인공심폐','심폐우회','체외순환','heart-lung','cardiopulmonary bypass'],src:'/static/visuals/heart_lung_machine.svg',title:'인공심폐기는 이렇게 도와줘요',caption:'혈액을 기계로 보내 산소를 공급한 뒤 다시 몸으로 돌려보내는 원리예요.'},
+ {keys:['무릎','슬관절','슬개','반월상','십자인대','knee'],src:'/static/visuals/knee.svg',title:'무릎은 이런 구조예요',caption:'뼈와 관절이 만나는 위치를 단순하게 그린 이해용 그림이에요.'},
+ {keys:['고혈압','저혈압','혈압','blood pressure'],src:'/static/visuals/blood_pressure.svg',title:'혈압은 이런 뜻이에요',caption:'혈액이 흐르면서 혈관벽을 미는 힘을 혈압이라고 해요.'},
+ {keys:['당뇨','혈당','인슐린','diabetes','glucose'],src:'/static/visuals/diabetes.svg',title:'혈당과 인슐린의 관계',caption:'인슐린은 혈액 속 포도당이 세포로 들어가도록 돕는 역할을 해요.'},
+ {keys:['천식','폐렴','호흡','기관지','기침','폐','lung','asthma'],src:'/static/visuals/lungs.svg',title:'폐와 기도는 이렇게 이어져요',caption:'공기는 기도를 지나 좌우 폐로 들어가요.'},
+ {keys:['상처','피부','발진','봉합','찰과상','화상','염증','wound','rash'],src:'/static/visuals/wound.svg',title:'상처는 겉모습 변화도 중요해요',caption:'붉음·붓기·열감이 커지는지 함께 살펴보는 게 좋아요.'},
+ {keys:['복통','위염','소화','위','장','stomach','digest'],src:'/static/visuals/stomach.svg',title:'소화기관은 이렇게 이어져요',caption:'음식은 식도를 지나 위와 장으로 이동해요.'},
+ {keys:['허리','척추','디스크','목 통증','요추','경추','spine'],src:'/static/visuals/spine.svg',title:'척추는 몸의 중심을 지지해요',caption:'척추는 몸을 지지하고 안쪽의 신경을 보호해요.'},
+ {keys:['뇌','두통','뇌졸중','마비','신경','brain'],src:'/static/visuals/brain.svg',title:'뇌는 몸의 여러 기능을 조절해요',caption:'움직임·감각·생각과 관련된 신호를 처리해요.'},
+ {keys:['약','복용','처방','알약','캡슐','medicine','drug'],src:'/static/visuals/medicine.svg',title:'약은 복용정보 확인이 중요해요',caption:'이름·용량·횟수·복용시간을 확인하고 임의로 바꾸지 않는 게 중요해요.'},
+ {keys:['심장','심근','협심','심부전','부정맥','맥박','heart'],src:'/static/visuals/heart.svg',title:'심장은 혈액을 보내는 펌프예요',caption:'심장은 온몸으로 혈액을 보내 산소와 영양분이 전달되게 해요.'}
+];
+function pickVisualAid(question,answer,hadImages){
+ if(hadImages)return null;
+ const text=((question||'')+' '+(answer?.paragraphs||[]).map(p=>p.heading+' '+p.text).join(' ')).toLowerCase();
+ for(const item of VISUAL_AIDS){if(item.keys.some(k=>text.includes(k.toLowerCase())))return item;}
+ return null;
+}
+function makeVisualAid(item){
+ const fig=el('figure','medi-visual');
+ const img=el('img');img.src=item.src;img.alt=item.title;img.loading='lazy';img.decoding='async';
+ const cap=el('figcaption','');cap.append(el('strong','',item.title),el('span','',item.caption),el('small','','이해를 돕는 간단 그림'));
+ fig.append(img,cap);return fig;
+}
+
 function renderTurn(t){
  const turn=el('article','turn');turn.dataset.id=t.id;turn.append(el('div','user-message',t.question));if(t.previewImages?.length){const imgs=el('div','user-images');for(const src of t.previewImages){const img=el('img');img.src=src;img.alt=T.image;imgs.append(img);}turn.append(imgs);}if(t.had_images&&!t.previewImages?.length)turn.append(el('p','source-meta','\uc774\ubbf8\uc9c0 \ucca8\ubd80 \uc774\ub825\uc774 \uc788\uc2b5\ub2c8\ub2e4. \uc6d0\ubcf8\uc740 \uc800\uc7a5\ud558\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4.'));
  if(t.response){const r=t.response,a=r.answer,assistant=el('div','assistant-message'),label=el('div','assistant-label'),mark=el('img');mark.src='/static/mark.svg';mark.alt='';label.append(mark,el('span','','MEDI'));
  if(a.urgency==='emergency')label.append(el('span','evidence-badge emergency','즉시 도움 안내'));
- else if(r.sources?.length)label.append(el('span','source-count',`MEDI 근거 ${r.sources.length}건`));
  assistant.append(label);
- for(const p of a.paragraphs){const block=el('div','answer-paragraph');if(p.heading)block.append(el('h3','',p.heading));block.append(el('p','',p.text));for(const sid of p.source_ids){const b=el('button','source-cite',sid);b.onclick=()=>{const target=turn.querySelector('[data-source="'+sid+'"]');if(target){target.parentElement.open=true;target.open=true;target.scrollIntoView({block:'nearest',behavior:'smooth'});}};block.append(b);}assistant.append(block);}
+ const visual=pickVisualAid(t.question,a,t.had_images);
+ a.paragraphs.forEach((p,index)=>{const block=el('div','answer-paragraph'+(index===0?' answer-summary':''));if(p.heading)block.append(el('h3','',p.heading));block.append(el('p','',p.text));assistant.append(block);if(index===0&&visual)assistant.append(makeVisualAid(visual));});
  if(a.image_observations.length){const obs=el('div','answer-paragraph');obs.append(el('h3','',T.observations),el('p','',a.image_observations.join('\n')));assistant.append(obs);}
- if(r.sources.length){const sources=el('details','source-list');sources.append(el('summary','',T.references+' '+r.sources.length+'\uac1c'));for(const s of r.sources){const item=el('details','source-item');item.dataset.source=s.id;item.append(el('summary','',s.id+'  '+s.title),el('p','source-meta',(s.source_label||'\uc5c5\ub85c\ub4dc \uc790\ub8cc')+' \u00b7 '+(s.year||'\uc5f0\ub3c4 \ubbf8\uc0c1')+' \u00b7 '+(s.source_type==='qa'?'\ud559\uc2b5 \ubb38\ud56d':'\ucc38\uace0 \ubb38\uc11c')),el('p','excerpt',s.excerpt));sources.append(item);}sources.append(el('p','source-warning',T.referenceWarning));assistant.append(sources);}
+ if(r.sources.length){const sources=el('details','source-list');sources.append(el('summary','','답변에 참고한 MEDI 자료 '+r.sources.length+'개'));for(const s of r.sources){const item=el('details','source-item');item.dataset.source=s.id;item.append(el('summary','',s.id+'  '+s.title),el('p','source-meta',(s.source_label||'\uc5c5\ub85c\ub4dc \uc790\ub8cc')+' \u00b7 '+(s.year||'\uc5f0\ub3c4 \ubbf8\uc0c1')+' \u00b7 '+(s.source_type==='qa'?'\ud559\uc2b5 \ubb38\ud56d':'\ucc38\uace0 \ubb38\uc11c')),el('p','excerpt',s.excerpt));sources.append(item);}sources.append(el('p','source-warning',T.referenceWarning));assistant.append(sources);}
  if(a.follow_up_questions.length){const fs=el('div','followups');for(const q of a.follow_up_questions){const b=el('button','followup',q);b.onclick=()=>{if(!state.busy){$('question').value=q;updateInput();$('question').focus();}};fs.append(b);}assistant.append(fs);}assistant.append(el('p','answer-limits',a.limitations));
  const actions=el('div','turn-actions');const copy=el('button','turn-action',T.copy);copy.onclick=async()=>{try{await navigator.clipboard.writeText(answerText(a));toast(T.copied);}catch{toast('Clipboard is unavailable.');}};actions.append(copy);if(state.user){const fb=el('button','turn-action',T.feedback);fb.onclick=()=>openFeedback(t);actions.append(fb);}assistant.append(actions);if(r.save_warning)assistant.append(el('p','inline-error',T.notSaved));turn.append(assistant);
  }else if(t.error){turn.append(el('p','inline-error',t.error));}
@@ -1606,8 +1137,6 @@ window.addEventListener('beforeunload',e=>{if(state.busy||hasUnsaved()){e.preven
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenu();});
 (async()=>{try{state.config=await api('/api/config');if(state.config.accounts){state.user=(await api('/api/auth/session',{},false)).user;}statusUI();updateSafetySettings();updateLocalAIStatus();authMode(false);await historyList();}catch(e){$('connection').textContent='연결 실패';toast(failure(e));}})();
 ```
-
----
 
 ## `static/app.css`
 
@@ -1902,9 +1431,22 @@ html[data-theme="dark"] .source-warning{
 .answer-paragraph h3{font-size:calc(14px * var(--font-scale));margin-bottom:7px}
 .answer-limits{font-size:calc(10px * var(--font-scale));line-height:1.6;opacity:.72}
 @media(max-width:640px){.paste-hint{display:none}.answer-paragraph h3{font-size:calc(13px * var(--font-scale))}}
-```
 
----
+
+/* v0.7: simpler consumer answer + automatic educational visuals */
+.answer-summary{margin-top:.35rem;padding:1rem 1.1rem;border-radius:16px;background:color-mix(in srgb,var(--green-soft) 75%,var(--paper));border:1px solid color-mix(in srgb,var(--green) 18%,var(--border));}
+.answer-summary h3{margin-top:0}.answer-summary p{font-size:1.04em;line-height:1.72;margin-bottom:0}
+.medi-visual{margin:1rem 0 1.15rem;max-width:680px;border:1px solid var(--border);border-radius:18px;overflow:hidden;background:var(--surface,#fff);box-shadow:0 8px 28px rgba(25,55,60,.06)}
+.medi-visual img{display:block;width:100%;max-height:300px;object-fit:contain;background:#f8fbfa}
+.medi-visual figcaption{display:grid;gap:.25rem;padding:.85rem 1rem 1rem;color:var(--ink)}
+.medi-visual figcaption strong{font-size:.98em}.medi-visual figcaption span{line-height:1.55}.medi-visual figcaption small{color:var(--muted)}
+[data-theme="dark"] .answer-summary{background:#17312f;border-color:#34514e}
+[data-theme="dark"] .medi-visual{background:#142220;border-color:#334844}
+[data-theme="dark"] .medi-visual img{background:#eef6f4}
+[data-theme="dark"] .medi-visual figcaption{color:#eef7f5}
+[data-theme="dark"] .medi-visual figcaption small{color:#a9bbb7}
+@media(max-width:640px){.answer-summary{padding:.9rem}.medi-visual{margin:.85rem 0;border-radius:14px}.medi-visual img{max-height:220px}.medi-visual figcaption{padding:.75rem .85rem .9rem}}
+```
 
 ## `static/local_ai.js`
 
@@ -2017,15 +1559,16 @@ html[data-theme="dark"] .source-warning{
       : '검색된 참고자료가 없습니다.';
 
     const system = [
-      '너는 MEDI라는 한국어 의료 전문 연구·학습 보조 AI다.',
-      '반드시 제공된 MEDI 업로드 근거자료를 최우선으로 활용하고 관련 문장에는 [S1]처럼 실제 근거 ID를 붙여라.',
-      '이 서비스는 개인 연구·학습용이며 의료진이 아니다.',
+      '너는 MEDI라는 한국어 의료 전문 AI다. 사용자는 의학 전문가가 아니라 일반인이다.',
+      '제공된 MEDI 업로드 근거자료를 먼저 활용하되 본문에는 [S1] 같은 번호를 노출하지 마라.',
+      '첫 문장에서 질문에 바로 답하고, 기본 답변은 전체 250~500자 정도로 최대 3개 짧은 문단만 작성하라.',
+      '전문용어는 꼭 필요할 때만 쉬운 말 뒤 괄호로 한 번 설명하라.',
+      '단순 개념 질문은 한마디로 무엇인지, 언제 쓰는지, 핵심 원리만 설명하라.',
+      '증상 질문은 흔한 가능성 2~3개까지만 말하고, 꼭 필요한 확인 질문도 1~2개만 제시하라.',
       '진단을 확정하거나 질환을 배제하지 말고, 처방약의 시작·중단·용량 변경을 지시하지 마라.',
-      '사용자 개인의 증상에는 가능한 원인을 단정하지 말고 일반적인 정보, 확인할 점, 진료가 필요한 상황을 설명하라.',
       '심한 흉통, 호흡곤란, 의식저하, 마비, 멈추지 않는 출혈 등 응급 상황은 119 또는 응급의료기관 이용을 우선 안내하라.',
-      '아래 참고자료는 검증 전 데이터셋일 수 있다. 참고자료가 충분하지 않으면 부족하다고 말하고 지어내지 마라.',
-      '답변은 한국어로 짧고 자연스럽게 2~5문단으로 작성하라. JSON이나 코드블록은 사용하지 마라.',
-      mode === 'study' ? '현재는 의학 학습 모드다. 개념 설명 중심으로 답하라.' : '현재는 건강정보 모드다. 개인 진단 대신 일반 정보 중심으로 답하라.'
+      '참고자료가 충분하지 않으면 억지로 끼워 맞추지 말고 짧게 한계를 말하라.',
+      '긴 목록, 논문 문체, 병태생리 단계 나열, 같은 말 반복을 피하라. JSON이나 코드블록은 사용하지 마라.'
     ].join('\n');
 
     const messages = [{ role: 'system', content: system }];
@@ -2035,7 +1578,7 @@ html[data-theme="dark"] .source-warning{
     }
     messages.push({
       role: 'user',
-      content: `참고자료:\n${referenceText}\n\n사용자 질문:\n${clip(question, 4000)}\n\n참고자료를 우선 사용해 답하고, 불충분하면 그 한계를 분명히 밝혀라.`
+      content: `참고자료:\n${referenceText}\n\n사용자 질문:\n${clip(question, 4000)}\n\n일반인이 바로 이해할 수 있게 짧고 쉽게 답해라.`
     });
     return messages;
   };
@@ -2049,10 +1592,10 @@ html[data-theme="dark"] .source-warning{
 
   const textToAnswer = (text, hasSources, mode, hadImages) => {
     const cleaned = normalizeText(text);
-    const parts = cleaned.split(/\n\s*\n/).map(x => x.trim()).filter(Boolean).slice(0, 5);
+    const parts = cleaned.split(/\n\s*\n/).map(x => x.trim()).filter(Boolean).slice(0, 3);
     const paragraphs = (parts.length ? parts : [cleaned || '답변을 생성하지 못했습니다.']).map((p, i) => ({
       heading: i === 0 ? '' : '',
-      text: p,
+      text: p.length > 430 ? p.slice(0, 427).replace(/[ ,;:]+$/,'') + '…' : p,
       source_ids: []
     }));
     return {
@@ -2062,7 +1605,7 @@ html[data-theme="dark"] .source-warning{
       paragraphs,
       follow_up_questions: [],
       image_observations: hadImages ? ['첨부 이미지는 현재 무료 기기 AI가 분석하지 않습니다. 이미지 진단·판독은 아직 연결되지 않았습니다.'] : [],
-      limitations: 'MEDI는 연구·학습용 정보 도구이며 진단·처방이나 의료진의 진료를 대신하지 않습니다. 무료 기기 AI의 답변은 오류가 있을 수 있으므로 중요한 의학적 결정에는 사용하지 마세요.'
+      limitations: '참고용 정보예요. 증상이 심하거나 계속되면 의료진에게 확인하세요.'
     };
   };
 
@@ -2076,7 +1619,7 @@ html[data-theme="dark"] .source-warning{
         messages: buildMessages({ question, mode, sources, history }),
         temperature: 0.25,
         top_p: 0.9,
-        max_tokens: 700
+        max_tokens: 460
       });
       const text = reply?.choices?.[0]?.message?.content || '';
       const answer = textToAnswer(text, Boolean(sources?.length), mode, hadImages);
@@ -2103,69 +1646,68 @@ html[data-theme="dark"] .source-warning{
 })();
 ```
 
----
+## `static/visuals/blood_pressure.svg`
 
-## `render.yaml`
-
-```text
-services:
-  - type: web
-    name: medi-research-chat
-    runtime: python
-    plan: free
-    buildCommand: pip install -r requirements.txt && python tools/bootstrap.py
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-access-log
-    healthCheckPath: /api/health
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.13.5
-      - key: DEPLOYMENT_MODE
-        value: public
-      - key: MEDI_AI_PROVIDER
-        value: auto
-      - key: GROQ_MODEL
-        value: qwen/qwen3.8-27b
-      - key: GROQ_API_KEY
-        sync: false
-      - key: GEMINI_MODEL
-        value: gemini-2.5-flash-lite
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_ANON_KEY
-        sync: false
-      - key: DATA_ENCRYPTION_KEY
-        sync: false
-      - key: OPERATOR_CONTACT
-        sync: false
-      - key: DATASET_RIGHTS_CONFIRMED
-        value: "false"
-      - key: ALLOW_OPEN_SIGNUP
-        value: "true"
-      - key: GUEST_DAILY_LIMIT
-        value: "8"
+```xml
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d"><title id="t">혈압 이해 그림</title><desc id="d">혈관 안으로 흐르는 혈액과 혈관벽에 가해지는 압력을 단순화한 그림</desc><rect width="640" height="360" rx="28" fill="#fff6f6"/><rect x="80" y="125" width="480" height="110" rx="55" fill="#f0aaaa" stroke="#b95252" stroke-width="8"/><rect x="95" y="143" width="450" height="74" rx="37" fill="#fff"/><path d="M180 180h250" stroke="#c84e4e" stroke-width="18" stroke-linecap="round"/><path d="M420 158l42 22-42 22z" fill="#c84e4e"/><path d="M210 112v-42m220 42v-42" stroke="#467e78" stroke-width="9" stroke-linecap="round"/><path d="M190 83l20-25 20 25m180 0l20-25 20 25" fill="none" stroke="#467e78" stroke-width="7"/><text x="320" y="300" text-anchor="middle" font-family="sans-serif" font-size="25" fill="#4b3a3a">혈액이 혈관벽을 미는 힘 = 혈압</text></svg>
 ```
 
----
+## `static/visuals/brain.svg`
 
-## `env.example`
+```xml
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d"><title id="t">뇌 이해 그림</title><desc id="d">뇌의 좌우 반구를 단순화한 교육용 그림</desc><rect width="640" height="360" rx="28" fill="#faf7ff"/><path d="M318 85c-39-60-129-27-121 39-62 5-72 88-16 112-12 60 64 84 104 44 28 35 74 16 80-21 58 5 91-67 53-105 36-43-7-105-55-95-1-55-20-76-45-74z" fill="#d8c1ef" stroke="#755a92" stroke-width="7"/><path d="M318 88v185" stroke="#fff" stroke-width="7" opacity=".8"/><path d="M244 125c20 5 30 19 28 39m77-48c-20 8-31 25-26 45m-92 62c22-9 39-5 50 11m76-17c-20-4-37 3-48 19" fill="none" stroke="#9b7ab8" stroke-width="8" stroke-linecap="round"/><text x="320" y="326" text-anchor="middle" font-family="sans-serif" font-size="25" fill="#4f405f">뇌는 움직임·감각·생각을 조절해요</text></svg>
+```
 
-```text
-DEPLOYMENT_MODE=local
-MEDI_AI_PROVIDER=auto
-# Recommended free server AI (choose one or both):
-GROQ_API_KEY=
-GROQ_MODEL=qwen/qwen3.8-27b
-GEMINI_API_KEY=
-GEMINI_MODEL=gemini-2.5-flash-lite
-# Accounts/history (required on public Render deployment):
-SUPABASE_URL=
-SUPABASE_ANON_KEY=
-DATA_ENCRYPTION_KEY=
-ALLOW_OPEN_SIGNUP=true
-# Set true only after verifying that you may use the uploaded dataset in this service.
-DATASET_RIGHTS_CONFIRMED=false
-OPERATOR_CONTACT=
-GUEST_DAILY_LIMIT=8
+## `static/visuals/diabetes.svg`
+
+```xml
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d"><title id="t">혈당과 인슐린 이해 그림</title><desc id="d">혈액 속 포도당이 인슐린 도움을 받아 세포 안으로 들어가는 과정을 단순화한 그림</desc><rect width="640" height="360" rx="28" fill="#fffaf0"/><circle cx="170" cy="170" r="83" fill="#f4d27d" stroke="#a87f25" stroke-width="7"/><circle cx="456" cy="170" r="83" fill="#d9efdf" stroke="#4c8761" stroke-width="7"/><circle cx="142" cy="143" r="11" fill="#d95f5f"/><circle cx="190" cy="181" r="11" fill="#d95f5f"/><circle cx="154" cy="211" r="11" fill="#d95f5f"/><path d="M258 170h108" stroke="#5f7e78" stroke-width="12" stroke-linecap="round"/><path d="M345 147l32 23-32 23z" fill="#5f7e78"/><rect x="287" y="127" width="47" height="34" rx="10" fill="#7da7d7"/><text x="310" y="150" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#fff">인슐린</text><text x="170" y="290" text-anchor="middle" font-family="sans-serif" font-size="24" fill="#51451e">혈액 속 포도당</text><text x="456" y="290" text-anchor="middle" font-family="sans-serif" font-size="24" fill="#32563c">세포</text></svg>
+```
+
+## `static/visuals/heart.svg`
+
+```xml
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d"><title id="t">심장 이해 그림</title><desc id="d">심장이 혈액을 몸으로 보내는 펌프라는 점을 단순화한 교육용 그림</desc><rect width="640" height="360" rx="28" fill="#fff6f6"/><path d="M320 285S150 205 150 115c0-67 83-91 122-38 20-38 76-51 115-24 40 28 53 85 22 130-31 45-89 82-89 102z" fill="#dc6b6b" stroke="#9d4141" stroke-width="8"/><path d="M320 95v-50m45 74 41-41m-132 41-41-41" fill="none" stroke="#557b8a" stroke-width="10" stroke-linecap="round"/><path d="M250 179c44-50 97-38 139 3" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round"/><text x="320" y="330" text-anchor="middle" font-family="sans-serif" font-size="25" fill="#4e3737">심장은 혈액을 보내는 펌프예요</text></svg>
+```
+
+## `static/visuals/heart_lung_machine.svg`
+
+```xml
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d"><title id="t">인공심폐기 원리 그림</title><desc id="d">심장 수술 중 혈액이 몸에서 기계로 이동해 산소를 공급받고 다시 몸으로 돌아오는 흐름</desc><rect width="640" height="360" rx="28" fill="#f5f8fb"/><path d="M180 140c-30-44-98-18-98 39 0 60 98 117 98 117s98-57 98-117c0-57-68-83-98-39z" fill="#d96868" stroke="#9b3f3f" stroke-width="6"/><circle cx="456" cy="174" r="64" fill="#dbe8ff" stroke="#4c6da6" stroke-width="7"/><circle cx="456" cy="174" r="36" fill="#fff" stroke="#7d99c7" stroke-width="5"/><path d="M240 160C320 112 350 112 394 145" fill="none" stroke="#4c6da6" stroke-width="12" stroke-linecap="round"/><path d="M394 205C345 250 305 251 240 218" fill="none" stroke="#cc5555" stroke-width="12" stroke-linecap="round"/><path d="M370 134l25 10-16 21" fill="#4c6da6"/><path d="M270 230l-26-12 18-20" fill="#cc5555"/><text x="180" y="326" text-anchor="middle" font-family="sans-serif" font-size="24" fill="#31464b">심장</text><text x="456" y="326" text-anchor="middle" font-family="sans-serif" font-size="24" fill="#31464b">산소 공급·펌프</text></svg>
+```
+
+## `static/visuals/knee.svg`
+
+```xml
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d"><title id="t">무릎 구조 이해 그림</title><desc id="d">대퇴골, 무릎관절, 정강뼈의 관계를 단순화한 교육용 그림</desc><rect width="640" height="360" rx="28" fill="#eef7f4"/><path d="M285 40c-18 62-14 112 13 150l-33 61c-14 26-19 48-20 69" fill="none" stroke="#315f5b" stroke-width="34" stroke-linecap="round"/><path d="M358 40c18 62 14 112-13 150l33 61c14 26 19 48 20 69" fill="none" stroke="#315f5b" stroke-width="34" stroke-linecap="round"/><ellipse cx="321" cy="195" rx="77" ry="39" fill="#9fd0c8" stroke="#2b756c" stroke-width="8"/><circle cx="321" cy="191" r="24" fill="#f6d8b0" stroke="#9f6d34" stroke-width="6"/><path d="M262 205c41 15 79 15 118 0" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round"/><text x="321" y="335" text-anchor="middle" font-family="sans-serif" font-size="26" fill="#29464a">무릎관절</text></svg>
+```
+
+## `static/visuals/lungs.svg`
+
+```xml
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d"><title id="t">폐와 기도 이해 그림</title><desc id="d">기관과 좌우 폐의 연결을 단순화한 교육용 그림</desc><rect width="640" height="360" rx="28" fill="#f2fbfb"/><path d="M320 55v95" stroke="#4c716f" stroke-width="22" stroke-linecap="round"/><path d="M320 132l-70 54m70-54 70 54" stroke="#4c716f" stroke-width="15" stroke-linecap="round"/><path d="M258 142c-90 7-122 99-88 157 34 58 102 15 121-36 16-42 7-89-33-121z" fill="#b8e1dc" stroke="#3b8179" stroke-width="7"/><path d="M382 142c90 7 122 99 88 157-34 58-102 15-121-36-16-42-7-89 33-121z" fill="#b8e1dc" stroke="#3b8179" stroke-width="7"/><text x="320" y="332" text-anchor="middle" font-family="sans-serif" font-size="25" fill="#2f5253">공기 → 기도 → 폐</text></svg>
+```
+
+## `static/visuals/medicine.svg`
+
+```xml
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d"><title id="t">약 복용 이해 그림</title><desc id="d">알약과 물컵을 단순화한 교육용 그림</desc><rect width="640" height="360" rx="28" fill="#f7f9ff"/><g transform="rotate(-28 235 165)"><rect x="135" y="119" width="200" height="92" rx="46" fill="#ef8a8a" stroke="#a24d4d" stroke-width="7"/><path d="M235 119v92" stroke="#fff" stroke-width="7"/></g><path d="M410 100h100l-13 165h-74z" fill="#d7eef8" stroke="#5e8da0" stroke-width="7"/><path d="M418 169h84" stroke="#65b6d2" stroke-width="10"/><text x="320" y="322" text-anchor="middle" font-family="sans-serif" font-size="24" fill="#3d4d5b">약은 이름·용량·복용법을 확인해요</text></svg>
+```
+
+## `static/visuals/spine.svg`
+
+```xml
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d"><title id="t">척추 이해 그림</title><desc id="d">목에서 허리까지 이어지는 척추를 단순화한 교육용 그림</desc><rect width="640" height="360" rx="28" fill="#f6f8fb"/><path d="M320 44c-30 36 26 47-4 82s27 46-4 82 25 44-1 82" fill="none" stroke="#5e6673" stroke-width="18" stroke-linecap="round"/><g fill="#d8e2eb" stroke="#667480" stroke-width="4"><rect x="282" y="67" width="76" height="24" rx="10"/><rect x="280" y="112" width="80" height="24" rx="10"/><rect x="277" y="157" width="86" height="24" rx="10"/><rect x="274" y="202" width="92" height="24" rx="10"/><rect x="270" y="247" width="100" height="24" rx="10"/></g><text x="320" y="327" text-anchor="middle" font-family="sans-serif" font-size="25" fill="#394653">척추는 몸을 지지하고 신경을 보호해요</text></svg>
+```
+
+## `static/visuals/stomach.svg`
+
+```xml
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d"><title id="t">위와 소화기관 이해 그림</title><desc id="d">식도에서 위로 음식이 이동하는 모습을 단순화한 교육용 그림</desc><rect width="640" height="360" rx="28" fill="#fff9f1"/><path d="M320 42v105" stroke="#7f705f" stroke-width="22" stroke-linecap="round"/><path d="M319 139c-38 9-74 28-91 65-26 58 18 118 88 103 92-20 144-123 76-172-17-12-43-13-73 4z" fill="#efc48d" stroke="#9b6d37" stroke-width="7"/><path d="M334 145c34 8 60 30 64 63" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round"/><text x="320" y="334" text-anchor="middle" font-family="sans-serif" font-size="25" fill="#54483a">식도 → 위 → 장</text></svg>
+```
+
+## `static/visuals/wound.svg`
+
+```xml
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d"><title id="t">상처 회복 이해 그림</title><desc id="d">피부 손상 주변의 붉음과 부종을 단순화한 교육용 그림</desc><rect width="640" height="360" rx="28" fill="#fff8f5"/><rect x="70" y="90" width="500" height="185" rx="58" fill="#f2cdbd" stroke="#b98370" stroke-width="7"/><ellipse cx="320" cy="182" rx="128" ry="72" fill="#efaaaa" opacity=".75"/><path d="M235 185c42-60 132-61 174 0-42 47-132 47-174 0z" fill="#bc5252"/><path d="M261 185c30-30 89-30 119 0-30 26-89 26-119 0z" fill="#fff0e8"/><text x="320" y="318" text-anchor="middle" font-family="sans-serif" font-size="24" fill="#55413b">붉음·붓기·열감은 변화 추이를 같이 봐요</text></svg>
 ```
