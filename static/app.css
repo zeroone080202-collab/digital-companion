@@ -278,3 +278,13 @@ html[data-theme="dark"] .excerpt,
 html[data-theme="dark"] .source-warning{
   color:#b9cbc7!important;
 }
+
+
+/* MEDI v0.6 - consumer mode + clipboard image UI */
+.paste-hint{font-size:calc(10px * var(--font-scale));color:var(--muted);white-space:nowrap}
+.attachment-kind{display:block;margin-top:4px;color:var(--muted);font-size:calc(9px * var(--font-scale))}
+.attachment-info{min-width:0}
+.answer-paragraph p{line-height:1.75}
+.answer-paragraph h3{font-size:calc(14px * var(--font-scale));margin-bottom:7px}
+.answer-limits{font-size:calc(10px * var(--font-scale));line-height:1.6;opacity:.72}
+@media(max-width:640px){.paste-hint{display:none}.answer-paragraph h3{font-size:calc(13px * var(--font-scale))}}

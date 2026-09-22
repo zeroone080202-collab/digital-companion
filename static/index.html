@@ -4,9 +4,9 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark"><meta name="robots" content="noindex,nofollow">
 <title>MEDI - Medical Research Companion</title>
-<link rel="icon" href="/static/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/app.css?v=0502">
-<script src="/static/local_ai.js?v=0502" defer></script>
-<script src="/static/app.js?v=0502" defer></script>
+<link rel="icon" href="/static/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/app.css?v=0600">
+<script src="/static/local_ai.js?v=0600" defer></script>
+<script src="/static/app.js?v=0600" defer></script>
 </head>
 <body>
 <a class="skip" href="#question" data-i18n="skip"></a>
@@ -31,8 +31,8 @@
    <p class="eyebrow">A SPACE FOR BETTER UNDERSTANDING</p><h1 data-i18n="welcomeTitle"></h1><p class="welcome-description" data-i18n="welcomeDescription"></p>
    <div class="suggestions">
     <button class="suggestion" data-prompt="promptKnowledge"><span class="card-icon">&#9783;</span><b data-i18n="cardKnowledge"></b><p data-i18n="cardKnowledgeDesc"></p><span class="card-arrow">&#8599;</span></button>
+    <button class="suggestion" data-prompt="promptStudy"><span class="card-icon">&#10022;</span><b data-i18n="cardStudy"></b><p data-i18n="cardStudyDesc"></p><span class="card-arrow">&#8599;</span></button>
     <button class="suggestion" id="welcomeImage"><span class="card-icon">&#9635;</span><b data-i18n="cardImage"></b><p data-i18n="cardImageDesc"></p><span class="card-arrow">&#8599;</span></button>
-    <button class="suggestion" data-prompt="promptStudy" data-mode="study"><span class="card-icon">&#10022;</span><b data-i18n="cardStudy"></b><p data-i18n="cardStudyDesc"></p><span class="card-arrow">&#8599;</span></button>
    </div><p class="welcome-note"><span class="status-dot"></span><span data-i18n="welcomeNote"></span></p>
   </section>
   <section id="messages" class="messages" aria-label="Conversation"></section>
@@ -41,7 +41,7 @@
  <footer class="composer-area"><form id="chatForm" class="composer">
   <div id="attachments" class="attachments"></div>
   <label class="sr-only" for="question" data-i18n="questionLabel"></label><textarea id="question" rows="2" maxlength="4000" data-placeholder="questionPlaceholder"></textarea>
-  <div class="composer-tools"><div class="tool-group"><button type="button" id="attachButton" class="attach-button" data-title="attach"><span class="plus">+</span><span class="attach-label" data-i18n="image"></span></button><span class="tool-divider"></span><label class="sr-only" for="mode" data-i18n="mode"></label><select id="mode"><option value="health" data-i18n="health"></option><option value="study" data-i18n="study"></option></select></div><div class="tool-group"><span id="charCount" class="char-count">0 / 4000</span><button type="submit" id="sendButton" class="send-button" data-title="send" aria-label="Send message">&#8593;</button><button type="button" id="stopButton" class="stop-button" data-i18n="stop" hidden></button></div></div>
+  <div class="composer-tools"><div class="tool-group"><button type="button" id="attachButton" class="attach-button" data-title="attach"><span class="plus">+</span><span class="attach-label" data-i18n="image"></span></button><span class="paste-hint">이미지는 Ctrl+V로 붙여넣기도 가능</span><input type="hidden" id="mode" value="health"></div><div class="tool-group"><span id="charCount" class="char-count">0 / 4000</span><button type="submit" id="sendButton" class="send-button" data-title="send" aria-label="Send message">&#8593;</button><button type="button" id="stopButton" class="stop-button" data-i18n="stop" hidden></button></div></div>
  </form>
  <div class="composer-options"><label class="save-option"><input type="checkbox" id="saveChat"><span data-i18n="saveChat"></span></label><button id="consentButton" class="text-button" data-i18n="processingInfo"></button></div>
  <p class="disclaimer" data-i18n="disclaimer"></p>
@@ -60,7 +60,7 @@
 <section class="settings-card"><div><strong>내 의료지식 자료</strong><p id="knowledgeStatus" class="subtle">의료자료 연결 상태를 확인하는 중입니다.</p></div><span class="settings-dot" aria-hidden="true"></span></section>
 <section id="localAiCard" class="settings-card"><div><strong>브라우저 보조 AI</strong><p id="localAiStatus" class="subtle">기기 호환성을 확인하는 중입니다.</p></div><button id="localAiPrepare" class="quiet-button" type="button">보조 AI 준비</button></section>
 <section class="settings-card"><div><strong>첫 질문 전 주의 안내</strong><p id="safetySettingText" class="subtle">첫 질문 전에 한 번 표시합니다.</p></div><label class="switch"><input id="safetyToggle" type="checkbox" checked><span></span></label><button id="showSafetyNow" class="quiet-button full" type="button">주의사항 지금 다시 보기</button></section>
-<p class="settings-help">MEDI는 일반 챗봇처럼 바로 답하지 않고, 먼저 연결된 의료지식 자료를 검색한 뒤 그 근거를 무료 AI에 전달해 답변합니다. 서버 AI가 연결되면 PC·휴대폰 모두 같은 방식으로 동작하며, 브라우저 AI는 서버 AI가 없을 때만 보조 수단으로 사용합니다.</p>
+<p class="settings-help">MEDI는 질문과 이미지를 이해한 뒤 연결된 의료지식 자료를 함께 찾아, 일반인이 이해하기 쉬운 말로 설명합니다. 전문용어는 꼭 필요할 때만 괄호로 덧붙입니다.</p>
 </div><div class="dialog-actions"><button class="primary-button" data-close="settingsDialog">완료</button></div></dialog>
 <dialog id="feedbackDialog"><div class="dialog-heading"><h2 data-i18n="feedbackTitle"></h2><button class="icon-button" data-close="feedbackDialog" aria-label="Close">&#215;</button></div><form id="feedbackForm" class="dialog-body"><p class="notice-box" data-i18n="feedbackDescription"></p><label class="field"><span data-i18n="feedbackQuestion"></span><textarea id="feedbackQuestion" maxlength="4000" rows="2" required></textarea></label><label class="field"><span data-i18n="feedbackAnswer"></span><textarea id="feedbackAnswer" maxlength="16000" rows="4" required></textarea></label><label class="field"><span data-i18n="correction"></span><textarea id="correction" maxlength="4000" rows="3"></textarea></label><label class="field"><span data-i18n="rating"></span><select id="rating"><option value="needs_review" data-i18n="needsReview"></option><option value="helpful" data-i18n="helpful"></option></select></label><label class="check-line"><input id="feedbackConsent" type="checkbox" required><span data-i18n="feedbackConsent"></span></label><label class="check-line"><input id="deidentified" type="checkbox" required><span data-i18n="deidentified"></span></label><button id="feedbackSubmit" class="primary-button full" type="submit" data-i18n="feedbackSend"></button><p id="feedbackError" class="inline-error" role="alert"></p></form></dialog>
 </body></html>
