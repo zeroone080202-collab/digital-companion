@@ -19,10 +19,10 @@ from app.config import Settings, settings as default_settings, ROOT
 from app.cloud import CloudStore, CloudError
 from app.images import sanitize_image, ImageValidationError
 from app.policy import is_medical, emergency_signal, fixed_answer, DISCLAIMER
-from app.provider import generate as provider_generate, image_search_query as provider_image_search_query, ProviderError, ProviderResult
+from app.provider import generate, ProviderError
 from app.retrieval import KnowledgeStore
 from app.schemas import (ChatRequest, Credentials, NewConversation, FeedbackRequest, DeleteAccount,
-                         HistoryMessage, MedicalAnswer, Paragraph, LocalTurnSave)
+                         HistoryMessage, MedicalAnswer, Paragraph)
 from app.security import BodyAndOriginGuard, Limiter
 
 
@@ -30,7 +30,7 @@ def answer_text(answer):
     return '\n\n'.join((p.get('heading','')+'\n'+p['text']).strip() for p in answer['paragraphs'])
 
 
-def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generator=None):
+def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generator=generate):
     @asynccontextmanager
     async def lifespan(app):
         cfg.validate()
@@ -55,6 +55,7 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
     app.add_middleware(BodyAndOriginGuard,max_bytes=cfg.max_body_bytes)
     app.add_middleware(TrustedHostMiddleware,allowed_hosts=list(cfg.allowed_hosts))
     limiter=Limiter(); knowledge=KnowledgeStore(cfg.database)
+    gate=asyncio.Semaphore(cfg.max_concurrency)
     results=OrderedDict(); active=set(); active_users=set()
 
     @app.middleware('http')
@@ -64,7 +65,7 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
         response.headers['Referrer-Policy']='no-referrer'
         response.headers['X-Frame-Options']='DENY'
         response.headers['Permissions-Policy']='camera=(), microphone=(), geolocation=()'
-        response.headers['Content-Security-Policy']="default-src 'self'; script-src 'self' https://esm.run 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://esm.run https://huggingface.co https://*.huggingface.co https://hf.co https://*.hf.co https://cdn.jsdelivr.net https://raw.githubusercontent.com https://github.com https://objects.githubusercontent.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
+        response.headers['Content-Security-Policy']="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
         if request.url.path.startswith('/api'): response.headers['Cache-Control']='no-store'
         if cfg.public: response.headers['Strict-Transport-Security']='max-age=31536000'
         return response
@@ -77,6 +78,8 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
     async def http_error(request,error): return JSONResponse({'error':str(error.detail)},error.status_code)
     @app.exception_handler(ImageValidationError)
     async def image_error(request,error): return JSONResponse({'error':'invalid_image','detail':str(error)},400)
+    @app.exception_handler(ProviderError)
+    async def provider_error(request,error): return JSONResponse({'error':error.code,'detail':str(error)},502)
 
     def cloud():
         if not app.state.cloud: raise HTTPException(409,'accounts_not_configured')
@@ -116,31 +119,15 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
         if not limiter.allow('auth-ip:'+host,18) or not limiter.allow('auth-email:'+hashlib.sha256(email.lower().encode()).hexdigest(),8):
             raise HTTPException(429,'rate_limited')
 
-    # Render deploy/readiness probe. Keep this endpoint intentionally cheap:
-    # no authentication, database query, RAG search, or external AI call.
-    @app.get('/healthz', include_in_schema=False)
-    async def healthz():
-        return {'ok': True, 'service': 'medi-research-chat'}
-
-    # Backward-compatible health endpoint used by older MEDI deployments.
     @app.get('/api/health')
-    async def health():
-        return {'status':'ok','service':'medi-research-chat'}
+    async def health(): return {'status':'ok','service':'medi-research-chat'}
     @app.get('/api/config')
     async def config():
-        backend=cfg.free_server_ai
-        model=(cfg.groq_model if backend=='groq' else cfg.gemini_model if backend=='gemini' else None)
-        return {'app':'MEDI','version':'0.8.0','public':cfg.public,'accounts':cfg.has_accounts,
-                'ai_mode':'server_free' if (cfg.configured_backends and cfg.ai_provider!='browser') else 'browser_local',
-                'ai_backend':backend,'ai_backends':list(cfg.configured_backends),
-                'ai_connected':bool(cfg.configured_backends and cfg.ai_provider!='browser'),'ai_model':model,
-                'local_model':'Qwen2.5-0.5B-Instruct-q4f16_1-MLC',
+        return {'app':'MEDI','version':'0.1.0','public':cfg.public,'accounts':cfg.has_accounts,
+                'ai_connected':bool(cfg.api_key),'model':cfg.model if cfg.api_key else None,
                 'knowledge':app.state.stats,'knowledge_enabled':not cfg.public or cfg.dataset_rights_confirmed,
-                'dataset_rights_confirmed':cfg.dataset_rights_confirmed,
-                'invite_required':False,'guest_chat':True,'max_image_mb':5,'max_images':2,
-                'learning':'consented_feedback_then_human_review','radiology_enabled':False,
-                'image_understanding_enabled':bool(cfg.image_ai_available and cfg.ai_provider!='browser'),
-                'provider_failover':cfg.provider_failover,'ai_retries':cfg.ai_request_retries,
+                'invite_required':False,'guest_chat':True,'guest_daily_limit':cfg.guest_daily_limit,'max_image_mb':5,'max_images':2,
+                'learning':'consented_feedback_then_human_review','radiology_enabled':bool(cfg.api_key),
                 'operator_contact':cfg.operator_contact}
     @app.post('/api/auth/signup')
     async def signup(data: Credentials,request: Request):
@@ -247,122 +234,62 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
                 if len(saved)>=80:raise HTTPException(409,'conversation_full')
                 for old in saved:
                     if old['id']==str(data.request_id):
-                        if old['question']!=data.message:raise HTTPException(409,'request_id_conflict')
+                        if old['question']!=data.message or (old.get('request_digest') and old['request_digest']!=digest):raise HTTPException(409,'request_id_conflict')
                         return old['response']
                 hist=[]
                 for t in saved[-4:]:
                     hist.extend([HistoryMessage(role='user',content=t['question'][:2000]),
                                  HistoryMessage(role='assistant',content=answer_text(t['response']['answer'])[:3000])])
                 data=data.model_copy(update={'history':hist})
-
-            sources=[];image_info=[];provider='guardrail';model=None;provider_warning=None
+            sources=[];clean=[];image_info=[];provider='guardrail';quota=None
+            # Urgent help is not conditional on a usable image or provider quota.
             if emergency_signal(data.message):
                 answer=fixed_answer('emergency')
             elif not is_medical(data.message,data.history,bool(data.images)):
                 answer=fixed_answer('out_of_scope')
             else:
-                # Re-encode images in memory before any external multimodal call.
-                # EXIF/ICC metadata is removed and the original bytes are not stored.
-                clean_images=[]
                 for image in data.images:
-                    clean_url,info=await asyncio.to_thread(sanitize_image,image.data_url,cfg.max_image_bytes)
-                    image_info.append(info)
-                    clean_images.append(image.model_copy(update={'data_url':clean_url,'kind':'photo'}))
-                if clean_images:
-                    data=data.model_copy(update={'images':clean_images})
-
-                query=(data.message or '').strip()
+                    im,info=await asyncio.to_thread(sanitize_image,image.data_url,cfg.max_image_bytes)
+                    clean.append(im);image_info.append(info)
+                query=data.message
                 if len(query)<80 and data.history:
                     previous=next((h.content for h in reversed(data.history) if h.role=='user'),'')
-                    query=(previous[:220]+' '+query).strip()
-                # Image-only questions get a short, non-diagnostic vision pass so
-                # the operator's MEDI knowledge can still participate in RAG.
-                if data.images and cfg.image_ai_available and cfg.ai_provider!='browser':
-                    try:
-                        image_hint=await provider_image_search_query(data,cfg)
-                        if image_hint:
-                            query=(query+' '+image_hint).strip()
-                    except Exception:
-                        pass
-                if not query:
-                    query='의료 이미지 검사 결과 상처 의료영상'
+                    query=previous[:250]+' '+query
                 if not cfg.public or cfg.dataset_rights_confirmed:
-                    sources=await asyncio.to_thread(knowledge.search,query,study=False,limit=5)
-
-                # Prefer a free server-side provider because it works on PCs and
-                # phones even when WebGPU is unavailable. The uploaded MEDI
-                # evidence is inserted into the prompt before generation.
-                if cfg.configured_backends and cfg.ai_provider!='browser':
-                    try:
-                        gen=generator or provider_generate
-                        produced=await gen(data,sources,cfg)
-                        if isinstance(produced, ProviderResult):
-                            answer=produced.answer;provider=produced.provider;model=produced.model
-                        elif isinstance(produced, MedicalAnswer):
-                            answer=produced;provider='free_server_ai';model=None
-                        else:
-                            raise ProviderError('free_ai_output','무료 AI 응답 형식이 올바르지 않습니다.')
-                    except ProviderError as exc:
-                        provider_warning=exc.code
-                        if data.images:
-                            provider='vision_unavailable'
-                            text=('이미지는 정상적으로 받았지만 외부 이미지 이해 AI가 잠시 응답하지 않았어요. '
-                                  'MEDI가 여러 번 재연결하고 가능한 다른 무료 제공자까지 시도했지만 이번 요청에서는 분석을 완료하지 못했습니다. '
-                                  '아래의 “이미지 다시 분석”을 누르면 같은 사진과 질문으로 다시 시도할 수 있어요.')
-                            image_note=['이번 응답은 이미지 내용을 판독한 결과가 아닙니다. 이미지 분석이 성공한 뒤 다시 설명하겠습니다.']
-                        else:
-                            provider='browser_local'
-                            text=('MEDI 의료자료는 찾았지만 무료 서버 AI 연결이 잠시 실패했습니다. '
-                                  '브라우저 보조 AI로 답변 생성을 시도합니다.' if sources else
-                                  '이번 질문과 직접 연결되는 MEDI 의료자료를 찾지 못했고 무료 서버 AI 연결도 잠시 실패했습니다. '
-                                  '브라우저 보조 AI로 일반적인 설명을 시도합니다.')
-                            image_note=[]
-                        answer=MedicalAnswer(in_scope=True,urgency='unknown',
-                            evidence_status='partial' if sources else 'insufficient',
-                            paragraphs=[Paragraph(heading='',text=text,source_ids=[])],
-                            follow_up_questions=[],image_observations=image_note,limitations='참고용 의료정보예요. 중요한 판단은 의료진에게 확인하세요.')
+                    sources=await asyncio.to_thread(knowledge.search,query,study=data.mode=='study',limit=5)
+                if not cfg.api_key:
+                    provider='retrieval_demo'
+                    answer=MedicalAnswer(in_scope=True,urgency='unknown',evidence_status='insufficient',
+                        paragraphs=[Paragraph(heading='AI \uc5f0\uacb0 \uc804 \uac80\uc0c9 \uccb4\ud5d8',
+                        text='\ud604\uc7ac \ubaa8\ub378 API \ud0a4\uac00 \uc124\uc815\ub418\uc9c0 \uc54a\uc544 \uc0c8\ub85c\uc6b4 \uc758\ud559 \ub2f5\ubcc0\uc744 \uc0dd\uc131\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4. \uc544\ub798\uc5d0\uc11c \uc5c5\ub85c\ub4dc \uc790\ub8cc\uc758 \uac80\uc0c9 \uacb0\uacfc\ub97c \ud655\uc778\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4. \uac80\uc0c9 \uacb0\uacfc\ub294 \uc784\uc0c1\uc801\uc73c\ub85c \uac80\uc99d\ub41c \ub2f5\ubcc0\uc774 \uc544\ub2d9\ub2c8\ub2e4. \uc774\ubbf8\uc9c0\ub3c4 AI\ub85c \uc804\uc1a1\ub418\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4.',source_ids=[])],
+                        follow_up_questions=[],image_observations=[],limitations=DISCLAIMER)
                 else:
-                    provider='browser_local'
-                    if sources:
-                        text='MEDI 의료자료를 찾았습니다. 브라우저 보조 AI가 이 자료를 우선 근거로 답변을 작성합니다.'
-                        evidence='partial'
-                    else:
-                        text='이번 질문과 직접 연결되는 MEDI 의료자료는 찾지 못했습니다. 브라우저 보조 AI가 일반 의학지식으로 설명하되 근거 부족을 표시합니다.'
-                        evidence='insufficient'
-                    image_note=['이미지는 첨부됐지만 현재 연결된 멀티모달 서버 AI가 없어 내용을 분석하지 못했습니다.'] if data.images else []
-                    answer=MedicalAnswer(in_scope=True,urgency='unknown',
-                        evidence_status=evidence,
-                        paragraphs=[Paragraph(heading='',text=text,source_ids=[])],
-                        follow_up_questions=[],image_observations=image_note,limitations=DISCLAIMER)
-
+                    try: await asyncio.wait_for(gate.acquire(),timeout=.2)
+                    except TimeoutError: raise HTTPException(503,'server_busy')
+                    try:
+                        if token and cfg.has_accounts:quota=await cloud().reserve_call(token)
+                        elif is_guest and cfg.public:
+                            if not limiter.allow('guest-daily:'+uid,cfg.guest_daily_limit,86400):raise HTTPException(429,'daily_limit')
+                            quota={'guest':True,'daily_limit':cfg.guest_daily_limit}
+                        elif not limiter.allow('local-daily',100,86400):raise HTTPException(429,'daily_limit')
+                        answer=await generator(data,sources,clean,cfg)
+                        provider='openai'
+                    finally:gate.release()
             result={'id':str(data.request_id),'answer':answer.model_dump(),'sources':sources,
-                    'provider':provider,'model':model,'provider_warning':provider_warning,
-                    'image_processing':image_info,'image_bytes_stored':False,'quota':None,
-                    'saved':False,'learning_applied':False,
-                    'local_ai_allowed':provider=='browser_local' and not bool(data.images),
-                    'image_analysis_ok':bool(data.images and provider in {'groq_free','gemini_free','free_server_ai'}),
-                    'retryable':bool(provider_warning in {'free_ai_network','free_ai_timeout','free_ai_limit','free_ai_upstream'}),
-                    'knowledge_used':bool(sources)}
+                    'provider':provider,'model':cfg.model if provider=='openai' else None,
+                    'image_processing':image_info,'image_bytes_stored':False,'quota':quota,'saved':False,
+                    'learning_applied':False}
+            if data.conversation_id and not is_guest:
+                try:
+                    result['saved']=True
+                    await cloud().save_turn(token,uid,str(data.conversation_id),str(data.request_id),
+                        {'question':data.message,'mode':data.mode,'had_images':bool(data.images),'request_digest':digest,'response':result})
+                except CloudError:
+                    result['saved']=False;result['save_warning']='answer_not_saved_export_before_leaving'
             results[key]=(time.monotonic(),digest,result)
             return result
         finally:
             active.discard(key);active_users.discard(uid)
-
-    @app.post('/api/conversations/{cid}/turns/local')
-    async def save_local_turn(cid:UUID,data:LocalTurnSave,request:Request):
-        user,token=await identity(request)
-        if data.response.get('provider') not in {'browser_local','retrieval_only','vision_unavailable','guardrail','groq_free','gemini_free','free_server_ai'}:
-            raise HTTPException(400,'invalid_request')
-        try:
-            MedicalAnswer.model_validate(data.response.get('answer'))
-        except Exception:
-            raise HTTPException(400,'invalid_request')
-        await cloud().require_conversation(token,str(cid))
-        response_payload=dict(data.response)
-        response_payload['saved']=True
-        payload={'question':data.question,'mode':data.mode,'had_images':data.had_images,'response':response_payload}
-        await cloud().save_turn(token,user['id'],str(cid),str(data.request_id),payload)
-        return {'ok':True,'saved':True}
 
     @app.post('/api/feedback')
     async def feedback(data: FeedbackRequest,request:Request):
