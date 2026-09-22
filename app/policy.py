@@ -13,8 +13,8 @@ MEDICAL_TERMS=[
  '\uace8\uc808','\ub2f9\ub1e8','\uace0\ud608\uc555','\uac10\uc5fc','\ub450\ud1b5','\ubc1c\uc5f4','\uc5fc\uc99d','\ud608\uc555','\ud608\ub2f9','\uc554','\ubc1c\ubaa9','\ubb34\ub98e','\ud53c\ubd80','\ub450\ub4dc\ub7ec\uae30','\ucc9c\uc2dd',
  '\uc228','\ud638\ud761','\uac00\uc2b4','\ubcf5\ud1b5','\uadfc\uc721','\uc720\uc804','\uc138\ud3ec','\ud574\ubd80','\uc218\uc220','\uc751\uae09','\uc784\uc2e0','\uc0dd\ub9ac','\uc18c\uc544','\ud608\uc561','\ud569\ubcd1','\uad00\uc808','\uc57d\uc740',
  '\uc5fc\uc88c','\uc99d\ud6c4','\ubcf4\ud5d8','\uae30\uce68','\uad6c\ud1a0','\uc124\uc0ac','\ucd9c\ud608','\uc758\uc2dd','\ud604\uae30','\uc5b4\uc9c0','\uc790\ud574','\uc790\uc0b4','\uc8fd\uace0','\uc6b0\uc6b8','\ubd88\uc548','\uc815\uc2e0','\uc790\uad81','\ud3d0\ub834',
- 'medical','health','symptom','pain','fracture','disease','diagnos','treatment','blood','drug','medicine','report','x-ray','xray','mri','ct','diabet','asthma','hypertension','anatomy','fever','cancer','injury','suicid']
-UNRELATED=['\uac8c\uc784','\uc8fc\uc2dd \ucd94\ucc9c','\ub85c\ub610','\ud3ec\ucf13','\uc5f0\uc560\uc18c\uc124','\uc8fc\uac00','\ub0a0\uc528','\uc5ec\ud589 \uc77c\uc815','\uc120\uac70','\ub300\ud1b5\ub839','bitcoin','javascript game','travel itinerary']
+ '인공심폐기','인공심폐','심폐우회','체외순환','의료기기','심장','폐','medical','health','symptom','pain','fracture','disease','diagnos','treatment','blood','drug','medicine','report','x-ray','xray','mri','ct','diabet','asthma','hypertension','anatomy','fever','cancer','injury','suicid']
+UNRELATED=['게임','주식 추천','로또','포켓몬','연애소설','주가','날씨','여행 일정','선거','대통령','파이썬','코딩','프로그래밍','축구','야구','영화 추천','노래 추천','bitcoin','javascript game','travel itinerary']
 GREETINGS=['\uc548\ub155','\uace0\ub9c8\uc6cc','\uac10\uc0ac','hello','hi','thanks','\ub124','\uc751']
 
 EMERGENCY_PATTERNS=[
@@ -43,15 +43,25 @@ def emergency_signal(text: str) -> bool:
 
 
 def is_medical(text: str, history=(), has_images=False) -> bool:
-    low=text.lower()
-    if has_images: return True
-    if any((bool(re.search(r'\b'+re.escape(term)+r'\b',low)) if term in {'ct','mri'} else term in low) for term in MEDICAL_TERMS): return True
-    if any(term in low for term in UNRELATED): return False
-    if len(low)<24 and any(low.startswith(g) for g in GREETINGS): return True
-    # Elliptical follow-up is admitted only in a medical conversation.
+    """Broad medical-domain gate for a consumer-facing medical assistant.
+
+    Uncommon medical terms should not be rejected merely because they are not
+    present in a small whitelist. Clearly unrelated requests are still blocked.
+    """
+    low=(text or '').strip().lower()
+    if has_images:
+        return True
+    if not low:
+        return False
+    if any(term in low for term in UNRELATED):
+        return False
+    if any((bool(re.search(r'\b'+re.escape(term)+r'\b',low)) if term in {'ct','mri'} else term in low) for term in MEDICAL_TERMS):
+        return True
+    if len(low)<24 and any(low.startswith(g) for g in GREETINGS):
+        return True
     if len(low)<160 and any(any(t in m.content.lower() for t in MEDICAL_TERMS) for m in history if m.role=='user'):
         return True
-    return False
+    return len(low) >= 2
 
 
 def fixed_answer(kind: str) -> MedicalAnswer:

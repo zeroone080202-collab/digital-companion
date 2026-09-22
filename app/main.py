@@ -19,7 +19,7 @@ from app.config import Settings, settings as default_settings, ROOT
 from app.cloud import CloudStore, CloudError
 from app.images import sanitize_image, ImageValidationError
 from app.policy import is_medical, emergency_signal, fixed_answer, DISCLAIMER
-from app.provider import generate as provider_generate, ProviderError, ProviderResult
+from app.provider import generate as provider_generate, image_search_query as provider_image_search_query, ProviderError, ProviderResult
 from app.retrieval import KnowledgeStore
 from app.schemas import (ChatRequest, Credentials, NewConversation, FeedbackRequest, DeleteAccount,
                          HistoryMessage, MedicalAnswer, Paragraph, LocalTurnSave)
@@ -122,14 +122,14 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
     async def config():
         backend=cfg.free_server_ai
         model=(cfg.groq_model if backend=='groq' else cfg.gemini_model if backend=='gemini' else None)
-        return {'app':'MEDI','version':'0.5.2','public':cfg.public,'accounts':cfg.has_accounts,
+        return {'app':'MEDI','version':'0.6.0','public':cfg.public,'accounts':cfg.has_accounts,
                 'ai_mode':'server_free' if backend else 'browser_local',
                 'ai_backend':backend,'ai_connected':bool(backend),'ai_model':model,
                 'local_model':'Qwen2.5-0.5B-Instruct-q4f16_1-MLC',
                 'knowledge':app.state.stats,'knowledge_enabled':not cfg.public or cfg.dataset_rights_confirmed,
                 'dataset_rights_confirmed':cfg.dataset_rights_confirmed,
                 'invite_required':False,'guest_chat':True,'max_image_mb':5,'max_images':2,
-                'learning':'consented_feedback_then_human_review','radiology_enabled':False,
+                'learning':'consented_feedback_then_human_review','radiology_enabled':False,'image_understanding_enabled':bool(cfg.free_server_ai),
                 'operator_contact':cfg.operator_contact}
     @app.post('/api/auth/signup')
     async def signup(data: Credentials,request: Request):
@@ -247,23 +247,36 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
             sources=[];image_info=[];provider='guardrail';model=None;provider_warning=None
             if emergency_signal(data.message):
                 answer=fixed_answer('emergency')
-            elif any(i.kind=='radiology' for i in data.images):
-                answer=fixed_answer('radiology')
             elif not is_medical(data.message,data.history,bool(data.images)):
                 answer=fixed_answer('out_of_scope')
             else:
-                # Images are validated/re-encoded locally. Text-only free providers
-                # never receive the image bytes in v0.5.
+                # Re-encode images in memory before any external multimodal call.
+                # EXIF/ICC metadata is removed and the original bytes are not stored.
+                clean_images=[]
                 for image in data.images:
-                    _,info=await asyncio.to_thread(sanitize_image,image.data_url,cfg.max_image_bytes)
+                    clean_url,info=await asyncio.to_thread(sanitize_image,image.data_url,cfg.max_image_bytes)
                     image_info.append(info)
+                    clean_images.append(image.model_copy(update={'data_url':clean_url,'kind':'photo'}))
+                if clean_images:
+                    data=data.model_copy(update={'images':clean_images})
 
-                query=data.message
+                query=(data.message or '').strip()
                 if len(query)<80 and data.history:
                     previous=next((h.content for h in reversed(data.history) if h.role=='user'),'')
-                    query=previous[:250]+' '+query
+                    query=(previous[:220]+' '+query).strip()
+                # Image-only questions get a short, non-diagnostic vision pass so
+                # the operator's MEDI knowledge can still participate in RAG.
+                if data.images and cfg.free_server_ai:
+                    try:
+                        image_hint=await provider_image_search_query(data,cfg)
+                        if image_hint:
+                            query=(query+' '+image_hint).strip()
+                    except Exception:
+                        pass
+                if not query:
+                    query='의료 이미지 검사 결과 상처 의료영상'
                 if not cfg.public or cfg.dataset_rights_confirmed:
-                    sources=await asyncio.to_thread(knowledge.search,query,study=data.mode=='study',limit=5)
+                    sources=await asyncio.to_thread(knowledge.search,query,study=False,limit=5)
 
                 # Prefer a free server-side provider because it works on PCs and
                 # phones even when WebGPU is unavailable. The uploaded MEDI
@@ -280,15 +293,20 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
                             raise ProviderError('free_ai_output','무료 AI 응답 형식이 올바르지 않습니다.')
                     except ProviderError as exc:
                         provider_warning=exc.code
-                        provider='browser_local'
-                        text=('MEDI 의료자료는 찾았지만 무료 서버 AI 연결이 잠시 실패했습니다. '
-                              '브라우저 보조 AI로 답변 생성을 시도합니다.' if sources else
-                              '이번 질문과 직접 연결되는 MEDI 의료자료를 찾지 못했고 무료 서버 AI 연결도 잠시 실패했습니다. '
-                              '브라우저 보조 AI로 일반적인 설명을 시도합니다.')
-                        answer=MedicalAnswer(in_scope=True,urgency='general_information' if data.mode=='study' else 'unknown',
+                        if data.images:
+                            provider='retrieval_only'
+                            text=('이미지는 정상적으로 첨부됐지만 지금은 이미지 이해 AI 연결이 되지 않았어요. '
+                                  '연결된 MEDI 의료자료는 아래에서 확인할 수 있습니다. Groq 또는 Gemini가 연결되면 같은 이미지로 설명할 수 있어요.')
+                        else:
+                            provider='browser_local'
+                            text=('MEDI 의료자료는 찾았지만 무료 서버 AI 연결이 잠시 실패했습니다. '
+                                  '브라우저 보조 AI로 답변 생성을 시도합니다.' if sources else
+                                  '이번 질문과 직접 연결되는 MEDI 의료자료를 찾지 못했고 무료 서버 AI 연결도 잠시 실패했습니다. '
+                                  '브라우저 보조 AI로 일반적인 설명을 시도합니다.')
+                        answer=MedicalAnswer(in_scope=True,urgency='unknown',
                             evidence_status='partial' if sources else 'insufficient',
                             paragraphs=[Paragraph(heading='',text=text,source_ids=[])],
-                            follow_up_questions=[],image_observations=[],limitations=DISCLAIMER)
+                            follow_up_questions=[],image_observations=[],limitations='참고용 의료정보예요. 중요한 판단은 의료진에게 확인하세요.')
                 else:
                     provider='browser_local'
                     if sources:
@@ -297,8 +315,8 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
                     else:
                         text='이번 질문과 직접 연결되는 MEDI 의료자료는 찾지 못했습니다. 브라우저 보조 AI가 일반 의학지식으로 설명하되 근거 부족을 표시합니다.'
                         evidence='insufficient'
-                    image_note=['첨부 이미지는 현재 텍스트 AI에 전달하지 않습니다. 영상 분석은 검증된 별도 모델을 연결한 뒤 활성화합니다.'] if data.images else []
-                    answer=MedicalAnswer(in_scope=True,urgency='general_information' if data.mode=='study' else 'unknown',
+                    image_note=['이미지는 첨부됐지만 현재 연결된 멀티모달 서버 AI가 없어 내용을 분석하지 못했습니다.'] if data.images else []
+                    answer=MedicalAnswer(in_scope=True,urgency='unknown',
                         evidence_status=evidence,
                         paragraphs=[Paragraph(heading='',text=text,source_ids=[])],
                         follow_up_questions=[],image_observations=image_note,limitations=DISCLAIMER)
@@ -307,7 +325,7 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
                     'provider':provider,'model':model,'provider_warning':provider_warning,
                     'image_processing':image_info,'image_bytes_stored':False,'quota':None,
                     'saved':False,'learning_applied':False,
-                    'local_ai_allowed':provider=='browser_local',
+                    'local_ai_allowed':provider=='browser_local' and not bool(data.images),
                     'knowledge_used':bool(sources)}
             results[key]=(time.monotonic(),digest,result)
             return result

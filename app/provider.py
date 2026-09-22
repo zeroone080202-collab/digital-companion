@@ -1,8 +1,8 @@
 """Free text-generation adapters for MEDI.
 
 MEDI retrieves the operator's uploaded medical knowledge first. A configured
-free provider then turns that evidence into a conversational answer. Images are
-NOT sent to these text providers.
+free provider then turns that evidence into a conversational answer. Vision-capable
+providers can also receive sanitized image copies for visual explanation.
 
 Provider order in MEDI_AI_PROVIDER=auto:
 1) Groq free tier, if GROQ_API_KEY is configured
@@ -75,7 +75,7 @@ def _normalize_structured_answer(raw: dict, sources: list[dict]) -> MedicalAnswe
     allowed = {str(s.get('id')) for s in sources}
     used = set()
     cleaned = []
-    for paragraph in answer.paragraphs[:7]:
+    for paragraph in answer.paragraphs[:4]:
         valid_ids = [sid for sid in paragraph.source_ids if sid in allowed]
         used.update(valid_ids)
         cleaned.append(Paragraph(heading=paragraph.heading[:80], text=paragraph.text[:6000], source_ids=valid_ids))
@@ -91,29 +91,29 @@ def _normalize_structured_answer(raw: dict, sources: list[dict]) -> MedicalAnswe
     return answer.model_copy(update={
         'paragraphs': cleaned,
         'evidence_status': evidence,
-        'follow_up_questions': answer.follow_up_questions[:5],
-        'image_observations': answer.image_observations[:5],
-        'limitations': (answer.limitations or DISCLAIMER)[:3000],
+        'follow_up_questions': answer.follow_up_questions[:3],
+        'image_observations': answer.image_observations[:4],
+        'limitations': '참고용 의료정보예요. 증상이 심하거나 걱정되는 변화가 있으면 의료진에게 확인하세요.',
     })
 
 
-SYSTEM_PROMPT = """너는 MEDI라는 한국어 의료 전문 연구·학습 보조 AI다.
+SYSTEM_PROMPT = """너는 MEDI라는 한국어 의료 전문 AI다. 사용자는 의학 전문가가 아니라 일반인이다.
 
-가장 중요한 원칙:
-1. 사용자가 운영자에게 제공한 'MEDI 의료지식 자료'를 최우선 근거로 사용한다.
-2. 제공된 근거에 있는 사실과 모델의 일반 지식을 섞어서 확정적으로 말하지 않는다.
-3. 근거자료가 있으면 관련 문장 끝에 [S1], [S2]처럼 실제 제공된 ID만 표시한다.
-4. 자료가 부족하면 'MEDI 자료만으로는 충분히 확인되지 않는다'고 분명히 말한 뒤, 필요한 추가 정보나 일반적인 가능성을 조심스럽게 설명한다.
-5. 개인 증상에서 하나의 질환으로 확정 진단하지 않는다. 가능한 원인의 범주와 구분에 도움이 되는 질문을 제시한다.
-6. 처방약 시작·중단·용량 변경을 지시하지 않는다.
-7. 심한 흉통, 심한 호흡곤란, 의식저하, 새로 생긴 마비, 멈추지 않는 출혈 등 응급 신호가 있으면 119 또는 응급의료기관을 우선 안내한다.
-8. 사용자가 '왜 아픈가'라고 물으면 단순 경고문만 반복하지 말고, 증상 위치·시작 시점·외상·붓기/열감·체중부하 가능 여부·동반 증상 등 의학적으로 유용한 구분 정보를 자연스럽게 묻는다.
-9. 설명은 어렵지 않은 한국어로 하되, 필요하면 의학용어를 괄호에 함께 적는다.
-10. 답변은 의료상담 기록처럼 딱딱한 템플릿이 아니라 자연스러운 대화형 설명으로 작성한다.
-11. source_ids에는 실제로 해당 문단의 근거로 사용한 MEDI 자료 ID만 넣는다. 근거가 없으면 빈 배열로 둔다.
-12. 개인 증상 질문에서는 필요한 경우 2~4개의 짧은 후속 질문을 follow_up_questions에 넣는다.
+답변 원칙:
+1. MEDI에 연결된 의료지식 자료를 가장 먼저 참고한다. 관련 근거가 있으면 실제 [S1], [S2] ID만 사용한다.
+2. 질문이 짧아도 넓게 이해한다. 질병, 증상, 검사, 수술, 약, 해부학, 의료기기, 응급처치 원리 등 의학 질문을 자연스럽게 답한다.
+3. 첫 문장은 결론부터 아주 쉽게 말한다. 어려운 전문용어는 꼭 필요할 때만 쉬운 말 뒤 괄호에 붙인다.
+4. 기본 답변은 짧고 읽기 쉽게 쓴다. 보통 2~3개 짧은 문단이면 충분하다. 사용자가 자세히 물을 때만 길게 설명한다.
+5. '인공심폐기가 뭐야?' 같은 개념 질문은 '한마디로 → 언제 쓰는지 → 어떻게 작동하는지' 정도로 설명한다. 시험답안처럼 복잡한 문장이나 과도한 분류를 피한다.
+6. 개인 증상 질문은 확정 진단하지 않는다. 흔한 가능성부터 이해하기 쉽게 설명하고, 꼭 필요한 경우에만 짧은 추가 질문 1~3개를 제시한다.
+7. 처방약을 새로 시작·중단하거나 용량을 바꾸라고 지시하지 않는다.
+8. 심한 흉통, 심한 호흡곤란, 의식저하, 새로 생긴 마비, 멈추지 않는 출혈 등 명확한 응급 신호가 있으면 119 또는 응급의료기관을 우선 안내한다.
+9. 이미지가 있으면 실제로 보이는 내용과 일반적인 의미를 구분해서 설명한다. 검사결과지의 글자는 읽어 쉽게 풀어줄 수 있다. 상처·피부 사진은 보이는 특징을 설명할 수 있다. X-ray·CT·MRI는 보이는 구조나 의심되는 점을 참고 수준으로 설명하되 확정 판독이나 '정상' 보증을 하지 않는다.
+10. 이미지에 보이지 않는 사실을 지어내지 않는다. 화질이 낮거나 판단이 어려우면 솔직하게 말한다.
+11. MEDI 근거가 부족하면 억지로 자료를 끼워 맞추지 말고, 일반 의학지식임을 자연스럽게 구분한다.
+12. source_ids에는 그 문단에서 실제로 사용한 MEDI 자료 ID만 넣는다.
 
-이 시스템은 연구용이며 실제 의료진의 진료·검사·진단·처방을 대신하지 않는다.
+이 시스템은 의료정보 이해를 돕는 도구이며 실제 의료진의 진료·검사·확정 진단·처방을 대신하지 않는다.
 """
 
 
@@ -153,20 +153,56 @@ def _reference_text(sources: list[dict]) -> str:
 
 
 def _messages(request: ChatRequest, sources: list[dict]) -> list[dict]:
-    mode = '의학 학습 모드' if request.mode == 'study' else '건강정보 모드'
+    question = _redact_identifiers(request.message).strip() or '첨부한 이미지를 일반인이 이해하기 쉽게 설명해줘.'
     user = (
-        f"현재 모드: {mode}\n\n"
-        f"MEDI 업로드 근거자료:\n{_reference_text(sources)}\n\n"
-        f"사용자 질문:\n{_redact_identifiers(request.message)}\n\n"
-        "위 MEDI 근거자료를 먼저 활용해 답해라. 자료가 관련 있으면 실제 ID로 인용하고, "
-        "관련이 없거나 부족하면 억지로 인용하지 마라. 개인 증상 질문이면 가능한 원인을 확정하지 말고 "
-        "구분에 필요한 질문과 진료가 필요한 신호를 함께 설명해라."
+        f"MEDI 의료지식 자료:\n{_reference_text(sources)}\n\n"
+        f"사용자 질문:\n{question}\n\n"
+        "MEDI 자료가 관련되면 먼저 활용하고 실제 source ID만 인용해라. "
+        "답변은 일반인이 읽기 쉽게 짧고 자연스럽게 작성해라. "
+        "이미지가 있으면 보이는 내용을 실제로 확인해서 설명하되 확정 진단처럼 말하지 마라."
     )
     out = [{'role': 'system', 'content': SYSTEM_PROMPT}]
     for h in request.history[-4:]:
-        out.append({'role': h.role, 'content': _clip(_redact_identifiers(h.content), 1400)})
+        out.append({'role': h.role, 'content': _clip(_redact_identifiers(h.content), 1200)})
     out.append({'role': 'user', 'content': user})
     return out
+
+
+def _data_url_parts(data_url: str) -> tuple[str, str]:
+    match = re.fullmatch(r'data:(image/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)', data_url or '')
+    if not match:
+        raise ProviderError('invalid_image', '이미지 형식을 읽지 못했습니다.')
+    return match.group(1), match.group(2)
+
+
+def _groq_messages(request: ChatRequest, sources: list[dict]) -> list[dict]:
+    messages = _messages(request, sources)
+    if request.images:
+        text = messages[-1]['content'] + (
+            "\n\n첨부 이미지를 함께 확인해라. 반드시 JSON 객체로만 답하고 "
+            "in_scope, urgency, evidence_status, paragraphs, follow_up_questions, image_observations, limitations 키를 모두 포함해라."
+        )
+        content = [{'type': 'text', 'text': text}]
+        for image in request.images[:2]:
+            content.append({'type': 'image_url', 'image_url': {'url': image.data_url}})
+        messages[-1] = {'role': 'user', 'content': content}
+    return messages
+
+
+def _gemini_contents(request: ChatRequest, sources: list[dict]) -> tuple[str, list[dict]]:
+    messages = _messages(request, sources)
+    system = messages[0]['content']
+    conversation = []
+    tail = messages[1:]
+    for index, m in enumerate(tail):
+        role = 'model' if m['role'] == 'assistant' else 'user'
+        parts = [{'text': m['content']}]
+        if index == len(tail) - 1 and request.images:
+            for image in request.images[:2]:
+                mime, data = _data_url_parts(image.data_url)
+                parts.append({'inline_data': {'mime_type': mime, 'data': data}})
+        conversation.append({'role': role, 'parts': parts})
+    return system, conversation
 
 
 def _text_to_answer(text: str, sources: list[dict], mode: str) -> MedicalAnswer:
@@ -178,7 +214,7 @@ def _text_to_answer(text: str, sources: list[dict], mode: str) -> MedicalAnswer:
     chunks = [p.strip() for p in re.split(r'\n\s*\n', text) if p.strip()]
     if not chunks:
         chunks = [text]
-    chunks = chunks[:7]
+    chunks = chunks[:4]
 
     paragraphs: list[Paragraph] = []
     used: set[str] = set()
@@ -201,33 +237,31 @@ def _text_to_answer(text: str, sources: list[dict], mode: str) -> MedicalAnswer:
     evidence = 'supported' if sources and used else ('partial' if sources else 'insufficient')
     return MedicalAnswer(
         in_scope=True,
-        urgency='general_information' if mode == 'study' else 'unknown',
+        urgency='unknown',
         evidence_status=evidence,
         paragraphs=paragraphs,
         follow_up_questions=[],
         image_observations=[],
-        limitations=DISCLAIMER + ' 생성형 AI의 설명은 오류가 있을 수 있으므로 중요한 의료 판단에는 의료진의 평가가 필요합니다.'
+        limitations='참고용 의료정보예요. 증상이 심하거나 걱정되는 변화가 있으면 의료진에게 확인하세요.'
     )
 
 
 async def _groq(request: ChatRequest, sources: list[dict], settings: Settings, transport=None) -> ProviderResult:
     payload = {
         'model': settings.groq_model,
-        'messages': _messages(request, sources),
+        'messages': _groq_messages(request, sources),
         'temperature': 0.2,
         'top_p': 0.9,
         'max_tokens': 1300,
         'stream': False,
-        # Qwen 3.8 on Groq supports strict JSON-schema output. This prevents
-        # UI-breaking ad-hoc formats while the server still checks citations.
-        'response_format': {
+        'response_format': ({'type': 'json_object'} if request.images else {
             'type': 'json_schema',
             'json_schema': {
                 'name': 'medi_medical_answer',
                 'strict': True,
                 'schema': ANSWER_SCHEMA,
             },
-        },
+        }),
     }
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(settings.timeout, connect=10), transport=transport, follow_redirects=False) as client:
@@ -256,12 +290,7 @@ async def _groq(request: ChatRequest, sources: list[dict], settings: Settings, t
 
 
 async def _gemini(request: ChatRequest, sources: list[dict], settings: Settings, transport=None) -> ProviderResult:
-    messages = _messages(request, sources)
-    system = messages[0]['content']
-    conversation = []
-    for m in messages[1:]:
-        role = 'model' if m['role'] == 'assistant' else 'user'
-        conversation.append({'role': role, 'parts': [{'text': m['content']}]})
+    system, conversation = _gemini_contents(request, sources)
     payload = {
         'system_instruction': {'parts': [{'text': system}]},
         'contents': conversation,
@@ -288,6 +317,60 @@ async def _gemini(request: ChatRequest, sources: list[dict], settings: Settings,
     except Exception as e:
         raise ProviderError('free_ai_output', 'Gemini 응답 형식을 읽지 못했습니다.') from e
     return ProviderResult(_text_to_answer(text, sources, request.mode), 'gemini_free', settings.gemini_model)
+
+
+async def image_search_query(request: ChatRequest, settings: Settings, transport=None) -> str:
+    """Create a short retrieval query from attached images before final RAG.
+
+    This first pass does not diagnose. It extracts visible medical terms, body
+    region, document headings, or modality names so the local MEDI knowledge
+    database can be searched even when the user sends only an image.
+    """
+    if not request.images:
+        return ''
+    prompt = (
+        "이 의료 이미지를 MEDI 내부자료 검색용으로만 요약해라. 진단하지 말고, "
+        "보이는 신체부위·검사명·의료용어·보고서 글자·상처의 겉모습 등 검색에 도움 되는 "
+        "핵심어를 한국어 중심 3~8개로 뽑아 JSON {\"query\":\"...\"} 형식으로만 답해라."
+    )
+    candidates=[]
+    if settings.ai_provider == 'groq':
+        candidates=['groq'] if settings.groq_api_key else []
+    elif settings.ai_provider == 'gemini':
+        candidates=['gemini'] if settings.gemini_api_key else []
+    elif settings.ai_provider == 'auto':
+        if settings.groq_api_key: candidates.append('groq')
+        if settings.gemini_api_key: candidates.append('gemini')
+    for name in candidates:
+        try:
+            if name == 'groq':
+                content=[{'type':'text','text':prompt}]
+                for image in request.images[:2]:
+                    content.append({'type':'image_url','image_url':{'url':image.data_url}})
+                payload={'model':settings.groq_model,'messages':[{'role':'user','content':content}],
+                         'temperature':0,'max_tokens':120,'stream':False,'response_format':{'type':'json_object'}}
+                async with httpx.AsyncClient(timeout=httpx.Timeout(settings.timeout,connect=10),transport=transport,follow_redirects=False) as client:
+                    response=await client.post('https://api.groq.com/openai/v1/chat/completions',headers={'Authorization':'Bearer '+settings.groq_api_key,'Content-Type':'application/json'},json=payload)
+                if response.status_code>=400: continue
+                raw=json.loads(response.json()['choices'][0]['message']['content'])
+                return _clip(raw.get('query',''),300)
+            if name == 'gemini':
+                parts=[{'text':prompt}]
+                for image in request.images[:2]:
+                    mime,data=_data_url_parts(image.data_url)
+                    parts.append({'inline_data':{'mime_type':mime,'data':data}})
+                payload={'contents':[{'role':'user','parts':parts}],
+                         'generationConfig':{'temperature':0,'maxOutputTokens':120,'responseMimeType':'application/json'}}
+                url=f'https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent'
+                async with httpx.AsyncClient(timeout=httpx.Timeout(settings.timeout,connect=10),transport=transport,follow_redirects=False) as client:
+                    response=await client.post(url,headers={'x-goog-api-key':settings.gemini_api_key,'Content-Type':'application/json'},json=payload)
+                if response.status_code>=400: continue
+                text=''.join(p.get('text','') for p in response.json()['candidates'][0]['content']['parts'])
+                raw=json.loads(text)
+                return _clip(raw.get('query',''),300)
+        except Exception:
+            continue
+    return ''
 
 
 async def generate(request: ChatRequest, sources: list[dict], settings: Settings, transport=None) -> ProviderResult:
