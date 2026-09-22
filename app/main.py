@@ -122,7 +122,7 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
     async def config():
         backend=cfg.free_server_ai
         model=(cfg.groq_model if backend=='groq' else cfg.gemini_model if backend=='gemini' else None)
-        return {'app':'MEDI','version':'0.6.0','public':cfg.public,'accounts':cfg.has_accounts,
+        return {'app':'MEDI','version':'0.7.0','public':cfg.public,'accounts':cfg.has_accounts,
                 'ai_mode':'server_free' if backend else 'browser_local',
                 'ai_backend':backend,'ai_connected':bool(backend),'ai_model':model,
                 'local_model':'Qwen2.5-0.5B-Instruct-q4f16_1-MLC',

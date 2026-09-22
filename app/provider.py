@@ -65,8 +65,37 @@ ANSWER_SCHEMA = {
 }
 
 
+def _trim_for_consumer(value: str, max_chars: int = 430, max_sentences: int = 4) -> str:
+    """Keep default answers short enough for non-medical users to scan.
+
+    The model still receives the full MEDI evidence. This only limits how much
+    of a default answer is shown unless the user explicitly asks for detail.
+    """
+    text = re.sub(r'[ \t]+', ' ', str(value or '')).strip()
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    if len(text) <= max_chars:
+        return text
+    parts = re.split(r'(?<=[.!?。！？요다])\s+|\n+', text)
+    kept = []
+    total = 0
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        if kept and (len(kept) >= max_sentences or total + len(part) > max_chars):
+            break
+        kept.append(part)
+        total += len(part) + 1
+    out = ' '.join(kept).strip()
+    if not out:
+        out = text[:max_chars].rstrip()
+    if len(out) < len(text) and out[-1:] not in '.!?。！？요다':
+        out = out.rstrip(' ,;:') + '…'
+    return out
+
+
 def _normalize_structured_answer(raw: dict, sources: list[dict]) -> MedicalAnswer:
-    """Validate model JSON and refuse invented MEDI citations."""
+    """Validate model JSON, refuse invented citations, and simplify display."""
     try:
         answer = MedicalAnswer.model_validate(raw)
     except Exception as e:
@@ -75,10 +104,13 @@ def _normalize_structured_answer(raw: dict, sources: list[dict]) -> MedicalAnswe
     allowed = {str(s.get('id')) for s in sources}
     used = set()
     cleaned = []
-    for paragraph in answer.paragraphs[:4]:
+    for paragraph in answer.paragraphs[:3]:
         valid_ids = [sid for sid in paragraph.source_ids if sid in allowed]
         used.update(valid_ids)
-        cleaned.append(Paragraph(heading=paragraph.heading[:80], text=paragraph.text[:6000], source_ids=valid_ids))
+        heading = paragraph.heading[:30].strip()
+        text = _trim_for_consumer(paragraph.text, 430, 4)
+        if text:
+            cleaned.append(Paragraph(heading=heading, text=text, source_ids=valid_ids))
     if not cleaned:
         raise ProviderError('free_ai_output', '무료 AI가 본문 없이 응답했습니다.')
 
@@ -91,27 +123,35 @@ def _normalize_structured_answer(raw: dict, sources: list[dict]) -> MedicalAnswe
     return answer.model_copy(update={
         'paragraphs': cleaned,
         'evidence_status': evidence,
-        'follow_up_questions': answer.follow_up_questions[:3],
-        'image_observations': answer.image_observations[:4],
-        'limitations': '참고용 의료정보예요. 증상이 심하거나 걱정되는 변화가 있으면 의료진에게 확인하세요.',
+        'follow_up_questions': [_trim_for_consumer(q, 100, 1) for q in answer.follow_up_questions[:2]],
+        'image_observations': [_trim_for_consumer(x, 220, 2) for x in answer.image_observations[:2]],
+        'limitations': '참고용 정보예요. 증상이 심하거나 계속되면 의료진에게 확인하세요.',
     })
 
 
 SYSTEM_PROMPT = """너는 MEDI라는 한국어 의료 전문 AI다. 사용자는 의학 전문가가 아니라 일반인이다.
 
-답변 원칙:
-1. MEDI에 연결된 의료지식 자료를 가장 먼저 참고한다. 관련 근거가 있으면 실제 [S1], [S2] ID만 사용한다.
-2. 질문이 짧아도 넓게 이해한다. 질병, 증상, 검사, 수술, 약, 해부학, 의료기기, 응급처치 원리 등 의학 질문을 자연스럽게 답한다.
-3. 첫 문장은 결론부터 아주 쉽게 말한다. 어려운 전문용어는 꼭 필요할 때만 쉬운 말 뒤 괄호에 붙인다.
-4. 기본 답변은 짧고 읽기 쉽게 쓴다. 보통 2~3개 짧은 문단이면 충분하다. 사용자가 자세히 물을 때만 길게 설명한다.
-5. '인공심폐기가 뭐야?' 같은 개념 질문은 '한마디로 → 언제 쓰는지 → 어떻게 작동하는지' 정도로 설명한다. 시험답안처럼 복잡한 문장이나 과도한 분류를 피한다.
-6. 개인 증상 질문은 확정 진단하지 않는다. 흔한 가능성부터 이해하기 쉽게 설명하고, 꼭 필요한 경우에만 짧은 추가 질문 1~3개를 제시한다.
-7. 처방약을 새로 시작·중단하거나 용량을 바꾸라고 지시하지 않는다.
-8. 심한 흉통, 심한 호흡곤란, 의식저하, 새로 생긴 마비, 멈추지 않는 출혈 등 명확한 응급 신호가 있으면 119 또는 응급의료기관을 우선 안내한다.
-9. 이미지가 있으면 실제로 보이는 내용과 일반적인 의미를 구분해서 설명한다. 검사결과지의 글자는 읽어 쉽게 풀어줄 수 있다. 상처·피부 사진은 보이는 특징을 설명할 수 있다. X-ray·CT·MRI는 보이는 구조나 의심되는 점을 참고 수준으로 설명하되 확정 판독이나 '정상' 보증을 하지 않는다.
-10. 이미지에 보이지 않는 사실을 지어내지 않는다. 화질이 낮거나 판단이 어려우면 솔직하게 말한다.
-11. MEDI 근거가 부족하면 억지로 자료를 끼워 맞추지 말고, 일반 의학지식임을 자연스럽게 구분한다.
-12. source_ids에는 그 문단에서 실제로 사용한 MEDI 자료 ID만 넣는다.
+가장 중요한 목표는 '정확한 의료정보를 쉬운 말로 짧게 설명하는 것'이다.
+
+답변 규칙:
+1. MEDI에 연결된 의료지식 자료를 먼저 참고한다. 관련 근거가 있으면 실제 [S1], [S2] ID만 source_ids에 넣고, 본문에는 [S1] 같은 표기를 넣지 않는다.
+2. 첫 문장에서 질문에 바로 답한다. 서론, 교과서식 정의, 장황한 주의문구로 시작하지 않는다.
+3. 기본 답변은 전체 250~500자 정도를 목표로 한다. 최대 3개 짧은 문단, 문단당 1~3문장 정도로 쓴다.
+4. 사용자가 '자세히', '전문적으로', '논문', '기전'처럼 상세 설명을 요청한 경우에만 길게 설명한다.
+5. 어려운 전문용어는 되도록 쓰지 않는다. 꼭 필요하면 '쉬운 말 (전문용어)' 순서로 한 번만 적는다.
+6. 단순 개념 질문은 보통 '한마디로 → 어디에/언제 쓰는지 → 핵심 원리'만 설명한다.
+7. 증상 질문은 흔한 가능성 2~3개까지만 말하고, 꼭 필요한 확인 질문은 최대 2개만 제시한다.
+8. 긴 원인 목록, 드문 질환 나열, 병태생리 단계 나열, 논문 문체, 같은 의미 반복을 피한다.
+9. 사용자가 올린 이미지가 있으면 실제로 보이는 것부터 쉬운 말로 설명한다. 글자가 있는 검사결과·약봉투는 읽어서 뜻을 풀어준다. 상처·피부 사진은 눈에 보이는 특징을 설명한다. X-ray·CT·MRI는 참고 수준으로만 설명하고 확정 판독이나 정상 보증을 하지 않는다.
+10. 이미지에 없는 사실을 지어내지 않는다. 화질이나 범위가 부족하면 무엇이 부족한지만 짧게 말한다.
+11. 처방약을 새로 시작·중단하거나 용량을 바꾸라고 지시하지 않는다.
+12. 심한 흉통, 심한 호흡곤란, 의식저하, 새 마비, 멈추지 않는 출혈처럼 명확한 응급 신호가 있으면 다른 설명보다 119 또는 응급의료기관 안내를 먼저 한다.
+13. MEDI 자료가 부족하면 억지로 근거를 끼워 맞추지 않는다.
+14. 마지막에 긴 면책문구를 반복하지 않는다. UI가 별도로 짧은 주의문구를 보여준다.
+
+좋은 예:
+- '인공심폐기가 뭐야?' → '심장 수술 중 잠시 심장과 폐 역할을 대신해주는 기계예요. 혈액을 몸 밖으로 빼내 산소를 넣고 다시 몸으로 보내, 의사가 심장을 멈춘 상태에서도 수술할 수 있게 도와줍니다.'
+- '무릎이 아파' → 먼저 흔한 원인 몇 가지를 쉬운 말로 설명하고, 붓기·다친 적 같은 핵심 질문만 묻는다.
 
 이 시스템은 의료정보 이해를 돕는 도구이며 실제 의료진의 진료·검사·확정 진단·처방을 대신하지 않는다.
 """
@@ -157,9 +197,10 @@ def _messages(request: ChatRequest, sources: list[dict]) -> list[dict]:
     user = (
         f"MEDI 의료지식 자료:\n{_reference_text(sources)}\n\n"
         f"사용자 질문:\n{question}\n\n"
-        "MEDI 자료가 관련되면 먼저 활용하고 실제 source ID만 인용해라. "
-        "답변은 일반인이 읽기 쉽게 짧고 자연스럽게 작성해라. "
-        "이미지가 있으면 보이는 내용을 실제로 확인해서 설명하되 확정 진단처럼 말하지 마라."
+        "MEDI 자료가 관련되면 먼저 활용하고 실제 source ID만 사용해라. "
+        "기본 답변은 250~500자 정도로, 최대 3개 짧은 문단으로 작성해라. "
+        "첫 문장에 바로 답하고 전문용어·긴 목록·교과서식 설명을 줄여라. "
+        "이미지가 있으면 보이는 내용을 먼저 설명하되 확정 진단처럼 말하지 마라."
     )
     out = [{'role': 'system', 'content': SYSTEM_PROMPT}]
     for h in request.history[-4:]:
@@ -214,7 +255,7 @@ def _text_to_answer(text: str, sources: list[dict], mode: str) -> MedicalAnswer:
     chunks = [p.strip() for p in re.split(r'\n\s*\n', text) if p.strip()]
     if not chunks:
         chunks = [text]
-    chunks = chunks[:4]
+    chunks = chunks[:3]
 
     paragraphs: list[Paragraph] = []
     used: set[str] = set()
@@ -232,7 +273,8 @@ def _text_to_answer(text: str, sources: list[dict], mode: str) -> MedicalAnswer:
         if sep and len(first) <= 32 and not first.endswith(('.', '다', '요')):
             heading = first.strip('# *')
             body = rest.strip()
-        paragraphs.append(Paragraph(heading=heading, text=body, source_ids=ids))
+        body = re.sub(r'\[(?:S\d+)\]', '', body).strip()
+        paragraphs.append(Paragraph(heading=heading[:30], text=_trim_for_consumer(body, 430, 4), source_ids=ids))
 
     evidence = 'supported' if sources and used else ('partial' if sources else 'insufficient')
     return MedicalAnswer(
@@ -252,7 +294,7 @@ async def _groq(request: ChatRequest, sources: list[dict], settings: Settings, t
         'messages': _groq_messages(request, sources),
         'temperature': 0.2,
         'top_p': 0.9,
-        'max_tokens': 1300,
+        'max_tokens': 800,
         'stream': False,
         'response_format': ({'type': 'json_object'} if request.images else {
             'type': 'json_schema',
@@ -294,7 +336,7 @@ async def _gemini(request: ChatRequest, sources: list[dict], settings: Settings,
     payload = {
         'system_instruction': {'parts': [{'text': system}]},
         'contents': conversation,
-        'generationConfig': {'temperature': 0.2, 'topP': 0.9, 'maxOutputTokens': 1100},
+        'generationConfig': {'temperature': 0.2, 'topP': 0.9, 'maxOutputTokens': 760},
     }
     url = f'https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent'
     try:
