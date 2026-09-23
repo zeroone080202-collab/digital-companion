@@ -35,7 +35,8 @@ class Settings:
     ai_provider: str = field(default_factory=lambda: os.getenv('MEDI_AI_PROVIDER', 'gemini').strip().lower())
     ai_request_retries: int = field(default_factory=lambda: integer('MEDI_AI_RETRIES', 2, 0, 3))
     gemini_api_key: str = field(default_factory=lambda: os.getenv('GEMINI_API_KEY', '').strip())
-    gemini_model: str = field(default_factory=lambda: os.getenv('GEMINI_MODEL', 'gemini-2.5-flash').strip())
+    gemini_model: str = field(default_factory=lambda: os.getenv('GEMINI_MODEL', 'gemini-3.8-flash').strip())
+    gemini_fallback_model: str = field(default_factory=lambda: os.getenv('GEMINI_FALLBACK_MODEL', 'gemini-3.5-flash-lite').strip())
 
     # Account/history storage.
     supabase_url: str = field(default_factory=lambda: os.getenv('SUPABASE_URL', '').rstrip('/'))
@@ -69,6 +70,15 @@ class Settings:
     @property
     def public(self) -> bool:
         return self.deployment == 'public'
+
+    @property
+    def gemini_models(self) -> tuple[str, ...]:
+        models=[]
+        for model in (self.gemini_model, self.gemini_fallback_model):
+            model=(model or '').strip()
+            if model and model not in models:
+                models.append(model)
+        return tuple(models)
 
     @property
     def configured_backends(self) -> tuple[str, ...]:

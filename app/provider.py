@@ -329,52 +329,57 @@ async def _post_with_retry(
     raise ProviderError('gemini_network', 'Gemini 연결이 불안정합니다.') from last_exc
 
 
-def _raise_http_error(response: httpx.Response):
-    detail = ''
+def _error_detail(response: httpx.Response) -> str:
     try:
         body = response.json()
-        detail = str((body.get('error') or {}).get('message') or body.get('message') or '')[:360]
+        return str((body.get('error') or {}).get('message') or body.get('message') or '')[:500]
     except Exception:
-        pass
+        return ''
 
-    if response.status_code in {401, 403}:
+
+def _raise_http_error(response: httpx.Response, model: str):
+    detail = _error_detail(response)
+    if response.status_code == 401:
         raise ProviderError(
             'gemini_key',
-            'Gemini API 키 인증에 실패했습니다. Google AI Studio에서 새 Auth key를 만든 뒤 Render의 GEMINI_API_KEY를 다시 확인해 주세요.',
-            status=response.status_code,
+            'Gemini API 키 인증에 실패했습니다. Google AI Studio의 API key를 Render의 GEMINI_API_KEY에 다시 넣어 주세요.',
+            status=401,
+        )
+    if response.status_code == 403:
+        raise ProviderError(
+            'gemini_access',
+            f'{model} 모델 접근이 거부되었습니다. 새 프로젝트에서는 일부 구형 모델 접근이 제한될 수 있습니다.' + (f' · {detail}' if detail else ''),
+            status=403,
         )
     if response.status_code == 404:
         raise ProviderError(
             'gemini_model',
-            '설정한 Gemini 모델을 찾지 못했습니다. GEMINI_MODEL=gemini-2.5-flash 로 설정해 주세요.',
+            f'{model} 모델을 이 프로젝트에서 사용할 수 없습니다.' + (f' · {detail}' if detail else ''),
             status=404,
         )
     if response.status_code == 429:
         raise ProviderError(
             'gemini_limit',
-            'Gemini 무료 사용 한도에 잠시 도달했습니다. 잠시 후 다시 시도해 주세요.',
+            f'{model} 무료 사용 한도 또는 속도 제한에 도달했습니다.' + (f' · {detail}' if detail else ''),
             status=429,
         )
     if response.status_code >= 400:
-        suffix = f' · {detail}' if detail else ''
         raise ProviderError(
             'gemini_upstream',
-            f'Gemini 요청 실패 ({response.status_code}){suffix}',
+            f'Gemini 요청 실패 ({response.status_code}, {model})' + (f' · {detail}' if detail else ''),
             status=response.status_code,
         )
 
 
-async def _gemini_structured(
+async def _gemini_structured_once(
     prompt_system: str,
     contents: list[dict],
     settings: Settings,
+    model: str,
     *,
     max_tokens: int,
     transport=None,
 ) -> dict:
-    # Gemini GenerateContent's structured-output shape changed in 2026.
-    # Use generationConfig.responseFormat instead of the older
-    # responseMimeType/responseJsonSchema pair.
     payload = {
         'system_instruction': {'parts': [{'text': prompt_system}]},
         'contents': contents,
@@ -390,7 +395,7 @@ async def _gemini_structured(
             },
         },
     }
-    url = f'https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent'
+    url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
     response = await _post_with_retry(
         url,
         headers={
@@ -401,8 +406,43 @@ async def _gemini_structured(
         settings=settings,
         transport=transport,
     )
-    _raise_http_error(response)
+    _raise_http_error(response, model)
     return _parse_json_text(_extract_text(response.json()))
+
+
+async def _gemini_structured(
+    prompt_system: str,
+    contents: list[dict],
+    settings: Settings,
+    *,
+    max_tokens: int,
+    transport=None,
+) -> tuple[dict, str]:
+    errors=[]
+    for model in settings.gemini_models:
+        try:
+            raw=await _gemini_structured_once(
+                prompt_system, contents, settings, model,
+                max_tokens=max_tokens, transport=transport,
+            )
+            return raw, model
+        except ProviderError as exc:
+            errors.append(exc)
+            # A bad/expired key will fail for every model; stop immediately.
+            if exc.code == 'gemini_key':
+                raise
+            # Model access/not-found/rate limits/upstream errors can be model-specific,
+            # so automatically try the configured fallback model.
+            continue
+    if errors:
+        last=errors[-1]
+        attempted=', '.join(settings.gemini_models)
+        raise ProviderError(
+            last.code,
+            f'Gemini 모델 자동 전환까지 실패했습니다. 시도한 모델: {attempted}. 마지막 오류: {last.message}',
+            status=last.status,
+        ) from last
+    raise ProviderError('gemini_model','사용 가능한 Gemini 모델이 설정되지 않았습니다.',status=503)
 
 
 async def image_search_query(request: ChatRequest, settings: Settings, transport=None) -> str:
@@ -428,25 +468,27 @@ async def image_search_query(request: ChatRequest, settings: Settings, transport
             'maxOutputTokens': 220,
         },
     }
-    url = f'https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent'
-    try:
-        response = await _post_with_retry(
-            url,
-            headers={
-                'x-goog-api-key': settings.gemini_api_key,
-                'Content-Type': 'application/json',
-            },
-            payload=payload,
-            settings=settings,
-            transport=transport,
-        )
-        if response.status_code >= 400:
-            return ''
-        text = _extract_text(response.json())
-        match = re.search(r'QUERY\s*:\s*(.+)', text, flags=re.I)
-        return _clip(match.group(1).strip() if match else text.strip(), 360)
-    except Exception:
-        return ''
+    for model in settings.gemini_models:
+        url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
+        try:
+            response = await _post_with_retry(
+                url,
+                headers={
+                    'x-goog-api-key': settings.gemini_api_key,
+                    'Content-Type': 'application/json',
+                },
+                payload=payload,
+                settings=settings,
+                transport=transport,
+            )
+            if response.status_code >= 400:
+                continue
+            text = _extract_text(response.json())
+            match = re.search(r'QUERY\s*:\s*(.+)', text, flags=re.I)
+            return _clip(match.group(1).strip() if match else text.strip(), 360)
+        except Exception:
+            continue
+    return ''
 
 
 def retrieval_fallback_answer(question: str, sources: list[dict]) -> MedicalAnswer:
@@ -511,7 +553,7 @@ async def generate(
     if not settings.gemini_api_key:
         raise ProviderError('gemini_not_configured', 'Gemini 무료 API가 아직 설정되지 않았습니다.')
     system, contents = _gemini_contents(request, sources)
-    raw = await _gemini_structured(
+    raw, used_model = await _gemini_structured(
         system,
         contents,
         settings,
@@ -519,4 +561,4 @@ async def generate(
         transport=transport,
     )
     answer = _normalize_answer(raw, sources, request)
-    return ProviderResult(answer=answer, provider='gemini_free', model=settings.gemini_model)
+    return ProviderResult(answer=answer, provider='gemini_free', model=used_model)

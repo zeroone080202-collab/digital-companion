@@ -130,10 +130,10 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
     async def config():
         backend=cfg.free_server_ai
         model=(cfg.gemini_model if backend=='gemini' else None)
-        return {'app':'MEDI','version':'0.10.0','public':cfg.public,'accounts':cfg.has_accounts,
+        return {'app':'MEDI','version':'0.10.1','public':cfg.public,'accounts':cfg.has_accounts,
                 'ai_mode':'gemini_server' if (cfg.configured_backends) else 'gemini_not_configured',
                 'ai_backend':backend,'ai_backends':list(cfg.configured_backends),
-                'ai_connected':bool(cfg.configured_backends),'ai_model':model,
+                'ai_connected':bool(cfg.configured_backends),'ai_model':model,'ai_fallback_model':cfg.gemini_fallback_model,
                 'local_model':None,
                 'knowledge':app.state.stats,'knowledge_enabled':not cfg.public or cfg.dataset_rights_confirmed,
                 'dataset_rights_confirmed':cfg.dataset_rights_confirmed,
@@ -154,7 +154,8 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
             'required_environment':['GEMINI_API_KEY','GEMINI_MODEL','MEDI_AI_PROVIDER'],
             'recommended_values':{
                 'MEDI_AI_PROVIDER':'gemini',
-                'GEMINI_MODEL':'gemini-2.5-flash',
+                'GEMINI_MODEL':'gemini-3.8-flash',
+                'GEMINI_FALLBACK_MODEL':'gemini-3.5-flash-lite',
             },
         }
     @app.post('/api/auth/signup')
@@ -319,9 +320,16 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
                     else:
                         raise ProviderError('gemini_output','Gemini 응답 형식이 올바르지 않습니다.')
                 except ProviderError as exc:
-                    # Surface the actual Gemini problem to the UI. No browser LLM
-                    # and no saved-template answer is substituted here.
-                    raise HTTPException(502,exc.code) from exc
+                    # Preserve the real Gemini reason instead of collapsing every
+                    # upstream problem into a generic 502 message.
+                    status = 429 if exc.code == 'gemini_limit' else (401 if exc.code == 'gemini_key' else 503)
+                    return JSONResponse({
+                        'error': exc.code,
+                        'detail': exc.message,
+                        'provider': 'gemini',
+                        'primary_model': cfg.gemini_model,
+                        'fallback_model': cfg.gemini_fallback_model,
+                    }, status_code=status)
 
             result={'id':str(data.request_id),'answer':answer.model_dump(),'sources':sources,
                     'provider':provider,'model':model,'provider_warning':provider_warning,
