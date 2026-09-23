@@ -18,7 +18,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from app.config import Settings, settings as default_settings, ROOT
 from app.cloud import CloudStore, CloudError
 from app.images import sanitize_image, ImageValidationError
-from app.policy import is_medical, emergency_signal, fixed_answer, DISCLAIMER
+from app.policy import emergency_signal, fixed_answer, DISCLAIMER
 from app.provider import generate as provider_generate, image_search_query as provider_image_search_query, ProviderError, ProviderResult
 from app.retrieval import KnowledgeStore
 from app.schemas import (ChatRequest, Credentials, NewConversation, FeedbackRequest, DeleteAccount,
@@ -130,18 +130,33 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
     async def config():
         backend=cfg.free_server_ai
         model=(cfg.gemini_model if backend=='gemini' else None)
-        return {'app':'MEDI','version':'0.9.0','public':cfg.public,'accounts':cfg.has_accounts,
-                'ai_mode':'server_free' if (cfg.configured_backends and cfg.ai_provider!='browser') else 'browser_local',
+        return {'app':'MEDI','version':'0.10.0','public':cfg.public,'accounts':cfg.has_accounts,
+                'ai_mode':'gemini_server' if (cfg.configured_backends) else 'gemini_not_configured',
                 'ai_backend':backend,'ai_backends':list(cfg.configured_backends),
-                'ai_connected':bool(cfg.configured_backends and cfg.ai_provider!='browser'),'ai_model':model,
-                'local_model':'Qwen2.5-0.5B-Instruct-q4f16_1-MLC',
+                'ai_connected':bool(cfg.configured_backends),'ai_model':model,
+                'local_model':None,
                 'knowledge':app.state.stats,'knowledge_enabled':not cfg.public or cfg.dataset_rights_confirmed,
                 'dataset_rights_confirmed':cfg.dataset_rights_confirmed,
                 'invite_required':False,'guest_chat':True,'max_image_mb':5,'max_images':2,
                 'learning':'consented_feedback_then_human_review','radiology_enabled':bool(cfg.image_ai_available),
-                'image_understanding_enabled':bool(cfg.image_ai_available and cfg.ai_provider!='browser'),
+                'image_understanding_enabled':bool(cfg.image_ai_available),
                 'provider_failover':cfg.provider_failover,'ai_retries':cfg.ai_request_retries,
                 'operator_contact':cfg.operator_contact}
+
+    @app.get('/api/ai/status')
+    async def ai_status():
+        connected=bool(cfg.gemini_api_key)
+        return {
+            'provider':'gemini',
+            'configured':connected,
+            'model':cfg.gemini_model if connected else None,
+            'image_understanding_enabled':connected,
+            'required_environment':['GEMINI_API_KEY','GEMINI_MODEL','MEDI_AI_PROVIDER'],
+            'recommended_values':{
+                'MEDI_AI_PROVIDER':'gemini',
+                'GEMINI_MODEL':'gemini-2.5-flash',
+            },
+        }
     @app.post('/api/auth/signup')
     async def signup(data: Credentials,request: Request):
         auth_limit(request,data.email)
@@ -258,8 +273,6 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
             sources=[];image_info=[];provider='guardrail';model=None;provider_warning=None
             if emergency_signal(data.message):
                 answer=fixed_answer('emergency')
-            elif not is_medical(data.message,data.history,bool(data.images)):
-                answer=fixed_answer('out_of_scope')
             else:
                 # Re-encode images in memory before any external multimodal call.
                 # EXIF/ICC metadata is removed and the original bytes are not stored.
@@ -277,7 +290,7 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
                     query=(previous[:220]+' '+query).strip()
                 # Image-only questions get a short, non-diagnostic vision pass so
                 # the operator's MEDI knowledge can still participate in RAG.
-                if data.images and cfg.image_ai_available and cfg.ai_provider!='browser':
+                if data.images and cfg.image_ai_available:
                     try:
                         image_hint=await provider_image_search_query(data,cfg)
                         if image_hint:
@@ -289,59 +302,34 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
                 if not cfg.public or cfg.dataset_rights_confirmed:
                     sources=await asyncio.to_thread(knowledge.search,query,study=False,limit=5)
 
-                # Prefer a free server-side provider because it works on PCs and
-                # phones even when WebGPU is unavailable. The uploaded MEDI
-                # evidence is inserted into the prompt before generation.
-                if cfg.configured_backends and cfg.ai_provider!='browser':
-                    try:
-                        gen=generator or provider_generate
-                        produced=await gen(data,sources,cfg)
-                        if isinstance(produced, ProviderResult):
-                            answer=produced.answer;provider=produced.provider;model=produced.model
-                        elif isinstance(produced, MedicalAnswer):
-                            answer=produced;provider='free_server_ai';model=None
-                        else:
-                            raise ProviderError('free_ai_output','무료 AI 응답 형식이 올바르지 않습니다.')
-                    except ProviderError as exc:
-                        provider_warning=exc.code
-                        if data.images:
-                            provider='vision_unavailable'
-                            text=('이미지는 정상적으로 받았지만 외부 이미지 이해 AI가 잠시 응답하지 않았어요. '
-                                  'MEDI가 Gemini에 자동 재연결을 시도했지만 이번 요청에서는 분석을 완료하지 못했습니다. '
-                                  '아래의 “이미지 다시 분석”을 누르면 같은 사진과 질문으로 다시 시도할 수 있어요.')
-                            image_note=['이번 응답은 이미지 내용을 판독한 결과가 아닙니다. 이미지 분석이 성공한 뒤 다시 설명하겠습니다.']
-                        else:
-                            provider='browser_local'
-                            text=('MEDI 의료자료는 찾았지만 무료 서버 AI 연결이 잠시 실패했습니다. '
-                                  '브라우저 보조 AI로 답변 생성을 시도합니다.' if sources else
-                                  '이번 질문과 직접 연결되는 MEDI 의료자료를 찾지 못했고 무료 서버 AI 연결도 잠시 실패했습니다. '
-                                  '브라우저 보조 AI로 일반적인 설명을 시도합니다.')
-                            image_note=[]
-                        answer=MedicalAnswer(in_scope=True,urgency='unknown',
-                            evidence_status='partial' if sources else 'insufficient',
-                            paragraphs=[Paragraph(heading='',text=text,source_ids=[])],
-                            follow_up_questions=[],image_observations=image_note,limitations='참고용 의료정보예요. 중요한 판단은 의료진에게 확인하세요.')
-                else:
-                    provider='browser_local'
-                    if sources:
-                        text='MEDI 의료자료를 찾았습니다. 브라우저 보조 AI가 이 자료를 우선 근거로 답변을 작성합니다.'
-                        evidence='partial'
+                # Every ordinary medical answer is generated for the current
+                # question by Gemini. MEDI retrieval is supporting evidence, not a
+                # canned-answer fallback. If Gemini is not configured or fails, we
+                # return a clear connection error instead of pretending that search
+                # snippets are an AI answer.
+                if not cfg.gemini_api_key or cfg.ai_provider=='browser':
+                    raise HTTPException(503,'gemini_not_configured')
+                try:
+                    gen=generator or provider_generate
+                    produced=await gen(data,sources,cfg)
+                    if isinstance(produced, ProviderResult):
+                        answer=produced.answer;provider=produced.provider;model=produced.model
+                    elif isinstance(produced, MedicalAnswer):
+                        answer=produced;provider='gemini_free';model=cfg.gemini_model
                     else:
-                        text='이번 질문과 직접 연결되는 MEDI 의료자료는 찾지 못했습니다. 브라우저 보조 AI가 일반 의학지식으로 설명하되 근거 부족을 표시합니다.'
-                        evidence='insufficient'
-                    image_note=['이미지는 첨부됐지만 현재 연결된 멀티모달 서버 AI가 없어 내용을 분석하지 못했습니다.'] if data.images else []
-                    answer=MedicalAnswer(in_scope=True,urgency='unknown',
-                        evidence_status=evidence,
-                        paragraphs=[Paragraph(heading='',text=text,source_ids=[])],
-                        follow_up_questions=[],image_observations=image_note,limitations=DISCLAIMER)
+                        raise ProviderError('gemini_output','Gemini 응답 형식이 올바르지 않습니다.')
+                except ProviderError as exc:
+                    # Surface the actual Gemini problem to the UI. No browser LLM
+                    # and no saved-template answer is substituted here.
+                    raise HTTPException(502,exc.code) from exc
 
             result={'id':str(data.request_id),'answer':answer.model_dump(),'sources':sources,
                     'provider':provider,'model':model,'provider_warning':provider_warning,
                     'image_processing':image_info,'image_bytes_stored':False,'quota':None,
                     'saved':False,'learning_applied':False,
-                    'local_ai_allowed':provider=='browser_local' and not bool(data.images),
-                    'image_analysis_ok':bool(data.images and provider in {'gemini_free','free_server_ai'}),
-                    'retryable':bool(provider_warning in {'free_ai_network','free_ai_timeout','free_ai_limit','free_ai_upstream'}),
+                    'local_ai_allowed':False,
+                    'image_analysis_ok':bool(data.images and provider=='gemini_free'),
+                    'retryable':False,
                     'knowledge_used':bool(sources)}
             results[key]=(time.monotonic(),digest,result)
             return result
@@ -351,7 +339,7 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
     @app.post('/api/conversations/{cid}/turns/local')
     async def save_local_turn(cid:UUID,data:LocalTurnSave,request:Request):
         user,token=await identity(request)
-        if data.response.get('provider') not in {'browser_local','retrieval_only','vision_unavailable','guardrail','gemini_free','free_server_ai'}:
+        if data.response.get('provider') not in {'guardrail','gemini_free'}:
             raise HTTPException(400,'invalid_request')
         try:
             MedicalAnswer.model_validate(data.response.get('answer'))

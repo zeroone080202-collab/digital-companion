@@ -82,11 +82,11 @@ class Settings:
 
     @property
     def free_server_ai(self) -> str | None:
-        return 'gemini' if self.gemini_api_key and self.ai_provider != 'browser' else None
+        return 'gemini' if self.gemini_api_key else None
 
     @property
     def image_ai_available(self) -> bool:
-        return bool(self.gemini_api_key and self.ai_provider != 'browser')
+        return bool(self.gemini_api_key)
 
     def validate(self):
         if self.deployment not in {'local', 'public'}:
