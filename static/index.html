@@ -4,9 +4,8 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark"><meta name="robots" content="noindex,nofollow">
 <title>MEDI - Medical Research Companion</title>
-<link rel="icon" href="/static/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/app.css?v=0900">
-<script src="/static/local_ai.js?v=0900" defer></script>
-<script src="/static/app.js?v=0900" defer></script>
+<link rel="icon" href="/static/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/app.css?v=1001">
+<script src="/static/app.js?v=1001" defer></script>
 </head>
 <body>
 <a class="skip" href="#question" data-i18n="skip"></a>
@@ -56,11 +55,10 @@
 <dialog id="settingsDialog"><div class="dialog-heading"><h2>설정</h2><button class="icon-button" data-close="settingsDialog" aria-label="Close">&#215;</button></div><div class="dialog-body settings-grid">
 <label class="field"><span>화면 모드</span><select id="themeSelect"><option value="light">라이트 모드</option><option value="dark">다크 모드</option><option value="system">기기 설정 따르기</option></select></label>
 <label class="field"><span>글자 크기</span><select id="fontScale"><option value="1">기본 100%</option><option value="1.12">크게 112%</option><option value="1.25">더 크게 125%</option><option value="1.4">매우 크게 140%</option></select></label>
-<section class="settings-card"><div><strong>MEDI 의료 AI</strong><p id="serverAiStatus" class="subtle">무료 서버 AI 연결 상태를 확인하는 중입니다.</p></div><span class="settings-dot" aria-hidden="true"></span></section>
+<section class="settings-card"><div><strong>MEDI 의료 AI</strong><p id="serverAiStatus" class="subtle">Gemini 연결 상태를 확인하는 중입니다.</p></div><span class="settings-dot" aria-hidden="true"></span></section>
 <section class="settings-card"><div><strong>내 의료지식 자료</strong><p id="knowledgeStatus" class="subtle">의료자료 연결 상태를 확인하는 중입니다.</p></div><span class="settings-dot" aria-hidden="true"></span></section>
-<section id="localAiCard" class="settings-card"><div><strong>브라우저 보조 AI</strong><p id="localAiStatus" class="subtle">기기 호환성을 확인하는 중입니다.</p></div><button id="localAiPrepare" class="quiet-button" type="button">보조 AI 준비</button></section>
 <section class="settings-card"><div><strong>첫 질문 전 주의 안내</strong><p id="safetySettingText" class="subtle">첫 질문 전에 한 번 표시합니다.</p></div><label class="switch"><input id="safetyToggle" type="checkbox" checked><span></span></label><button id="showSafetyNow" class="quiet-button full" type="button">주의사항 지금 다시 보기</button></section>
-<p class="settings-help">MEDI는 먼저 짧고 쉬운 말로 답합니다. 그림이 이해에 도움이 되는 질문이면 답변 안에 간단한 설명 그림도 자동으로 보여줍니다.</p>
+<p class="settings-help">Gemini가 연결되면 질문의 뜻을 먼저 해석해 질문마다 새 답변을 만듭니다. MEDI 의료자료는 관련 있을 때 근거로 활용하고, 그림은 구조·위치·원리를 시각적으로 설명하는 데 실제로 도움이 될 때만 표시합니다.</p>
 </div><div class="dialog-actions"><button class="primary-button" data-close="settingsDialog">완료</button></div></dialog>
 <dialog id="feedbackDialog"><div class="dialog-heading"><h2 data-i18n="feedbackTitle"></h2><button class="icon-button" data-close="feedbackDialog" aria-label="Close">&#215;</button></div><form id="feedbackForm" class="dialog-body"><p class="notice-box" data-i18n="feedbackDescription"></p><label class="field"><span data-i18n="feedbackQuestion"></span><textarea id="feedbackQuestion" maxlength="4000" rows="2" required></textarea></label><label class="field"><span data-i18n="feedbackAnswer"></span><textarea id="feedbackAnswer" maxlength="16000" rows="4" required></textarea></label><label class="field"><span data-i18n="correction"></span><textarea id="correction" maxlength="4000" rows="3"></textarea></label><label class="field"><span data-i18n="rating"></span><select id="rating"><option value="needs_review" data-i18n="needsReview"></option><option value="helpful" data-i18n="helpful"></option></select></label><label class="check-line"><input id="feedbackConsent" type="checkbox" required><span data-i18n="feedbackConsent"></span></label><label class="check-line"><input id="deidentified" type="checkbox" required><span data-i18n="deidentified"></span></label><button id="feedbackSubmit" class="primary-button full" type="submit" data-i18n="feedbackSend"></button><p id="feedbackError" class="inline-error" role="alert"></p></form></dialog>
 </body></html>
