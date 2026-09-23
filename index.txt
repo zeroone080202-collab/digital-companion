@@ -1,9 +1,8 @@
-MEDI v0.10 Gemini Dynamic Medical AI Patch
-
-Core changes:
-- current-question Gemini generation for ordinary medical questions
-- no canned retrieval answer fallback
-- no browser WebGPU AI fallback
-- Gemini multimodal image input retained
-- MEDI RAG is supplemental evidence, not a requirement to answer
-- diagrams only when user explicitly requests visual explanation and a relevant asset exists
+MEDI v0.10.1 Gemini connection fix patch
+Changed:
+- app/config.py
+- app/provider.py
+- app/main.py
+- static/app.js
+- env.example
+- render.yaml
