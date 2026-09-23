@@ -1,5 +1,14 @@
-MEDI_V103_SYMPTOM_HIGHLIGHT_PATCH
-- app/provider.py
+MEDI V0.10.4 QUESTION FIX PATCH
+
+Replace:
 - static/app.js
 - static/app.css
-- README_KO.md
+- static/index.html
+
+Fixes:
+- Cannot set properties of null (setting 'checked')
+- question submit blocked by outdated consentCheck code
+- restores safety notice controls
+- keeps v0.10.3 symptom highlight UI
+- removes visible Ctrl+V image hint text
+- cache bust: app.js/app.css v=1040
