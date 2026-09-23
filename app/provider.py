@@ -120,7 +120,23 @@ MEDI 자료
 20. 명확한 응급 신호가 있을 때만 119/응급실 안내를 우선한다.
 21. 최종 영상 판독과 진료 판단은 의료진이 우선임을 짧게 알린다.
 
-반드시 지정된 JSON 구조로만 출력한다.
+출력 형식
+- 마크다운 코드블록이나 설명 문장을 JSON 바깥에 붙이지 않는다.
+- 반드시 아래 필드를 가진 JSON 객체 하나만 출력한다.
+{
+  "in_scope": true,
+  "urgency": "general_information",
+  "evidence_status": "partial",
+  "paragraphs": [
+    {"heading": "짧은 제목", "text": "사용자에게 보여줄 설명", "source_ids": []}
+  ],
+  "follow_up_questions": [],
+  "image_observations": [],
+  "limitations": "짧은 한계 안내"
+}
+- urgency 값은 emergency, medical_review, general_information, unknown 중 하나만 사용한다.
+- evidence_status 값은 supported, partial, insufficient, not_applicable 중 하나만 사용한다.
+- paragraphs는 1~5개, follow_up_questions는 0~3개, image_observations는 0~5개로 한다.
 """
 
 
@@ -222,8 +238,17 @@ def _parse_json_text(text: str) -> dict:
         cleaned = re.sub(r'\s*```$', '', cleaned)
     try:
         value = json.loads(cleaned)
-    except Exception as exc:
-        raise ProviderError('gemini_output', 'Gemini JSON 답변을 읽지 못했습니다.') from exc
+    except Exception:
+        # Gemini occasionally adds one short sentence around the JSON even when
+        # asked not to. Extract only the outermost JSON object as a safe repair.
+        start = cleaned.find('{')
+        end = cleaned.rfind('}')
+        if start < 0 or end <= start:
+            raise ProviderError('gemini_output', 'Gemini JSON 답변을 읽지 못했습니다.')
+        try:
+            value = json.loads(cleaned[start:end + 1])
+        except Exception as exc:
+            raise ProviderError('gemini_output', 'Gemini JSON 답변을 읽지 못했습니다.') from exc
     if not isinstance(value, dict):
         raise ProviderError('gemini_output', 'Gemini 답변 구조가 올바르지 않습니다.')
     return value
@@ -380,19 +405,17 @@ async def _gemini_structured_once(
     max_tokens: int,
     transport=None,
 ) -> dict:
+    # Do not send responseFormat here. In September 2026 some Gemini
+    # generateContent model/API combinations reject the mimeType enum even
+    # though newer structured-output examples use responseFormat. MEDI asks
+    # for JSON in the system instruction and validates it locally instead.
     payload = {
-        'system_instruction': {'parts': [{'text': prompt_system}]},
+        'systemInstruction': {'parts': [{'text': prompt_system}]},
         'contents': contents,
         'generationConfig': {
             'temperature': 0.25,
             'topP': 0.9,
             'maxOutputTokens': max_tokens,
-            'responseFormat': {
-                'text': {
-                    'mimeType': 'application/json',
-                    'schema': ANSWER_SCHEMA,
-                }
-            },
         },
     }
     url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
