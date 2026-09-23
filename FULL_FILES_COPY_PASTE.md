@@ -1,4 +1,4 @@
-# MEDI v0.9 전체 파일 복사·붙여넣기용
+# MEDI v0.10 전체 파일 복사·붙여넣기용
 
 ## app/config.py
 
@@ -111,6 +111,7 @@ class Settings:
 
 
 settings = Settings()
+
 ```
 
 ## app/main.py
@@ -136,7 +137,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from app.config import Settings, settings as default_settings, ROOT
 from app.cloud import CloudStore, CloudError
 from app.images import sanitize_image, ImageValidationError
-from app.policy import is_medical, emergency_signal, fixed_answer, DISCLAIMER
+from app.policy import emergency_signal, fixed_answer, DISCLAIMER
 from app.provider import generate as provider_generate, image_search_query as provider_image_search_query, ProviderError, ProviderResult
 from app.retrieval import KnowledgeStore
 from app.schemas import (ChatRequest, Credentials, NewConversation, FeedbackRequest, DeleteAccount,
@@ -248,11 +249,11 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
     async def config():
         backend=cfg.free_server_ai
         model=(cfg.gemini_model if backend=='gemini' else None)
-        return {'app':'MEDI','version':'0.9.0','public':cfg.public,'accounts':cfg.has_accounts,
-                'ai_mode':'server_free' if (cfg.configured_backends and cfg.ai_provider!='browser') else 'browser_local',
+        return {'app':'MEDI','version':'0.10.0','public':cfg.public,'accounts':cfg.has_accounts,
+                'ai_mode':'gemini_server' if (cfg.configured_backends and cfg.ai_provider!='browser') else 'gemini_not_configured',
                 'ai_backend':backend,'ai_backends':list(cfg.configured_backends),
                 'ai_connected':bool(cfg.configured_backends and cfg.ai_provider!='browser'),'ai_model':model,
-                'local_model':'Qwen2.5-0.5B-Instruct-q4f16_1-MLC',
+                'local_model':None,
                 'knowledge':app.state.stats,'knowledge_enabled':not cfg.public or cfg.dataset_rights_confirmed,
                 'dataset_rights_confirmed':cfg.dataset_rights_confirmed,
                 'invite_required':False,'guest_chat':True,'max_image_mb':5,'max_images':2,
@@ -260,6 +261,21 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
                 'image_understanding_enabled':bool(cfg.image_ai_available and cfg.ai_provider!='browser'),
                 'provider_failover':cfg.provider_failover,'ai_retries':cfg.ai_request_retries,
                 'operator_contact':cfg.operator_contact}
+
+    @app.get('/api/ai/status')
+    async def ai_status():
+        connected=bool(cfg.gemini_api_key and cfg.ai_provider!='browser')
+        return {
+            'provider':'gemini',
+            'configured':connected,
+            'model':cfg.gemini_model if connected else None,
+            'image_understanding_enabled':connected,
+            'required_environment':['GEMINI_API_KEY','GEMINI_MODEL','MEDI_AI_PROVIDER'],
+            'recommended_values':{
+                'MEDI_AI_PROVIDER':'gemini',
+                'GEMINI_MODEL':'gemini-2.5-flash',
+            },
+        }
     @app.post('/api/auth/signup')
     async def signup(data: Credentials,request: Request):
         auth_limit(request,data.email)
@@ -376,8 +392,6 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
             sources=[];image_info=[];provider='guardrail';model=None;provider_warning=None
             if emergency_signal(data.message):
                 answer=fixed_answer('emergency')
-            elif not is_medical(data.message,data.history,bool(data.images)):
-                answer=fixed_answer('out_of_scope')
             else:
                 # Re-encode images in memory before any external multimodal call.
                 # EXIF/ICC metadata is removed and the original bytes are not stored.
@@ -407,59 +421,34 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
                 if not cfg.public or cfg.dataset_rights_confirmed:
                     sources=await asyncio.to_thread(knowledge.search,query,study=False,limit=5)
 
-                # Prefer a free server-side provider because it works on PCs and
-                # phones even when WebGPU is unavailable. The uploaded MEDI
-                # evidence is inserted into the prompt before generation.
-                if cfg.configured_backends and cfg.ai_provider!='browser':
-                    try:
-                        gen=generator or provider_generate
-                        produced=await gen(data,sources,cfg)
-                        if isinstance(produced, ProviderResult):
-                            answer=produced.answer;provider=produced.provider;model=produced.model
-                        elif isinstance(produced, MedicalAnswer):
-                            answer=produced;provider='free_server_ai';model=None
-                        else:
-                            raise ProviderError('free_ai_output','무료 AI 응답 형식이 올바르지 않습니다.')
-                    except ProviderError as exc:
-                        provider_warning=exc.code
-                        if data.images:
-                            provider='vision_unavailable'
-                            text=('이미지는 정상적으로 받았지만 외부 이미지 이해 AI가 잠시 응답하지 않았어요. '
-                                  'MEDI가 Gemini에 자동 재연결을 시도했지만 이번 요청에서는 분석을 완료하지 못했습니다. '
-                                  '아래의 “이미지 다시 분석”을 누르면 같은 사진과 질문으로 다시 시도할 수 있어요.')
-                            image_note=['이번 응답은 이미지 내용을 판독한 결과가 아닙니다. 이미지 분석이 성공한 뒤 다시 설명하겠습니다.']
-                        else:
-                            provider='browser_local'
-                            text=('MEDI 의료자료는 찾았지만 무료 서버 AI 연결이 잠시 실패했습니다. '
-                                  '브라우저 보조 AI로 답변 생성을 시도합니다.' if sources else
-                                  '이번 질문과 직접 연결되는 MEDI 의료자료를 찾지 못했고 무료 서버 AI 연결도 잠시 실패했습니다. '
-                                  '브라우저 보조 AI로 일반적인 설명을 시도합니다.')
-                            image_note=[]
-                        answer=MedicalAnswer(in_scope=True,urgency='unknown',
-                            evidence_status='partial' if sources else 'insufficient',
-                            paragraphs=[Paragraph(heading='',text=text,source_ids=[])],
-                            follow_up_questions=[],image_observations=image_note,limitations='참고용 의료정보예요. 중요한 판단은 의료진에게 확인하세요.')
-                else:
-                    provider='browser_local'
-                    if sources:
-                        text='MEDI 의료자료를 찾았습니다. 브라우저 보조 AI가 이 자료를 우선 근거로 답변을 작성합니다.'
-                        evidence='partial'
+                # Every ordinary medical answer is generated for the current
+                # question by Gemini. MEDI retrieval is supporting evidence, not a
+                # canned-answer fallback. If Gemini is not configured or fails, we
+                # return a clear connection error instead of pretending that search
+                # snippets are an AI answer.
+                if not cfg.gemini_api_key or cfg.ai_provider=='browser':
+                    raise HTTPException(503,'gemini_not_configured')
+                try:
+                    gen=generator or provider_generate
+                    produced=await gen(data,sources,cfg)
+                    if isinstance(produced, ProviderResult):
+                        answer=produced.answer;provider=produced.provider;model=produced.model
+                    elif isinstance(produced, MedicalAnswer):
+                        answer=produced;provider='gemini_free';model=cfg.gemini_model
                     else:
-                        text='이번 질문과 직접 연결되는 MEDI 의료자료는 찾지 못했습니다. 브라우저 보조 AI가 일반 의학지식으로 설명하되 근거 부족을 표시합니다.'
-                        evidence='insufficient'
-                    image_note=['이미지는 첨부됐지만 현재 연결된 멀티모달 서버 AI가 없어 내용을 분석하지 못했습니다.'] if data.images else []
-                    answer=MedicalAnswer(in_scope=True,urgency='unknown',
-                        evidence_status=evidence,
-                        paragraphs=[Paragraph(heading='',text=text,source_ids=[])],
-                        follow_up_questions=[],image_observations=image_note,limitations=DISCLAIMER)
+                        raise ProviderError('gemini_output','Gemini 응답 형식이 올바르지 않습니다.')
+                except ProviderError as exc:
+                    # Surface the actual Gemini problem to the UI. No browser LLM
+                    # and no saved-template answer is substituted here.
+                    raise HTTPException(502,exc.code) from exc
 
             result={'id':str(data.request_id),'answer':answer.model_dump(),'sources':sources,
                     'provider':provider,'model':model,'provider_warning':provider_warning,
                     'image_processing':image_info,'image_bytes_stored':False,'quota':None,
                     'saved':False,'learning_applied':False,
-                    'local_ai_allowed':provider=='browser_local' and not bool(data.images),
-                    'image_analysis_ok':bool(data.images and provider in {'gemini_free','free_server_ai'}),
-                    'retryable':bool(provider_warning in {'free_ai_network','free_ai_timeout','free_ai_limit','free_ai_upstream'}),
+                    'local_ai_allowed':False,
+                    'image_analysis_ok':bool(data.images and provider=='gemini_free'),
+                    'retryable':False,
                     'knowledge_used':bool(sources)}
             results[key]=(time.monotonic(),digest,result)
             return result
@@ -469,7 +458,7 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
     @app.post('/api/conversations/{cid}/turns/local')
     async def save_local_turn(cid:UUID,data:LocalTurnSave,request:Request):
         user,token=await identity(request)
-        if data.response.get('provider') not in {'browser_local','retrieval_only','vision_unavailable','guardrail','gemini_free','free_server_ai'}:
+        if data.response.get('provider') not in {'guardrail','gemini_free'}:
             raise HTTPException(400,'invalid_request')
         try:
             MedicalAnswer.model_validate(data.response.get('answer'))
@@ -518,16 +507,17 @@ def create_app(cfg: Settings=default_settings, cloud_factory=CloudStore, generat
     return app
 
 app=create_app()
+
 ```
 
 ## app/provider.py
 
 ```python
-"""Gemini-only multimodal provider adapter for MEDI.
+"""Gemini multimodal provider adapter for MEDI.
 
-This module intentionally removes the OpenAI/Groq dependency mismatch that was
-introduced by older patches. It supports text + image input through the Gemini
-GenerateContent REST API and returns MEDI's validated structured answer format.
+This module uses the Gemini Developer API only. It deliberately avoids
+browser-side LLM fallback so the UI does not show a canned retrieval answer
+when the actual AI backend is unavailable.
 """
 from __future__ import annotations
 
@@ -563,12 +553,18 @@ ANSWER_SCHEMA = {
     'type': 'object',
     'properties': {
         'in_scope': {'type': 'boolean'},
-        'urgency': {'type': 'string', 'enum': ['emergency', 'medical_review', 'general_information', 'unknown']},
-        'evidence_status': {'type': 'string', 'enum': ['supported', 'partial', 'insufficient', 'not_applicable']},
+        'urgency': {
+            'type': 'string',
+            'enum': ['emergency', 'medical_review', 'general_information', 'unknown'],
+        },
+        'evidence_status': {
+            'type': 'string',
+            'enum': ['supported', 'partial', 'insufficient', 'not_applicable'],
+        },
         'paragraphs': {
             'type': 'array',
             'minItems': 1,
-            'maxItems': 4,
+            'maxItems': 5,
             'items': {
                 'type': 'object',
                 'properties': {
@@ -580,47 +576,64 @@ ANSWER_SCHEMA = {
                 'additionalProperties': False,
             },
         },
-        'follow_up_questions': {'type': 'array', 'maxItems': 3, 'items': {'type': 'string'}},
-        'image_observations': {'type': 'array', 'maxItems': 4, 'items': {'type': 'string'}},
+        'follow_up_questions': {
+            'type': 'array',
+            'maxItems': 3,
+            'items': {'type': 'string'},
+        },
+        'image_observations': {
+            'type': 'array',
+            'maxItems': 5,
+            'items': {'type': 'string'},
+        },
         'limitations': {'type': 'string'},
     },
-    'required': ['in_scope', 'urgency', 'evidence_status', 'paragraphs', 'follow_up_questions', 'image_observations', 'limitations'],
+    'required': [
+        'in_scope', 'urgency', 'evidence_status', 'paragraphs',
+        'follow_up_questions', 'image_observations', 'limitations'
+    ],
     'additionalProperties': False,
 }
 
 
 SYSTEM_PROMPT = """너는 MEDI라는 한국어 의료 전문 정보 AI다. 사용자는 의료인이 아니라 일반인이다.
 
-가장 중요한 목표:
-- 사용자가 자신의 증상, 검사, 의료용어, 약, 의료기기, 의료 이미지를 이해할 수 있게 쉽고 충분히 설명한다.
-- 너무 짧게 끝내지 말고, 너무 전문용어 위주로도 쓰지 않는다.
-- 연결된 MEDI 의료자료가 있으면 우선 참고한다.
+핵심 목표
+- 사용자가 자신의 상태, 증상, 검사, 약, 의료기기, 치료 과정과 의료 이미지를 스스로 이해할 수 있게 설명한다.
+- MEDI 내부 의료자료가 있으면 먼저 활용한다.
+- 내부자료가 부족해도 질문 자체에 답할 수 있는 일반 의학지식은 사용해도 된다. 다만 그 부분에는 내부자료 출처를 억지로 붙이지 않는다.
+- 미리 만들어 둔 문장이나 고정 템플릿을 반복하지 않는다. 반드시 현재 질문의 의미를 먼저 파악하고, 질문마다 새 답변을 작성한다.
+- 의료·건강과 관련된 질문이면 내부자료에 정확한 항목이 없어도 일반 의학지식으로 충분히 설명한다. 내부자료가 없다는 이유만으로 답변을 멈추지 않는다.
+- 의료·건강과 무관한 요청만 짧게 범위를 안내하고 substantive한 비의료 답변은 하지 않는다.
 
-답변 방식:
-1. 첫 문장에서 질문에 바로 답한다.
-2. 기본 답변은 보통 3~4개의 짧은 문단으로 한다.
-3. 증상 질문이면 흔한 가능성 2~4개와 그 이유, 확인할 점, 병원 확인이 필요한 신호를 설명한다.
-4. 전문용어는 쉬운 표현 뒤에 괄호로 덧붙인다.
-5. 드문 병을 불필요하게 나열하거나 공포를 유발하지 않는다.
-6. 처방약을 새로 시작·중단하거나 용량을 바꾸라고 지시하지 않는다.
+답변 스타일
+1. 질문이 무엇을 묻는지 먼저 해석한 뒤 첫 문장에서 그 질문에 바로 답한다.
+2. 기본 답변은 보통 3~5개의 짧은 문단, 약 500~1000자 정도로 한다.
+3. 너무 짧게 끝내지 말고 사용자가 '왜 그런지'까지 이해할 수 있게 이유를 설명한다.
+4. 전문용어는 쉬운 말 뒤 괄호로 한 번만 덧붙인다.
+5. 증상 질문은 흔한 원인 2~4개, 그 이유, 스스로 확인할 점, 진료가 필요한 신호를 설명한다.
+6. 개념 질문은 무엇인지, 종류나 구분이 필요한지, 언제 쓰는지, 어떻게 작동하는지, 사용자가 헷갈리기 쉬운 점을 질문 내용에 맞게 선택해서 설명한다. 모든 항목을 억지로 채우지 않는다.
+7. 사용자가 짧게 후속 질문을 해도 최근 대화 맥락을 이어서 답한다.
+8. 드문 병을 불필요하게 나열하지 않는다.
 
-이미지 규칙:
-7. 이미지가 첨부되어 있으면 반드시 실제 이미지를 먼저 본다. 이미지와 무관한 일반론으로만 답하지 않는다.
-8. X-ray·CT·MRI 같은 의료영상에서는 보이는 신체부위, 촬영 방향, 큰 구조, 정렬, 눈에 띄는 비대칭이나 이상 가능성을 '참고 수준'으로 설명한다.
-9. 의료영상에서 확정 진단, 정상 보증, 질환 배제는 하지 않는다. '보입니다', '가능성이 있습니다', '확인이 필요합니다'처럼 불확실성을 명확히 표현한다.
-10. 검사결과지/약봉투/문서 사진은 읽히는 글자를 정확히 옮기고 의미를 설명한다. 안 읽히는 글자는 추측하지 않는다.
-11. 피부·상처 사진은 색, 붓기, 범위, 분비물처럼 겉으로 보이는 특징을 설명하고 확정 진단은 하지 않는다.
-12. 화질이나 잘림 때문에 분석이 제한되면 무엇이 부족한지 구체적으로 말한다.
-13. 이미지에서 실제로 본 내용을 image_observations에 1~4개 넣는다. 이미지가 없으면 빈 배열로 둔다.
+이미지
+9. 이미지가 있으면 반드시 이미지 자체를 먼저 본다. 이미지와 무관한 일반론만 쓰지 않는다.
+10. X-ray·CT·MRI 등은 보이는 부위, 방향, 구조, 정렬, 명확히 눈에 띄는 특징을 '참고 수준'에서 설명한다.
+11. 확정 진단, 정상 보증, 질환 배제는 하지 않는다. 불확실하면 '가능성이 있어 보이지만 이 사진만으로 확정할 수 없다'고 말한다.
+12. 검사결과지·약봉투·문서 사진은 읽히는 내용만 옮기고 의미를 설명한다. 안 읽히는 글자는 추측하지 않는다.
+13. 피부·상처 사진은 색, 붓기, 범위, 분비물 등 실제 보이는 표면 특징을 설명한다.
+14. 이미지에서 실제로 관찰한 내용을 image_observations에 1~5개 넣는다. 이미지가 없으면 빈 배열로 둔다.
 
-MEDI 자료 규칙:
-14. 제공된 MEDI 자료에 실제로 있는 source id만 source_ids에 넣는다. 본문에 [S1] 같은 표시는 쓰지 않는다.
-15. MEDI 자료가 부족하면 억지로 근거를 붙이지 않는다. 이미지 관찰과 일반 의학정보를 구분한다.
+MEDI 자료
+15. 제공된 source id만 source_ids에 넣는다. 본문에는 [S1] 같은 내부 번호를 쓰지 않는다.
+16. 자료가 질문을 충분히 뒷받침하면 활용하고, 관련성이 낮으면 억지로 끼워 맞추지 않는다.
+17. MEDI 자료와 모델의 일반 의학지식을 구분해서 생각하고, 존재하지 않는 논문·수치·출처를 만들지 않는다.
 
-안전:
-16. 명확한 응급 신호가 있을 때만 응급 안내를 한다.
-17. 최종 판단은 의료진의 진찰·검사·판독문이 우선임을 짧게 알린다.
-18. 법률·보험 질문은 의료적으로 설명할 수 있는 부분만 답하고 법적 결론을 단정하지 않는다.
+안전
+18. 개인별 확정 진단이나 처방을 하지 않는다.
+19. 처방약을 새로 시작·중단하거나 용량을 바꾸라고 지시하지 않는다.
+20. 명확한 응급 신호가 있을 때만 119/응급실 안내를 우선한다.
+21. 최종 영상 판독과 진료 판단은 의료진이 우선임을 짧게 알린다.
 
 반드시 지정된 JSON 구조로만 출력한다.
 """
@@ -644,88 +657,116 @@ def _redact_identifiers(value: str) -> str:
 
 def _reference_text(sources: list[dict]) -> str:
     if not sources:
-        return '이번 질문에서 직접 연결된 MEDI 업로드 근거자료가 없습니다.'
+        return '이번 질문에서 직접 연결된 MEDI 내부 근거자료는 없습니다. 필요한 경우 일반 의학지식으로 설명하되 내부자료 출처를 꾸며내지 마세요.'
     blocks = []
-    for s in sources[:5]:
-        title = _clip(s.get('title') or '업로드 자료', 140)
+    for s in sources[:6]:
+        title = _clip(s.get('title') or '업로드 자료', 150)
         year = _clip(s.get('year') or '', 20)
-        excerpt = _clip(s.get('excerpt') or '', 1200)
+        excerpt = _clip(s.get('excerpt') or '', 1500)
         meta = f' ({year})' if year else ''
         blocks.append(f"[{s['id']}] {title}{meta}\n{excerpt}")
     return '\n\n'.join(blocks)
 
 
 def _data_url_parts(data_url: str) -> tuple[str, str]:
-    match = re.fullmatch(r'data:(image/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)', data_url or '')
+    match = re.fullmatch(
+        r'data:(image/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)',
+        data_url or ''
+    )
     if not match:
         raise ProviderError('invalid_image', '이미지 형식을 읽지 못했습니다.')
     return match.group(1), match.group(2)
 
 
 def _gemini_contents(request: ChatRequest, sources: list[dict]) -> tuple[str, list[dict]]:
-    question = _redact_identifiers(request.message).strip() or '첨부한 이미지를 일반인이 이해하기 쉽게 설명해줘.'
+    question = _redact_identifiers(request.message).strip()
+    if not question:
+        question = '첨부한 이미지를 일반인이 이해하기 쉽게 설명해줘.'
+
     user_text = (
-        f"MEDI 의료지식 자료:\n{_reference_text(sources)}\n\n"
-        f"사용자 질문:\n{question}\n\n"
-        '사용자가 자신의 상태를 이해할 수 있을 만큼 충분히 설명해라. '
-        '실제 source ID만 source_ids에 사용하고 본문에는 source ID를 노출하지 마라.'
+        f"MEDI 내부 의료자료:\n{_reference_text(sources)}\n\n"
+        f"현재 사용자 질문:\n{question}\n\n"
+        '이 질문에 직접 답하세요. MEDI 자료가 충분하면 활용하고, 부족하면 일반 의학지식으로 보완하세요. '
+        '일반 의학지식으로 보완한 문단에 MEDI source id를 억지로 붙이지 마세요.'
     )
     if request.images:
         user_text += (
-            '\n\n첨부 이미지가 있다. 먼저 이미지 자체에서 실제로 보이는 내용을 구체적으로 확인한 뒤 답해라. '
-            '이미지를 보지 못했는데 본 것처럼 답하면 안 된다.'
+            '\n\n첨부 이미지가 있습니다. 반드시 실제 이미지 내용을 먼저 확인하고, '
+            '보이는 특징을 설명한 다음 질문에 답하세요.'
         )
 
     contents: list[dict] = []
-    for h in request.history[-4:]:
+    for h in request.history[-6:]:
         role = 'model' if h.role == 'assistant' else 'user'
-        contents.append({'role': role, 'parts': [{'text': _clip(_redact_identifiers(h.content), 1800)}]})
+        contents.append({
+            'role': role,
+            'parts': [{'text': _clip(_redact_identifiers(h.content), 2200)}],
+        })
 
     parts: list[dict[str, Any]] = [{'text': user_text}]
     for image in request.images[:2]:
         mime, data = _data_url_parts(image.data_url)
-        parts.append({'text': f'사용자 분류: {image.kind}. 실제 이미지 내용이 다르면 실제 보이는 내용을 우선해라.'})
+        parts.append({
+            'text': f'사용자 선택 이미지 유형: {image.kind}. 라벨이 틀릴 수 있으므로 실제 보이는 내용을 우선하세요.'
+        })
         parts.append({'inline_data': {'mime_type': mime, 'data': data}})
     contents.append({'role': 'user', 'parts': parts})
     return SYSTEM_PROMPT, contents
 
 
 def _extract_text(data: dict) -> str:
+    candidates = data.get('candidates') or []
+    if not candidates:
+        reason = ((data.get('promptFeedback') or {}).get('blockReason') or '').strip()
+        if reason:
+            raise ProviderError('gemini_blocked', f'Gemini가 이 요청을 차단했습니다: {reason}')
+        raise ProviderError('gemini_output', 'Gemini가 답변을 반환하지 않았습니다.')
+
+    parts = candidates[0].get('content', {}).get('parts', [])
+    text = ''.join(str(p.get('text', '')) for p in parts if isinstance(p, dict))
+    if not text.strip():
+        finish = str(candidates[0].get('finishReason') or '')
+        raise ProviderError('gemini_output', f'Gemini 답변이 비어 있습니다. {finish}'.strip())
+    return text.strip()
+
+
+def _parse_json_text(text: str) -> dict:
+    cleaned = str(text or '').strip()
+    if cleaned.startswith('```'):
+        cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned, flags=re.I)
+        cleaned = re.sub(r'\s*```$', '', cleaned)
     try:
-        candidates = data.get('candidates') or []
-        if not candidates:
-            reason = ((data.get('promptFeedback') or {}).get('blockReason') or '').strip()
-            if reason:
-                raise ProviderError('free_ai_blocked', f'Gemini가 이 요청을 차단했습니다: {reason}')
-            raise ProviderError('free_ai_output', 'Gemini가 답변 후보를 반환하지 않았습니다.')
-        parts = candidates[0].get('content', {}).get('parts', [])
-        text = ''.join(str(p.get('text', '')) for p in parts)
-        if not text.strip():
-            raise ProviderError('free_ai_output', 'Gemini 답변이 비어 있습니다.')
-        return text
-    except ProviderError:
-        raise
+        value = json.loads(cleaned)
     except Exception as exc:
-        raise ProviderError('free_ai_output', 'Gemini 응답 형식을 읽지 못했습니다.') from exc
+        raise ProviderError('gemini_output', 'Gemini JSON 답변을 읽지 못했습니다.') from exc
+    if not isinstance(value, dict):
+        raise ProviderError('gemini_output', 'Gemini 답변 구조가 올바르지 않습니다.')
+    return value
 
 
 def _normalize_answer(raw: dict, sources: list[dict], request: ChatRequest) -> MedicalAnswer:
     try:
         answer = MedicalAnswer.model_validate(raw)
     except Exception as exc:
-        raise ProviderError('free_ai_output', 'Gemini의 구조화된 답변을 검증하지 못했습니다.') from exc
+        raise ProviderError('gemini_output', 'Gemini의 구조화된 답변을 검증하지 못했습니다.') from exc
 
     allowed = {str(s.get('id')) for s in sources}
     cleaned: list[Paragraph] = []
     used: set[str] = set()
-    for p in answer.paragraphs[:4]:
+
+    for p in answer.paragraphs[:5]:
         ids = [sid for sid in p.source_ids if sid in allowed]
         used.update(ids)
         text = re.sub(r'\s+', ' ', str(p.text or '')).strip()
         if text:
-            cleaned.append(Paragraph(heading=str(p.heading or '')[:40], text=text[:1100], source_ids=ids))
+            cleaned.append(Paragraph(
+                heading=str(p.heading or '')[:48],
+                text=text[:1400],
+                source_ids=ids,
+            ))
+
     if not cleaned:
-        raise ProviderError('free_ai_output', 'Gemini가 본문 없이 응답했습니다.')
+        raise ProviderError('gemini_output', 'Gemini가 본문 없이 응답했습니다.')
 
     evidence = answer.evidence_status
     if not sources:
@@ -737,14 +778,20 @@ def _normalize_answer(raw: dict, sources: list[dict], request: ChatRequest) -> M
     if urgency == 'emergency' and not emergency_signal(request.message):
         urgency = 'medical_review'
 
-    observations = [re.sub(r'\s+', ' ', str(x)).strip()[:420]
-                    for x in answer.image_observations[:4] if str(x).strip()]
+    observations = [
+        re.sub(r'\s+', ' ', str(x)).strip()[:500]
+        for x in answer.image_observations[:5]
+        if str(x).strip()
+    ]
     if request.images and not observations:
-        observations = ['첨부 이미지를 확인했지만 화면에서 확실히 구분되는 특징을 충분히 설명하지 못했습니다. 더 선명한 원본이나 의료진 판독문이 있으면 함께 확인해 주세요.']
+        observations = [
+            '첨부 이미지는 전달됐지만, 이 응답에서는 확실히 설명할 수 있는 시각적 특징을 충분히 추출하지 못했습니다.'
+        ]
 
     limitations = str(answer.limitations or '').strip()
     if request.images:
-        limitations = '이미지 설명은 참고용이며 최종 영상 판독이나 진단을 대신하지 않습니다. ' + limitations
+        prefix = '이미지 설명은 참고용이며 최종 영상 판독이나 진단을 대신하지 않습니다.'
+        limitations = f'{prefix} {limitations}'.strip()
     elif not limitations:
         limitations = '참고용 의료정보이며 진료를 대신하지 않습니다.'
 
@@ -752,16 +799,26 @@ def _normalize_answer(raw: dict, sources: list[dict], request: ChatRequest) -> M
         'paragraphs': cleaned,
         'urgency': urgency,
         'evidence_status': evidence,
-        'follow_up_questions': [str(x).strip()[:220] for x in answer.follow_up_questions[:3] if str(x).strip()],
+        'follow_up_questions': [
+            str(x).strip()[:240] for x in answer.follow_up_questions[:3]
+            if str(x).strip()
+        ],
         'image_observations': observations,
-        'limitations': limitations[:700],
+        'limitations': limitations[:800],
     })
 
 
 TRANSIENT_STATUS = {408, 425, 500, 502, 503, 504}
 
 
-async def _post_with_retry(url: str, *, headers: dict, payload: dict, settings: Settings, transport=None) -> httpx.Response:
+async def _post_with_retry(
+    url: str,
+    *,
+    headers: dict,
+    payload: dict,
+    settings: Settings,
+    transport=None,
+) -> httpx.Response:
     attempts = settings.ai_request_retries + 1
     last_exc: Exception | None = None
     for attempt in range(attempts):
@@ -777,87 +834,123 @@ async def _post_with_retry(url: str, *, headers: dict, payload: dict, settings: 
             if attempt + 1 < attempts:
                 await asyncio.sleep(0.7 * (2 ** attempt))
                 continue
-            raise ProviderError('free_ai_network', 'Gemini 연결이 불안정합니다. 자동 재연결에도 실패했습니다.') from exc
+            raise ProviderError('gemini_network', 'Gemini 연결이 불안정합니다. 자동 재시도에도 실패했습니다.') from exc
 
         if response.status_code in TRANSIENT_STATUS and attempt + 1 < attempts:
             await asyncio.sleep(0.7 * (2 ** attempt))
             continue
         return response
-    raise ProviderError('free_ai_network', 'Gemini 연결이 불안정합니다.') from last_exc
+
+    raise ProviderError('gemini_network', 'Gemini 연결이 불안정합니다.') from last_exc
 
 
 def _raise_http_error(response: httpx.Response):
     detail = ''
     try:
         body = response.json()
-        detail = str((body.get('error') or {}).get('message') or body.get('message') or '')[:260]
+        detail = str((body.get('error') or {}).get('message') or body.get('message') or '')[:360]
     except Exception:
         pass
+
     if response.status_code in {401, 403}:
-        raise ProviderError('free_ai_key', 'Gemini API 키 또는 Google AI Studio 프로젝트 설정을 확인해 주세요.', status=response.status_code)
+        raise ProviderError(
+            'gemini_key',
+            'Gemini API 키 인증에 실패했습니다. Google AI Studio에서 새 Auth key를 만든 뒤 Render의 GEMINI_API_KEY를 다시 확인해 주세요.',
+            status=response.status_code,
+        )
     if response.status_code == 404:
-        raise ProviderError('free_ai_model', '설정한 Gemini 모델명을 확인해 주세요.', status=404)
+        raise ProviderError(
+            'gemini_model',
+            '설정한 Gemini 모델을 찾지 못했습니다. GEMINI_MODEL=gemini-2.5-flash 로 설정해 주세요.',
+            status=404,
+        )
     if response.status_code == 429:
-        raise ProviderError('free_ai_limit', 'Gemini 무료 사용 한도에 잠시 도달했습니다. 잠시 후 다시 시도해 주세요.', status=429)
+        raise ProviderError(
+            'gemini_limit',
+            'Gemini 무료 사용 한도에 잠시 도달했습니다. 잠시 후 다시 시도해 주세요.',
+            status=429,
+        )
     if response.status_code >= 400:
         suffix = f' · {detail}' if detail else ''
-        raise ProviderError('free_ai_upstream', f'Gemini 요청 실패 ({response.status_code}){suffix}', status=response.status_code)
+        raise ProviderError(
+            'gemini_upstream',
+            f'Gemini 요청 실패 ({response.status_code}){suffix}',
+            status=response.status_code,
+        )
 
 
-async def _gemini_json(prompt_system: str, contents: list[dict], settings: Settings, *, max_tokens: int, transport=None) -> dict:
+async def _gemini_structured(
+    prompt_system: str,
+    contents: list[dict],
+    settings: Settings,
+    *,
+    max_tokens: int,
+    transport=None,
+) -> dict:
+    # Gemini GenerateContent's structured-output shape changed in 2026.
+    # Use generationConfig.responseFormat instead of the older
+    # responseMimeType/responseJsonSchema pair.
     payload = {
         'system_instruction': {'parts': [{'text': prompt_system}]},
         'contents': contents,
         'generationConfig': {
-            'temperature': 0.2,
+            'temperature': 0.25,
             'topP': 0.9,
             'maxOutputTokens': max_tokens,
-            'responseMimeType': 'application/json',
-            'responseJsonSchema': ANSWER_SCHEMA,
+            'responseFormat': {
+                'text': {
+                    'mimeType': 'application/json',
+                    'schema': ANSWER_SCHEMA,
+                }
+            },
         },
     }
     url = f'https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent'
     response = await _post_with_retry(
         url,
-        headers={'x-goog-api-key': settings.gemini_api_key, 'Content-Type': 'application/json'},
+        headers={
+            'x-goog-api-key': settings.gemini_api_key,
+            'Content-Type': 'application/json',
+        },
         payload=payload,
         settings=settings,
         transport=transport,
     )
     _raise_http_error(response)
-    text = _extract_text(response.json())
-    try:
-        value = json.loads(text)
-    except Exception as exc:
-        raise ProviderError('free_ai_output', 'Gemini JSON 답변을 읽지 못했습니다.') from exc
-    if not isinstance(value, dict):
-        raise ProviderError('free_ai_output', 'Gemini 답변 구조가 올바르지 않습니다.')
-    return value
+    return _parse_json_text(_extract_text(response.json()))
 
 
 async def image_search_query(request: ChatRequest, settings: Settings, transport=None) -> str:
-    """Extract safe, non-diagnostic image keywords for MEDI RAG search."""
+    """Extract non-diagnostic image keywords for MEDI RAG search."""
     if not request.images or not settings.gemini_api_key:
         return ''
+
     parts: list[dict] = [{
         'text': (
-            '이 의료 이미지를 MEDI 내부자료 검색용으로만 요약해라. 진단하지 말고, '
-            '보이는 신체부위·검사 종류·의료용어·읽히는 문구·상처의 겉모습 등 검색에 도움 되는 '
-            '핵심어를 한국어 중심 3~8개로 뽑아라. 마지막 줄에 QUERY: 핵심어 형식으로 적어라.'
+            '이 의료 이미지를 MEDI 내부자료 검색용으로만 요약하세요. 확정 진단하지 말고, '
+            '보이는 신체부위·검사 종류·읽히는 문구·표면 특징 등 검색에 도움 되는 '
+            '핵심어를 한국어 중심으로 3~8개 적으세요. 마지막 줄은 QUERY: 핵심어 형식으로 적으세요.'
         )
     }]
     for image in request.images[:2]:
         mime, data = _data_url_parts(image.data_url)
         parts.append({'inline_data': {'mime_type': mime, 'data': data}})
+
     payload = {
         'contents': [{'role': 'user', 'parts': parts}],
-        'generationConfig': {'temperature': 0, 'maxOutputTokens': 180},
+        'generationConfig': {
+            'temperature': 0,
+            'maxOutputTokens': 220,
+        },
     }
     url = f'https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent'
     try:
         response = await _post_with_retry(
             url,
-            headers={'x-goog-api-key': settings.gemini_api_key, 'Content-Type': 'application/json'},
+            headers={
+                'x-goog-api-key': settings.gemini_api_key,
+                'Content-Type': 'application/json',
+            },
             payload=payload,
             settings=settings,
             transport=transport,
@@ -866,18 +959,86 @@ async def image_search_query(request: ChatRequest, settings: Settings, transport
             return ''
         text = _extract_text(response.json())
         match = re.search(r'QUERY\s*:\s*(.+)', text, flags=re.I)
-        return _clip(match.group(1).strip() if match else text.strip(), 320)
+        return _clip(match.group(1).strip() if match else text.strip(), 360)
     except Exception:
         return ''
 
 
-async def generate(request: ChatRequest, sources: list[dict], settings: Settings, transport=None) -> ProviderResult:
-    if not settings.gemini_api_key or settings.ai_provider == 'browser':
-        raise ProviderError('free_ai_not_configured', 'Gemini 무료 API가 아직 설정되지 않았습니다.')
+def retrieval_fallback_answer(question: str, sources: list[dict]) -> MedicalAnswer:
+    """Useful fallback when Gemini is not configured.
+
+    This is deliberately NOT presented as AI reasoning. It surfaces the most
+    relevant MEDI excerpts instead of returning a canned message or trying to
+    launch a browser LLM that may fail on the user's device.
+    """
+    if not sources:
+        return MedicalAnswer(
+            in_scope=True,
+            urgency='unknown',
+            evidence_status='insufficient',
+            paragraphs=[Paragraph(
+                heading='Gemini 연결이 필요해요',
+                text=(
+                    '현재 MEDI 서버에는 Gemini API 키가 연결되지 않아 이 질문에 새 답변을 생성할 수 없습니다. '
+                    'Google AI Studio에서 무료 API 키를 만든 뒤 Render의 GEMINI_API_KEY에 넣으면 '
+                    '일반 의료 질문과 이미지 설명을 모두 생성할 수 있습니다.'
+                ),
+                source_ids=[],
+            )],
+            follow_up_questions=[],
+            image_observations=[],
+            limitations='현재 응답은 생성형 AI 답변이 아니라 연결 상태 안내입니다.',
+        )
+
+    paragraphs: list[Paragraph] = []
+    for s in sources[:3]:
+        excerpt = re.sub(r'\s+', ' ', str(s.get('excerpt') or '')).strip()
+        if not excerpt:
+            continue
+        paragraphs.append(Paragraph(
+            heading=str(s.get('title') or '관련 MEDI 자료')[:48],
+            text=excerpt[:850],
+            source_ids=[str(s.get('id'))],
+        ))
+    if not paragraphs:
+        paragraphs = [Paragraph(
+            heading='관련 자료는 찾았지만',
+            text='검색된 자료에서 바로 보여드릴 수 있는 본문을 찾지 못했습니다. Gemini를 연결하면 자료를 종합해 답변할 수 있습니다.',
+            source_ids=[],
+        )]
+    return MedicalAnswer(
+        in_scope=True,
+        urgency='unknown',
+        evidence_status='partial',
+        paragraphs=paragraphs,
+        follow_up_questions=[],
+        image_observations=[],
+        limitations='현재는 생성형 AI가 아니라 MEDI 내부 검색 결과를 그대로 보여주는 상태입니다.',
+    )
+
+
+async def generate(
+    request: ChatRequest,
+    sources: list[dict],
+    settings: Settings,
+    transport=None,
+) -> ProviderResult:
+    if not settings.gemini_api_key:
+        raise ProviderError('gemini_not_configured', 'Gemini 무료 API가 아직 설정되지 않았습니다.')
+    if settings.ai_provider == 'browser':
+        raise ProviderError('gemini_disabled', 'MEDI_AI_PROVIDER가 browser로 설정되어 있습니다. gemini로 바꿔 주세요.')
+
     system, contents = _gemini_contents(request, sources)
-    raw = await _gemini_json(system, contents, settings, max_tokens=1800, transport=transport)
+    raw = await _gemini_structured(
+        system,
+        contents,
+        settings,
+        max_tokens=2400,
+        transport=transport,
+    )
     answer = _normalize_answer(raw, sources, request)
     return ProviderResult(answer=answer, provider='gemini_free', model=settings.gemini_model)
+
 ```
 
 ## app/schemas.py
@@ -958,6 +1119,7 @@ class LocalTurnSave(Strict):
     mode: Literal['health', 'study'] = 'health'
     had_images: bool = False
     response: dict
+
 ```
 
 ## static/app.js
@@ -967,7 +1129,7 @@ class LocalTurnSave(Strict):
 const T={
  skip:'\uc9c8\ubb38 \uc785\ub825\uc73c\ub85c \uac74\ub108\ub6f0\uae30',newChat:'\uc0c8 \ub300\ud654',history:'\ub098\uc758 \ub300\ud654',loading:'\uc5f0\uacb0 \ud655\uc778 \uc911',knowledgeLabel:'\uc5f0\uacb0\ub41c \uc758\ud559\uc9c0\uc2dd',dataCaution:'\uc784\uc0c1 \uac80\ud1a0 \uc804 \uc5c5\ub85c\ub4dc \uc790\ub8cc',privacy:'\uac1c\uc778\uc815\ubcf4\uc640 \ud559\uc2b5 \uc548\ub0b4',localSession:'\uac8c\uc2a4\ud2b8 \uc0ac\uc6a9',temporary:'\ub85c\uadf8\uc778 \uc5c6\uc774 \ubc14\ub85c \uc0ac\uc6a9 \uac00\ub2a5',export:'\ub300\ud654 \ub0b4\ubcf4\ub0b4\uae30',welcomeTitle:'의료가 궁금할 때, 편하게 물어보세요.',welcomeDescription:'증상, 질병, 검사, 수술, 약, 의료기기까지 어려운 의학 내용을 쉽게 설명해드려요. 사진을 올리거나 붙여넣어 물어볼 수도 있어요.',cardKnowledge:'증상이 궁금할 때',cardKnowledgeDesc:'아픈 곳과 증상을 말하면 가능한 이유를 쉽게 정리',cardImage:'사진으로 물어보기',cardImageDesc:'검사 결과, 상처 사진, X-ray 등 이미지를 올려 질문',cardStudy:'의학용어 쉽게 알아보기',cardStudyDesc:'인공심폐기 같은 낯선 용어도 일상적인 말로 설명',welcomeNote:'\uc5f0\uad6c\u00b7\ud559\uc2b5\uc6a9 \ubca0\ud0c0\uc785\ub2c8\ub2e4. \uc9c4\ub2e8\uc774\ub098 \ucc98\ubc29\uc744 \uc81c\uacf5\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.',pending:'처리하고 있습니다.',questionLabel:'\uc758\ub8cc\u00b7\uac74\uac15 \uc9c8\ubb38',questionPlaceholder:'예: 인공심폐기가 뭐야? / 무릎이 아픈데 왜 그럴까? 사진은 붙여넣어도 돼요.',attach:'\uc774\ubbf8\uc9c0 \ucca8\ubd80 (JPG, PNG, WebP)',image:'\uc774\ubbf8\uc9c0',mode:'\ub300\ud654 \ubaa8\ub4dc',health:'\uac74\uac15\uc9c0\uc2dd',study:'\uc758\ud559 \ud559\uc2b5',send:'\ubcf4\ub0b4\uae30',stop:'\uc911\ub2e8',saveChat:'\uc774 \ub300\ud654\ub97c \ub0b4 \uacc4\uc815\uc5d0 \uc800\uc7a5',processingInfo:'안전·개인정보 안내',disclaimer:'MEDI\ub294 \uc9c4\ub2e8\u00b7\ucc98\ubc29\u00b7\uc601\uc0c1 \ud310\ub3c5\uc744 \ub300\uccb4\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4. \uc751\uae09\uc0c1\ud669\uc740 \ucc57\ubd07\uc774 \uc544\ub2cc 119\ub85c \uc5f0\ub77d\ud558\uc138\uc694.',close:'\ub2eb\uae30',consentTitle:'MEDI 이용 전 확인해주세요',consentBody:'질문과 최근 대화는 관련 의료자료를 찾기 위해 MEDI 서버로 전송됩니다. Gemini가 연결된 경우 질문·검색된 의료자료 일부와 첨부 이미지의 메타데이터를 제거한 사본이 답변 생성을 위해 Google Gemini API에 전송될 수 있습니다. 원본 이미지는 대화기록에 저장하지 않습니다.',consentPrivacy:'실명, 주민번호, 연락처, 병원 등록번호 등 개인을 식별할 수 있는 정보는 입력하지 마세요. 사진·검사결과지에도 이름, 환자번호, 생년월일 등이 보이지 않도록 가려주세요. 심한 흉통, 호흡곤란, 의식저하, 마비, 멈추지 않는 출혈 등 긴급한 증상은 MEDI 답변을 기다리지 말고 119 또는 응급의료기관을 이용하세요.',consentCheck:'안내 내용을 확인했습니다.',cancel:'\ucde8\uc18c',agree:'확인하고 계속',login:'\ub85c\uadf8\uc778',signup:'\ud68c\uc6d0\uac00\uc785',authDescription:'\ub85c\uadf8\uc778\ud558\uc9c0 \uc54a\uc544\ub3c4 \ubc14\ub85c \uc0ac\uc6a9\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4. \ud68c\uc6d0\uac00\uc785\u00b7\ub85c\uadf8\uc778\ud558\uba74 \uc800\uc7a5\uc744 \uc120\ud0dd\ud55c \ub300\ud654 \uae30\ub85d\uc744 \ub0b4 \uacc4\uc815\uc5d0 \ub0a8\uae38 \uc218 \uc788\uc2b5\ub2c8\ub2e4.',email:'\uc774\uba54\uc77c',password:'\ube44\ubc00\ubc88\ud638 (5\uc790 \uc774\uc0c1)',invite:'\ucd08\ub300\ucf54\ub4dc (\uc6b4\uc601\uc790\uac00 \uc81c\ud55c\ud55c \uacbd\uc6b0\uc5d0\ub9cc)',terms:'\uc758\ub8cc \uc11c\ube44\uc2a4\uac00 \uc544\ub2cc \uc5f0\uad6c\uc6a9 \ub3c4\uad6c\uc784\uc744 \uc774\ud574\ud558\uba70, \ube44\uc2dd\ubcc4 \uc815\ubcf4\ub85c\ub9cc \uc2dc\ud5d8\ud569\ub2c8\ub2e4.',toSignup:'\uc544\uc9c1 \uacc4\uc815\uc774 \uc5c6\uc73c\uc2e0\uac00\uc694? \ud68c\uc6d0\uac00\uc785',toLogin:'\uc774\ubbf8 \uacc4\uc815\uc774 \uc788\uc73c\uc2e0\uac00\uc694? \ub85c\uadf8\uc778',feedbackTitle:'\ub354 \ub098\uc740 \ub2f5\ubcc0\uc744 \uc704\ud55c \ud53c\ub4dc\ubc31',feedbackDescription:'\ud53c\ub4dc\ubc31\uc740 \uc989\uc2dc \ud559\uc2b5\ub418\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4. \ub3d9\uc758\ud55c \ub0b4\uc6a9\ub9cc \uc6b4\uc601\uc790\uc758 \uac80\ud1a0 \ub300\uae30\uc5f4\uc5d0 \ubcf4\ub0b4\uba70, \uc758\ud559\u00b7\uac1c\uc778\uc815\ubcf4 \uac80\ud1a0 \ud6c4 \uc218\ub3d9\uc73c\ub85c \ubc18\uc601\ud569\ub2c8\ub2e4. \uc544\ub798 \ub0b4\uc6a9\uc5d0\uc11c \uac1c\uc778\uc815\ubcf4\ub97c \uc0ad\uc81c\ud558\uc138\uc694.',feedbackQuestion:'\uac80\ud1a0\uc6a9 \uc9c8\ubb38 (\uc218\uc815 \uac00\ub2a5)',feedbackAnswer:'\uac80\ud1a0\uc6a9 \ub2f5\ubcc0 (\uc218\uc815 \uac00\ub2a5)',correction:'\uc218\uc815 \uc758\uacac\u00b7\ucc38\uace0 \uadfc\uac70',rating:'\ud3c9\uac00',needsReview:'\uac80\ud1a0\uac00 \ud544\uc694\ud574\uc694',helpful:'\ub3c4\uc6c0\uc774 \ub410\uc5b4\uc694',feedbackConsent:'\uc704 \ud53c\ub4dc\ubc31\uc744 \uc6b4\uc601\uc790\uac00 \uc77d\uace0 \uc11c\ube44\uc2a4 \uac1c\uc120\uc5d0 \uac80\ud1a0\ud558\ub294 \ub370 \ubcc4\ub3c4\ub85c \ub3d9\uc758\ud569\ub2c8\ub2e4.',deidentified:'\uc9c8\ubb38\u00b7\ub2f5\ubcc0\u00b7\uc218\uc815 \uc758\uacac\uc5d0\uc11c \uc2dd\ubcc4 \uac00\ub2a5\ud55c \uac1c\uc778\uc815\ubcf4\ub97c \uc81c\uac70\ud588\uc2b5\ub2c8\ub2e4.',feedbackSend:'\uac80\ud1a0 \ub300\uae30\uc5f4\uc5d0 \ubcf4\ub0b4\uae30',promptKnowledge:'무릎이 아픈데 어떤 원인이 있을 수 있어?',promptStudy:'인공심폐기가 뭐야? 일반인이 이해하기 쉽게 설명해줘.',promptImage:'이 이미지에서 보이는 내용을 일반인이 이해하기 쉽게 설명해줘.',emptyHistory:'\uc800\uc7a5\ud55c \ub300\ud654\uac00 \uc5ec\uae30\uc5d0 \ud45c\uc2dc\ub429\ub2c8\ub2e4.',demo:'MEDI',connected:'MEDI 의료 AI',demoNotice:'MEDI는 연결된 의료지식 자료를 우선 활용합니다.',rightsNotice:'\uc790\ub8cc \uc774\uc6a9\uad8c\ud55c\uc744 \uc6b4\uc601\uc790\uac00 \ud655\uc778\ud558\uae30 \uc804\uae4c\uc9c0 \uc678\ubd80 \uc11c\ube44\uc2a4\uc5d0\uc11c\ub294 \uc790\ub8cc \uac80\uc0c9\uc774 \ube44\ud65c\uc131\ud654\ub429\ub2c8\ub2e4.',noAccounts:'\ub85c\uceec \uccb4\ud5d8\uc5d0\uc11c\ub294 \uacc4\uc815 \uc800\uc7a5\uc744 \uc0ac\uc6a9\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4. Supabase\ub97c \uc5f0\uacb0\ud558\uba74 \ud68c\uc6d0 \uae30\ub2a5\uc744 \uc0ac\uc6a9\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.',loginNeeded:'\ub300\ud654 \uc800\uc7a5 \uae30\ub2a5\uc740 \ub85c\uadf8\uc778 \ud6c4 \uc0ac\uc6a9\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.',copy:'\ubcf5\uc0ac',copied:'\ub2f5\ubcc0\uc744 \ubcf5\uc0ac\ud588\uc2b5\ub2c8\ub2e4.',feedback:'\ud53c\ub4dc\ubc31',references:'\ucc38\uace0\ud55c \uc5c5\ub85c\ub4dc \uc790\ub8cc',referenceWarning:'\ucd9c\ucc98\uba85\u00b7\uc5f0\ub3c4\ub294 \ub370\uc774\ud130\uc14b \ud45c\uae30\uc785\ub2c8\ub2e4. \uc6d0\ubb38\u00b7\ucd5c\uc2e0\uc131\u00b7\uc758\ud559\uc801 \uc815\ud655\uc131\uc740 \ubcc4\ub3c4 \uac80\ud1a0\uac00 \ud544\uc694\ud569\ub2c8\ub2e4.',observations:'이미지에서 보이는 점',notSaved:'\uc800\uc7a5\ud558\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4. \uc774 \ub300\ud654\ub97c \ub0b4\ubcf4\ub0b8 \ub4a4 \uc774\ub3d9\ud574 \uc8fc\uc138\uc694.',imageLimit:'\uc774\ubbf8\uc9c0\ub294 \ud55c \ubc88\uc5d0 2\uc7a5, \uac01 5MB\uae4c\uc9c0\uc785\ub2c8\ub2e4.',imageType:'JPG, PNG, WebP \uc774\ubbf8\uc9c0\ub9cc \uc0ac\uc6a9\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.',report:'\uac80\uc0ac\uc9c0\u00b7\ud310\ub3c5\ubb38',photo:'\ud53c\ubd80 \ub4f1 \uc678\ubd80 \uc0ac\uc9c4',radiology:'의료영상',delete:'\uc0ad\uc81c',logout:'\ub85c\uadf8\uc544\uc6c3',deleteAccount:'\uacc4\uc815\uacfc \uc800\uc7a5 \ub0b4\uc6a9 \uc0ad\uc81c',deleteConfirm:'\uc774 \ub300\ud654\ub97c \uc0ad\uc81c\ud560\uae4c\uc694? \ubcf5\uad6c\ud560 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4.',accountConfirm:'\uacc4\uc815\u00b7\ub300\ud654\u00b7\ubcf4\uad00 \uc911\uc778 \ud53c\ub4dc\ubc31\uc744 \uc0ad\uc81c\ud569\ub2c8\ub2e4. \uacc4\uc18d\ud558\ub824\uba74 DELETE MY ACCOUNT\ub97c \uc785\ub825\ud558\uc138\uc694.',stopped:'처리를 중단했습니다.',unsavedConfirm:'\uc800\uc7a5\ub418\uc9c0 \uc54a\uc740 \ub300\ud654\uac00 \uc788\uc2b5\ub2c8\ub2e4. \ub0b4\ubcf4\ub0b4\uae30 \uc5c6\uc774 \uc774\ub3d9\ud560\uae4c\uc694?',checkEmail:'\uc778\uc99d \uba54\uc77c\uc744 \ud655\uc778\ud55c \ub4a4 \ub2e4\uc2dc \ub85c\uadf8\uc778\ud574 \uc8fc\uc138\uc694.',feedbackSuccess:'\uac80\ud1a0 \ub300\uae30\uc5f4\uc5d0 \uc800\uc7a5\ud588\uc2b5\ub2c8\ub2e4. \uc790\ub3d9\uc73c\ub85c \ud559\uc2b5\ub418\uc9c0\ub294 \uc54a\uc2b5\ub2c8\ub2e4.',feedbackLocal:'\ub85c\uceec \uac80\ud1a0 \ud6c4\ubcf4 \ud30c\uc77c\uc744 \ub9cc\ub4e4\uc5c8\uc2b5\ub2c8\ub2e4. \uc11c\ubc84\uc5d0\ub294 \ubcf4\ub0b4\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4.',saved:'\uacc4\uc815\uc5d0 \uc800\uc7a5\ub428',temporaryChat:'\uc784\uc2dc \ub300\ud654',emptyExport:'\ub0b4\ubcf4\ub0bc \ub300\ud654\uac00 \uc544\uc9c1 \uc5c6\uc2b5\ub2c8\ub2e4.'
 };
-const ERR={login_required:T.loginNeeded,invalid_invite:'\ucd08\ub300\ucf54\ub4dc\ub97c \ud655\uc778\ud574 \uc8fc\uc138\uc694.',membership_required:'\ucc98\uc74c \ub85c\uadf8\uc778\ud560 \ub54c \uc720\ud6a8\ud55c \ucd08\ub300\ucf54\ub4dc\ub97c \uc785\ub825\ud574 \uc8fc\uc138\uc694.',rate_limited:'\uc694\uccad\uc774 \ub9ce\uc2b5\ub2c8\ub2e4. \uc7a0\uc2dc \ud6c4 \ub2e4\uc2dc \uc2dc\ub3c4\ud574 \uc8fc\uc138\uc694.',daily_limit:'\uc624\ub298\uc758 \uc5f0\uad6c\uc6a9 AI \uc0ac\uc6a9 \ud55c\ub3c4\uc5d0 \ub3c4\ub2ec\ud588\uc2b5\ub2c8\ub2e4.',storage_limit:'\uc800\uc7a5 \ud55c\ub3c4\uc5d0 \ub3c4\ub2ec\ud588\uc2b5\ub2c8\ub2e4. \ubd88\ud544\uc694\ud55c \ub300\ud654\ub97c \uc0ad\uc81c\ud574 \uc8fc\uc138\uc694.',server_busy:'\uc11c\ubc84\uac00 \ub2e4\ub978 \uc694\uccad\uc744 \ucc98\ub9ac \uc911\uc785\ub2c8\ub2e4. \uc790\ub3d9 \uc7ac\uc804\uc1a1\ud558\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4.',auth_failed_check_email_and_password:'\uc774\uba54\uc77c\u00b7\ube44\ubc00\ubc88\ud638\u00b7\uc774\uba54\uc77c \uc778\uc99d \uc5ec\ubd80\ub97c \ud655\uc778\ud574 \uc8fc\uc138\uc694.',cloud_unavailable:'\uacc4\uc815 \uc800\uc7a5\uc18c\uc5d0 \uc5f0\uacb0\ud558\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4.',cloud_request_failed:'\uc800\uc7a5\uc18c \uc124\uc815\uc744 \uc6b4\uc601\uc790\uac00 \ud655\uc778\ud574\uc57c \ud569\ub2c8\ub2e4.',identifiers_detected:'\ud53c\ub4dc\ubc31\uc5d0 \uc5f0\ub77d\ucc98 \ub4f1 \uac1c\uc778\uc815\ubcf4\ub85c \ubcf4\uc774\ub294 \ubb38\uad6c\uac00 \uc788\uc2b5\ub2c8\ub2e4. \uc81c\uac70\ud574 \uc8fc\uc138\uc694.',invalid_image:'\uc774\ubbf8\uc9c0 \ud615\uc2dd\u00b7\ud06c\uae30\ub97c \ud655\uc778\ud574 \uc8fc\uc138\uc694. 5MB, 1,200\ub9cc \ud654\uc18c \uc774\ud558\uc785\ub2c8\ub2e4.',conversation_full:'\uc774 \ub300\ud654\uac00 \uae38\uc5b4\uc838 \uc0c8 \ub300\ud654\ub97c \uc2dc\uc791\ud574\uc57c \ud569\ub2c8\ub2e4.',invalid_request:'\uc785\ub825 \ud56d\ubaa9\uc758 \ud615\uc2dd\uacfc \uae38\uc774\ub97c \ud655\uc778\ud574 \uc8fc\uc138\uc694.',request_in_progress:'\ub3d9\uc77c\ud55c \uc694\uccad\uc744 \uc774\ubbf8 \ucc98\ub9ac \uc911\uc785\ub2c8\ub2e4.',terms_required:'\uc5f0\uad6c\uc6a9 \uc774\uc6a9 \uc548\ub0b4\uc5d0 \ub3d9\uc758\ud574 \uc8fc\uc138\uc694.'};
+const ERR={login_required:T.loginNeeded,invalid_invite:'\ucd08\ub300\ucf54\ub4dc\ub97c \ud655\uc778\ud574 \uc8fc\uc138\uc694.',membership_required:'\ucc98\uc74c \ub85c\uadf8\uc778\ud560 \ub54c \uc720\ud6a8\ud55c \ucd08\ub300\ucf54\ub4dc\ub97c \uc785\ub825\ud574 \uc8fc\uc138\uc694.',rate_limited:'\uc694\uccad\uc774 \ub9ce\uc2b5\ub2c8\ub2e4. \uc7a0\uc2dc \ud6c4 \ub2e4\uc2dc \uc2dc\ub3c4\ud574 \uc8fc\uc138\uc694.',daily_limit:'\uc624\ub298\uc758 \uc5f0\uad6c\uc6a9 AI \uc0ac\uc6a9 \ud55c\ub3c4\uc5d0 \ub3c4\ub2ec\ud588\uc2b5\ub2c8\ub2e4.',storage_limit:'\uc800\uc7a5 \ud55c\ub3c4\uc5d0 \ub3c4\ub2ec\ud588\uc2b5\ub2c8\ub2e4. \ubd88\ud544\uc694\ud55c \ub300\ud654\ub97c \uc0ad\uc81c\ud574 \uc8fc\uc138\uc694.',server_busy:'\uc11c\ubc84\uac00 \ub2e4\ub978 \uc694\uccad\uc744 \ucc98\ub9ac \uc911\uc785\ub2c8\ub2e4. \uc790\ub3d9 \uc7ac\uc804\uc1a1\ud558\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4.',auth_failed_check_email_and_password:'\uc774\uba54\uc77c\u00b7\ube44\ubc00\ubc88\ud638\u00b7\uc774\uba54\uc77c \uc778\uc99d \uc5ec\ubd80\ub97c \ud655\uc778\ud574 \uc8fc\uc138\uc694.',cloud_unavailable:'\uacc4\uc815 \uc800\uc7a5\uc18c\uc5d0 \uc5f0\uacb0\ud558\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4.',cloud_request_failed:'\uc800\uc7a5\uc18c \uc124\uc815\uc744 \uc6b4\uc601\uc790\uac00 \ud655\uc778\ud574\uc57c \ud569\ub2c8\ub2e4.',identifiers_detected:'\ud53c\ub4dc\ubc31\uc5d0 \uc5f0\ub77d\ucc98 \ub4f1 \uac1c\uc778\uc815\ubcf4\ub85c \ubcf4\uc774\ub294 \ubb38\uad6c\uac00 \uc788\uc2b5\ub2c8\ub2e4. \uc81c\uac70\ud574 \uc8fc\uc138\uc694.',invalid_image:'\uc774\ubbf8\uc9c0 \ud615\uc2dd\u00b7\ud06c\uae30\ub97c \ud655\uc778\ud574 \uc8fc\uc138\uc694. 5MB, 1,200\ub9cc \ud654\uc18c \uc774\ud558\uc785\ub2c8\ub2e4.',conversation_full:'\uc774 \ub300\ud654\uac00 \uae38\uc5b4\uc838 \uc0c8 \ub300\ud654\ub97c \uc2dc\uc791\ud574\uc57c \ud569\ub2c8\ub2e4.',invalid_request:'\uc785\ub825 \ud56d\ubaa9\uc758 \ud615\uc2dd\uacfc \uae38\uc774\ub97c \ud655\uc778\ud574 \uc8fc\uc138\uc694.',request_in_progress:'\ub3d9\uc77c\ud55c \uc694\uccad\uc744 \uc774\ubbf8 \ucc98\ub9ac \uc911\uc785\ub2c8\ub2e4.',terms_required:'\uc5f0\uad6c\uc6a9 \uc774\uc6a9 \uc548\ub0b4\uc5d0 \ub3d9\uc758\ud574 \uc8fc\uc138\uc694.',gemini_not_configured:'Gemini 무료 API가 아직 연결되지 않았습니다. Render Environment에 GEMINI_API_KEY를 추가한 뒤 다시 배포해 주세요.',gemini_network:'Gemini 서버 연결이 잠시 불안정합니다. 잠시 후 다시 보내 주세요.',gemini_limit:'Gemini 무료 사용 한도에 잠시 도달했습니다. 한도가 풀린 뒤 다시 시도해 주세요.',gemini_key:'Gemini API 키가 올바르지 않거나 권한이 없습니다. AI Studio에서 새 API 키를 확인해 주세요.',gemini_model:'Gemini 모델 설정을 확인해 주세요. GEMINI_MODEL=gemini-2.5-flash를 권장합니다.',gemini_upstream:'Gemini가 요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.',gemini_output:'Gemini 답변을 MEDI 형식으로 변환하지 못했습니다. 같은 질문을 다시 보내 주세요.'};
 function requestId(){
  if(typeof crypto.randomUUID==='function')return crypto.randomUUID();
  const b=crypto.getRandomValues(new Uint8Array(16));b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;
@@ -990,7 +1152,7 @@ function resetSafetySeen(){try{sessionStorage.removeItem('medi-safety-seen');}ca
 state.consent=!safetyNoticeEnabled()||safetySeenThisSession();
 function updateSafetySettings(){if($('safetyToggle'))$('safetyToggle').checked=safetyNoticeEnabled();if($('safetySettingText'))$('safetySettingText').textContent=safetyNoticeEnabled()?'첫 질문 전에 한 번 표시합니다.':'자동 안내를 표시하지 않습니다. 아래 버튼으로 언제든 다시 볼 수 있습니다.';}
 function setPendingText(text){const n=$('pending')?.querySelector('span:last-child');if(n&&text)n.textContent=text;}
-function updateLocalAIStatus(){const ai=window.MEDILocalAI?.status?.();if($('localAiStatus'))$('localAiStatus').textContent=ai?.message||(window.MEDILocalAI?.supported?.()?'서버 AI가 일시적으로 안 될 때 사용할 브라우저 보조 AI를 준비할 수 있습니다.':'이 브라우저는 WebGPU 보조 AI를 지원하지 않습니다. 무료 서버 AI가 연결되어 있으면 정상 사용 가능합니다.');if($('localAiPrepare'))$('localAiPrepare').disabled=!(window.MEDILocalAI?.supported?.());}
+function updateLocalAIStatus(){if($('localAiCard'))$('localAiCard').hidden=true;}
 function applyAppearance(){const dark=appearance.theme==='dark'||(appearance.theme==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.dataset.theme=dark?'dark':'light';document.documentElement.style.setProperty('--font-scale',appearance.font);}
 applyAppearance();
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>{if(appearance.theme==='system')applyAppearance();});
@@ -1038,15 +1200,12 @@ function para(root,text,cls=''){root.append(el('p',cls,text));}
 function stat(root,label,value){const row=el('div','stat-row');row.append(el('span','',label),el('span','',value));root.append(row);}
 function statusUI(){
  const c=state.config;if(!c)return;
- const ai=window.MEDILocalAI?.status?.();
  if(c.ai_connected){
-  const provider=c.ai_backend==='gemini'?'Gemini':'무료 서버 AI';
   $('connection').textContent='MEDI 의료 AI';
-  $('connection').title=provider+' · '+(c.ai_model||'');
- }else if(window.MEDILocalAI?.supported?.()){
-  $('connection').textContent=ai?.ready?'브라우저 AI 준비됨':'브라우저 보조 AI';
+  $('connection').title='Gemini 무료 API · '+(c.ai_model||'');
  }else{
-  $('connection').textContent='의료지식 검색';
+  $('connection').textContent='Gemini 연결 필요';
+  $('connection').title='Render에 GEMINI_API_KEY를 추가하면 새 답변과 이미지 분석이 활성화됩니다.';
  }
  $('docCount').textContent=(c.knowledge.documents||0).toLocaleString()+'건';
  $('chunkCount').textContent=(c.knowledge.chunks||0).toLocaleString()+'개 검색 조각';
@@ -1062,7 +1221,7 @@ function statusUI(){
   }else $('serverAiStatus').textContent='Gemini 무료 AI 미연결 · Render에 GEMINI_API_KEY를 추가하면 PC·휴대폰에서 답변과 이미지 분석이 가능합니다.';
  }
  if($('knowledgeStatus'))$('knowledgeStatus').textContent=c.knowledge_enabled?`MEDI 의료자료 활성 · ${(c.knowledge.documents||0).toLocaleString()}건`:'MEDI 의료자료 비활성 · DATASET_RIGHTS_CONFIRMED 확인 필요';
- if($('localAiCard'))$('localAiCard').hidden=!!c.ai_connected;
+ if($('localAiCard'))$('localAiCard').hidden=true;
  $('accountName').textContent=state.user?.email||(c.accounts?T.login:T.localSession);$('accountState').textContent=state.user?T.saved:T.temporary;
  $('saveChat').disabled=!c.accounts||!state.user||state.busy||!!state.cid;
  if(!c.accounts||!state.user)$('saveChat').checked=false;
@@ -1125,8 +1284,10 @@ function pickVisualAid(question,answer,hadImages){
  if(hadImages)return null;
  const text=(question||'').trim().toLowerCase();
  if(!text||text.length<3||VISUAL_SKIP_TERMS.some(k=>text.includes(k)))return null;
- // Only the user's current wording may trigger a diagram. A short follow-up such
- // as "왜이래" must not inherit an unrelated picture from the model's answer.
+ // A diagram is supplemental, never automatic decoration. Show one only when
+ // the user explicitly asks to see/understand structure, location, flow or a diagram.
+ const visualIntent=['그림','도식','구조','위치','해부','생김새','어떻게 생','흐름','작동 원리','원리 그림','그려','보여줘','어디에'];
+ if(!visualIntent.some(k=>text.includes(k)))return null;
  for(const item of VISUAL_AIDS){if(item.keys.some(k=>text.includes(k.toLowerCase())))return item;}
  return null;
 }
@@ -1179,8 +1340,6 @@ $('acceptConsent').onclick=()=>{markSafetySeen();$('consentDialog').close();if(s
 $('neverConsent').onclick=()=>{prefSet('medi-safety-notice','hide');markSafetySeen();updateSafetySettings();$('consentDialog').close();if(state.pendingConsent){state.pendingConsent=false;$('chatForm').requestSubmit();}};
 $('safetyToggle').onchange=()=>{if($('safetyToggle').checked){try{localStorage.removeItem('medi-safety-notice');}catch{}resetSafetySeen();}else{prefSet('medi-safety-notice','hide');markSafetySeen();}updateSafetySettings();};
 $('showSafetyNow').onclick=()=>{state.pendingConsent=false;$('consentDialog').showModal();};
-$('localAiPrepare').onclick=async()=>{if(!window.MEDILocalAI?.supported?.()){toast('이 브라우저에서는 WebGPU 보조 AI를 사용할 수 없습니다. 무료 서버 AI를 연결하면 기기와 관계없이 사용할 수 있습니다.');return;}try{$('localAiPrepare').disabled=true;await window.MEDILocalAI.prepare();}finally{updateLocalAIStatus();$('localAiPrepare').disabled=!(window.MEDILocalAI?.supported?.());statusUI();}};
-window.MEDILocalAI?.setProgressHandler?.(info=>{if($('localAiStatus'))$('localAiStatus').textContent=info.message;if(state.busy)setPendingText(info.message);if(info.status==='ready'||info.status==='unsupported'||info.status==='error')statusUI();});
 $('saveChat').onchange=()=>{if($('saveChat').checked&&!state.user){$('saveChat').checked=false;openAuth();}};
 $('chatForm').onsubmit=async e=>{
  e.preventDefault();if(state.busy||!state.config)return;const typed=$('question').value.trim();if(!typed&&!state.images.length){$('question').focus();return;}const question=typed||'첨부한 이미지를 일반인이 이해하기 쉽게 설명해줘.';if(!state.consent){askConsent(true);return;}
@@ -1192,12 +1351,6 @@ $('chatForm').onsubmit=async e=>{
   state.turns.push(t);mounted=true;$('welcome').hidden=true;renderTurn(t);scrollBottom();setPendingText('관련 의료자료를 찾고 있습니다…');
   const r=await api('/api/chat',{method:'POST',body:JSON.stringify({request_id:id,conversation_id:state.cid,message:question,history:state.cid?[]:history,images,mode:t.mode,consent:true}),signal:state.controller.signal});
   clearTimeout(timer);state.controller=null;
-  if(r.provider==='browser_local'&&r.local_ai_allowed){
-   if(window.MEDILocalAI?.supported?.()){
-    try{setPendingText('무료 기기 AI를 준비하고 있습니다…');const generated=await window.MEDILocalAI.generate({question,mode:t.mode,sources:r.sources||[],history,hadImages:!!images.length});r.answer=generated.answer;r.model=generated.model;r.local_generated=true;}
-    catch(err){r.provider='retrieval_only';r.local_ai_error=true;toast('브라우저 보조 AI를 실행하지 못했습니다. 설정에서 무료 서버 AI 연결 상태를 확인해 주세요.');}
-   }else r.provider='retrieval_only';
-  }
   if(state.cid&&state.user){
    try{await api('/api/conversations/'+state.cid+'/turns/local',{method:'POST',body:JSON.stringify({request_id:id,question,mode:t.mode,had_images:!!images.length,response:r})});r.saved=true;}
    catch(saveErr){r.saved=false;r.save_warning='answer_not_saved_export_before_leaving';}
@@ -1206,7 +1359,7 @@ $('chatForm').onsubmit=async e=>{
  }catch(err){if(mounted){t.error=failure(err);renderTurn(t);}toast(failure(err));if(err.code==='login_required'){state.user=null;openAuth();}}
  finally{clearTimeout(timer);state.controller=null;setBusy(false);setPendingText(T.pending);}
 };
-$('stopButton').onclick=()=>{if(state.controller)state.controller.abort();else toast('기기 AI 답변 생성 중에는 잠시 기다려 주세요.');};
+$('stopButton').onclick=()=>{if(state.controller)state.controller.abort();else toast('현재 처리 중인 요청이 없습니다.');};
 function download(name,obj){const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=el('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);}
 $('exportButton').onclick=()=>{if(!state.turns.length){toast(T.emptyExport);return;}download('MEDI-conversation-'+new Date().toISOString().slice(0,10)+'.json',{version:'0.1.0',purpose:'research_only',exported_at:new Date().toISOString(),turns:state.turns.map(({previewImages,...t})=>t)});};
 function openAuth(){if(!state.config?.accounts){showInfo(T.localSession,b=>para(b,T.noAccounts));return;}$('authError').textContent='';$('authDialog').showModal();}
@@ -1225,6 +1378,7 @@ $('feedbackForm').onsubmit=async e=>{e.preventDefault();const t=state.feedbackTu
 window.addEventListener('beforeunload',e=>{if(state.busy||hasUnsaved()){e.preventDefault();e.returnValue='';}});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenu();});
 (async()=>{try{state.config=await api('/api/config');if(state.config.accounts){state.user=(await api('/api/auth/session',{},false)).user;}statusUI();updateSafetySettings();updateLocalAIStatus();authMode(false);await historyList();}catch(e){$('connection').textContent='연결 실패';toast(failure(e));}})();
+
 ```
 
 ## static/app.css
@@ -1553,6 +1707,7 @@ html[data-theme="dark"] .image-analysis-warning{background:#35281f;border-color:
 .retry-analysis:hover{filter:brightness(.96)}
 .connection[data-state="reconnecting"]{opacity:.78}
 @media(max-width:640px){.medi-visual img{max-height:330px;padding:4px}.medi-visual figcaption{padding:.85rem .9rem 1rem}.visual-dialog-image{max-height:62vh}}
+
 ```
 
 ## static/index.html
@@ -1564,9 +1719,8 @@ html[data-theme="dark"] .image-analysis-warning{background:#35281f;border-color:
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark"><meta name="robots" content="noindex,nofollow">
 <title>MEDI - Medical Research Companion</title>
-<link rel="icon" href="/static/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/app.css?v=0900">
-<script src="/static/local_ai.js?v=0900" defer></script>
-<script src="/static/app.js?v=0900" defer></script>
+<link rel="icon" href="/static/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/app.css?v=1001">
+<script src="/static/app.js?v=1001" defer></script>
 </head>
 <body>
 <a class="skip" href="#question" data-i18n="skip"></a>
@@ -1616,217 +1770,19 @@ html[data-theme="dark"] .image-analysis-warning{background:#35281f;border-color:
 <dialog id="settingsDialog"><div class="dialog-heading"><h2>설정</h2><button class="icon-button" data-close="settingsDialog" aria-label="Close">&#215;</button></div><div class="dialog-body settings-grid">
 <label class="field"><span>화면 모드</span><select id="themeSelect"><option value="light">라이트 모드</option><option value="dark">다크 모드</option><option value="system">기기 설정 따르기</option></select></label>
 <label class="field"><span>글자 크기</span><select id="fontScale"><option value="1">기본 100%</option><option value="1.12">크게 112%</option><option value="1.25">더 크게 125%</option><option value="1.4">매우 크게 140%</option></select></label>
-<section class="settings-card"><div><strong>MEDI 의료 AI</strong><p id="serverAiStatus" class="subtle">무료 서버 AI 연결 상태를 확인하는 중입니다.</p></div><span class="settings-dot" aria-hidden="true"></span></section>
+<section class="settings-card"><div><strong>MEDI 의료 AI</strong><p id="serverAiStatus" class="subtle">Gemini 연결 상태를 확인하는 중입니다.</p></div><span class="settings-dot" aria-hidden="true"></span></section>
 <section class="settings-card"><div><strong>내 의료지식 자료</strong><p id="knowledgeStatus" class="subtle">의료자료 연결 상태를 확인하는 중입니다.</p></div><span class="settings-dot" aria-hidden="true"></span></section>
-<section id="localAiCard" class="settings-card"><div><strong>브라우저 보조 AI</strong><p id="localAiStatus" class="subtle">기기 호환성을 확인하는 중입니다.</p></div><button id="localAiPrepare" class="quiet-button" type="button">보조 AI 준비</button></section>
 <section class="settings-card"><div><strong>첫 질문 전 주의 안내</strong><p id="safetySettingText" class="subtle">첫 질문 전에 한 번 표시합니다.</p></div><label class="switch"><input id="safetyToggle" type="checkbox" checked><span></span></label><button id="showSafetyNow" class="quiet-button full" type="button">주의사항 지금 다시 보기</button></section>
-<p class="settings-help">MEDI는 먼저 짧고 쉬운 말로 답합니다. 그림이 이해에 도움이 되는 질문이면 답변 안에 간단한 설명 그림도 자동으로 보여줍니다.</p>
+<p class="settings-help">Gemini가 연결되면 질문의 뜻을 먼저 해석해 질문마다 새 답변을 만듭니다. MEDI 의료자료는 관련 있을 때 근거로 활용하고, 그림은 구조·위치·원리를 시각적으로 설명하는 데 실제로 도움이 될 때만 표시합니다.</p>
 </div><div class="dialog-actions"><button class="primary-button" data-close="settingsDialog">완료</button></div></dialog>
 <dialog id="feedbackDialog"><div class="dialog-heading"><h2 data-i18n="feedbackTitle"></h2><button class="icon-button" data-close="feedbackDialog" aria-label="Close">&#215;</button></div><form id="feedbackForm" class="dialog-body"><p class="notice-box" data-i18n="feedbackDescription"></p><label class="field"><span data-i18n="feedbackQuestion"></span><textarea id="feedbackQuestion" maxlength="4000" rows="2" required></textarea></label><label class="field"><span data-i18n="feedbackAnswer"></span><textarea id="feedbackAnswer" maxlength="16000" rows="4" required></textarea></label><label class="field"><span data-i18n="correction"></span><textarea id="correction" maxlength="4000" rows="3"></textarea></label><label class="field"><span data-i18n="rating"></span><select id="rating"><option value="needs_review" data-i18n="needsReview"></option><option value="helpful" data-i18n="helpful"></option></select></label><label class="check-line"><input id="feedbackConsent" type="checkbox" required><span data-i18n="feedbackConsent"></span></label><label class="check-line"><input id="deidentified" type="checkbox" required><span data-i18n="deidentified"></span></label><button id="feedbackSubmit" class="primary-button full" type="submit" data-i18n="feedbackSend"></button><p id="feedbackError" class="inline-error" role="alert"></p></form></dialog>
 </body></html>
-```
 
-## static/local_ai.js
-
-```javascript
-'use strict';
-
-(() => {
-  const CDN = 'https://esm.run/@mlc-ai/web-llm@0.2.85';
-  const PREFERRED_MODELS = [
-    'Qwen2.5-0.5B-Instruct-q4f16_1-MLC',
-    'Qwen2.5-0.5B-Instruct-q4f32_1-MLC',
-    'SmolLM2-360M-Instruct-q4f32_1-MLC'
-  ];
-
-  let modulePromise = null;
-  let engine = null;
-  let modelId = null;
-  let preparing = null;
-  let progressHandler = null;
-  let lastStatus = 'idle';
-  let lastMessage = '브라우저 보조 AI 준비 안 됨';
-
-  const setStatus = (status, message, progress = null) => {
-    lastStatus = status;
-    lastMessage = message;
-    if (typeof progressHandler === 'function') {
-      progressHandler({ status, message, progress, modelId });
-    }
-  };
-
-  const supported = () => {
-    return Boolean(window.isSecureContext && navigator.gpu);
-  };
-
-  const loadModule = async () => {
-    if (!modulePromise) modulePromise = import(CDN);
-    return modulePromise;
-  };
-
-  const chooseModel = (webllm) => {
-    const listed = new Set((webllm.prebuiltAppConfig?.model_list || []).map(x => x.model_id));
-    return PREFERRED_MODELS.find(id => listed.has(id)) || PREFERRED_MODELS[0];
-  };
-
-  const prepare = async () => {
-    if (engine) return { ok: true, modelId };
-    if (preparing) return preparing;
-    if (!supported()) {
-      setStatus('unsupported', '이 브라우저는 WebGPU 보조 AI를 지원하지 않습니다. 무료 서버 AI가 연결되어 있으면 정상 사용 가능합니다.');
-      return { ok: false, reason: 'webgpu_unavailable' };
-    }
-
-    preparing = (async () => {
-      try {
-        setStatus('loading', '브라우저 보조 AI 모듈을 불러오는 중입니다…', 0);
-        const webllm = await loadModule();
-        const listed = new Set((webllm.prebuiltAppConfig?.model_list || []).map(x => x.model_id));
-        const candidates = PREFERRED_MODELS.filter(id => listed.size === 0 || listed.has(id));
-        if (!candidates.length) candidates.push(chooseModel(webllm));
-
-        let lastError = null;
-        for (const candidate of candidates) {
-          modelId = candidate;
-          const initProgressCallback = (report) => {
-            const p = typeof report?.progress === 'number' ? report.progress : null;
-            let text = String(report?.text || '모델을 준비하는 중입니다…');
-            if (p !== null) text = `브라우저 보조 AI 준비 중 ${Math.round(p * 100)}%`;
-            setStatus('loading', text, p);
-          };
-          try {
-            engine = await webllm.CreateMLCEngine(modelId, {
-              initProgressCallback,
-              logLevel: 'WARN'
-            });
-            lastError = null;
-            break;
-          } catch (error) {
-            engine = null;
-            lastError = error;
-          }
-        }
-        if (!engine) throw lastError || new Error('no_compatible_model');
-
-        setStatus('ready', `브라우저 보조 AI 준비 완료 · ${modelId}` , 1);
-        return { ok: true, modelId };
-      } catch (error) {
-        engine = null;
-        setStatus('error', '브라우저 보조 AI 준비에 실패했습니다. 무료 서버 AI가 있으면 서버 AI를 사용합니다.');
-        return { ok: false, reason: String(error?.message || error) };
-      } finally {
-        preparing = null;
-      }
-    })();
-
-    return preparing;
-  };
-
-  const clip = (value, max) => String(value || '').slice(0, max);
-
-  const buildMessages = ({ question, mode, sources, history }) => {
-    const refs = (sources || []).slice(0, 4).map((s, i) => ({
-      id: s.id || `S${i + 1}`,
-      title: clip(s.title || '업로드 자료', 120),
-      year: clip(s.year || '', 20),
-      excerpt: clip(s.excerpt || '', 1200)
-    }));
-
-    const referenceText = refs.length
-      ? refs.map(r => `[${r.id}] ${r.title}${r.year ? ` (${r.year})` : ''}\n${r.excerpt}`).join('\n\n')
-      : '검색된 참고자료가 없습니다.';
-
-    const system = [
-      '너는 MEDI라는 한국어 의료 전문 AI다. 사용자는 의학 전문가가 아니라 일반인이다.',
-      '제공된 MEDI 업로드 근거자료를 먼저 활용하되 본문에는 [S1] 같은 번호를 노출하지 마라.',
-      '첫 문장에서 질문에 바로 답하고, 기본 답변은 전체 250~500자 정도로 최대 3개 짧은 문단만 작성하라.',
-      '전문용어는 꼭 필요할 때만 쉬운 말 뒤 괄호로 한 번 설명하라.',
-      '단순 개념 질문은 한마디로 무엇인지, 언제 쓰는지, 핵심 원리만 설명하라.',
-      '증상 질문은 흔한 가능성 2~3개까지만 말하고, 꼭 필요한 확인 질문도 1~2개만 제시하라.',
-      '진단을 확정하거나 질환을 배제하지 말고, 처방약의 시작·중단·용량 변경을 지시하지 마라.',
-      '심한 흉통, 호흡곤란, 의식저하, 마비, 멈추지 않는 출혈 등 응급 상황은 119 또는 응급의료기관 이용을 우선 안내하라.',
-      '참고자료가 충분하지 않으면 억지로 끼워 맞추지 말고 짧게 한계를 말하라.',
-      '긴 목록, 논문 문체, 병태생리 단계 나열, 같은 말 반복을 피하라. JSON이나 코드블록은 사용하지 마라.'
-    ].join('\n');
-
-    const messages = [{ role: 'system', content: system }];
-    for (const item of (history || []).slice(-4)) {
-      if (!item?.role || !item?.content) continue;
-      messages.push({ role: item.role, content: clip(item.content, 1500) });
-    }
-    messages.push({
-      role: 'user',
-      content: `참고자료:\n${referenceText}\n\n사용자 질문:\n${clip(question, 4000)}\n\n일반인이 바로 이해할 수 있게 짧고 쉽게 답해라.`
-    });
-    return messages;
-  };
-
-  const normalizeText = (text) => {
-    return String(text || '')
-      .replace(/^```(?:json|markdown|text)?/i, '')
-      .replace(/```$/i, '')
-      .trim();
-  };
-
-  const textToAnswer = (text, hasSources, mode, hadImages) => {
-    const cleaned = normalizeText(text);
-    const parts = cleaned.split(/\n\s*\n/).map(x => x.trim()).filter(Boolean).slice(0, 3);
-    const paragraphs = (parts.length ? parts : [cleaned || '답변을 생성하지 못했습니다.']).map((p, i) => ({
-      heading: i === 0 ? '' : '',
-      text: p.length > 430 ? p.slice(0, 427).replace(/[ ,;:]+$/,'') + '…' : p,
-      source_ids: []
-    }));
-    return {
-      in_scope: true,
-      urgency: mode === 'study' ? 'general_information' : 'unknown',
-      evidence_status: hasSources ? 'partial' : 'insufficient',
-      paragraphs,
-      follow_up_questions: [],
-      image_observations: hadImages ? ['첨부 이미지는 현재 무료 기기 AI가 분석하지 않습니다. 이미지 진단·판독은 아직 연결되지 않았습니다.'] : [],
-      limitations: '참고용 정보예요. 증상이 심하거나 계속되면 의료진에게 확인하세요.'
-    };
-  };
-
-  const generate = async ({ question, mode = 'health', sources = [], history = [], hadImages = false }) => {
-    const ready = await prepare();
-    if (!ready.ok || !engine) throw new Error(ready.reason || 'local_ai_unavailable');
-
-    setStatus('generating', '브라우저 보조 AI가 MEDI 의료자료를 바탕으로 답변을 작성하고 있습니다…');
-    try {
-      const reply = await engine.chat.completions.create({
-        messages: buildMessages({ question, mode, sources, history }),
-        temperature: 0.25,
-        top_p: 0.9,
-        max_tokens: 460
-      });
-      const text = reply?.choices?.[0]?.message?.content || '';
-      const answer = textToAnswer(text, Boolean(sources?.length), mode, hadImages);
-      setStatus('ready', `브라우저 보조 AI 준비 완료 · ${modelId}`);
-      return { answer, model: modelId };
-    } catch (error) {
-      setStatus('error', '브라우저 보조 AI 답변 생성에 실패했습니다.');
-      throw error;
-    }
-  };
-
-  window.MEDILocalAI = {
-    supported,
-    prepare,
-    generate,
-    setProgressHandler(handler) {
-      progressHandler = handler;
-      if (typeof handler === 'function') handler({ status: lastStatus, message: lastMessage, modelId });
-    },
-    status() {
-      return { status: lastStatus, message: lastMessage, modelId, supported: supported(), ready: Boolean(engine) };
-    }
-  };
-})();
 ```
 
 ## render.yaml
 
-```yaml
+```text
 services:
   - type: web
     name: medi-research-chat
@@ -1864,6 +1820,7 @@ services:
         value: "true"
       - key: GUEST_DAILY_LIMIT
         value: "8"
+
 ```
 
 ## env.example
@@ -1888,75 +1845,5 @@ ALLOW_OPEN_SIGNUP=true
 DATASET_RIGHTS_CONFIRMED=false
 OPERATOR_CONTACT=
 GUEST_DAILY_LIMIT=8
+
 ```
-
-## static/visuals/blood_pressure.svg
-
-```xml
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d"><title id="t">혈압 이해 그림</title><desc id="d">혈관 안으로 흐르는 혈액과 혈관벽에 가해지는 압력을 단순화한 그림</desc><rect width="640" height="360" rx="28" fill="#fff6f6"/><rect x="80" y="125" width="480" height="110" rx="55" fill="#f0aaaa" stroke="#b95252" stroke-width="8"/><rect x="95" y="143" width="450" height="74" rx="37" fill="#fff"/><path d="M180 180h250" stroke="#c84e4e" stroke-width="18" stroke-linecap="round"/><path d="M420 158l42 22-42 22z" fill="#c84e4e"/><path d="M210 112v-42m220 42v-42" stroke="#467e78" stroke-width="9" stroke-linecap="round"/><path d="M190 83l20-25 20 25m180 0l20-25 20 25" fill="none" stroke="#467e78" stroke-width="7"/><text x="320" y="300" text-anchor="middle" font-family="sans-serif" font-size="25" fill="#4b3a3a">혈액이 혈관벽을 미는 힘 = 혈압</text></svg>
-```
-
-## static/visuals/brain.svg
-
-```xml
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d"><title id="t">뇌 이해 그림</title><desc id="d">뇌의 좌우 반구를 단순화한 교육용 그림</desc><rect width="640" height="360" rx="28" fill="#faf7ff"/><path d="M318 85c-39-60-129-27-121 39-62 5-72 88-16 112-12 60 64 84 104 44 28 35 74 16 80-21 58 5 91-67 53-105 36-43-7-105-55-95-1-55-20-76-45-74z" fill="#d8c1ef" stroke="#755a92" stroke-width="7"/><path d="M318 88v185" stroke="#fff" stroke-width="7" opacity=".8"/><path d="M244 125c20 5 30 19 28 39m77-48c-20 8-31 25-26 45m-92 62c22-9 39-5 50 11m76-17c-20-4-37 3-48 19" fill="none" stroke="#9b7ab8" stroke-width="8" stroke-linecap="round"/><text x="320" y="326" text-anchor="middle" font-family="sans-serif" font-size="25" fill="#4f405f">뇌는 움직임·감각·생각을 조절해요</text></svg>
-```
-
-## static/visuals/diabetes.svg
-
-```xml
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d"><title id="t">혈당과 인슐린 이해 그림</title><desc id="d">혈액 속 포도당이 인슐린 도움을 받아 세포 안으로 들어가는 과정을 단순화한 그림</desc><rect width="640" height="360" rx="28" fill="#fffaf0"/><circle cx="170" cy="170" r="83" fill="#f4d27d" stroke="#a87f25" stroke-width="7"/><circle cx="456" cy="170" r="83" fill="#d9efdf" stroke="#4c8761" stroke-width="7"/><circle cx="142" cy="143" r="11" fill="#d95f5f"/><circle cx="190" cy="181" r="11" fill="#d95f5f"/><circle cx="154" cy="211" r="11" fill="#d95f5f"/><path d="M258 170h108" stroke="#5f7e78" stroke-width="12" stroke-linecap="round"/><path d="M345 147l32 23-32 23z" fill="#5f7e78"/><rect x="287" y="127" width="47" height="34" rx="10" fill="#7da7d7"/><text x="310" y="150" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#fff">인슐린</text><text x="170" y="290" text-anchor="middle" font-family="sans-serif" font-size="24" fill="#51451e">혈액 속 포도당</text><text x="456" y="290" text-anchor="middle" font-family="sans-serif" font-size="24" fill="#32563c">세포</text></svg>
-```
-
-## static/visuals/heart.svg
-
-```xml
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d"><title id="t">심장 이해 그림</title><desc id="d">심장이 혈액을 몸으로 보내는 펌프라는 점을 단순화한 교육용 그림</desc><rect width="640" height="360" rx="28" fill="#fff6f6"/><path d="M320 285S150 205 150 115c0-67 83-91 122-38 20-38 76-51 115-24 40 28 53 85 22 130-31 45-89 82-89 102z" fill="#dc6b6b" stroke="#9d4141" stroke-width="8"/><path d="M320 95v-50m45 74 41-41m-132 41-41-41" fill="none" stroke="#557b8a" stroke-width="10" stroke-linecap="round"/><path d="M250 179c44-50 97-38 139 3" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round"/><text x="320" y="330" text-anchor="middle" font-family="sans-serif" font-size="25" fill="#4e3737">심장은 혈액을 보내는 펌프예요</text></svg>
-```
-
-## static/visuals/heart_lung_machine.svg
-
-```xml
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d"><title id="t">인공심폐기 원리 그림</title><desc id="d">심장 수술 중 혈액이 몸에서 기계로 이동해 산소를 공급받고 다시 몸으로 돌아오는 흐름</desc><rect width="640" height="360" rx="28" fill="#f5f8fb"/><path d="M180 140c-30-44-98-18-98 39 0 60 98 117 98 117s98-57 98-117c0-57-68-83-98-39z" fill="#d96868" stroke="#9b3f3f" stroke-width="6"/><circle cx="456" cy="174" r="64" fill="#dbe8ff" stroke="#4c6da6" stroke-width="7"/><circle cx="456" cy="174" r="36" fill="#fff" stroke="#7d99c7" stroke-width="5"/><path d="M240 160C320 112 350 112 394 145" fill="none" stroke="#4c6da6" stroke-width="12" stroke-linecap="round"/><path d="M394 205C345 250 305 251 240 218" fill="none" stroke="#cc5555" stroke-width="12" stroke-linecap="round"/><path d="M370 134l25 10-16 21" fill="#4c6da6"/><path d="M270 230l-26-12 18-20" fill="#cc5555"/><text x="180" y="326" text-anchor="middle" font-family="sans-serif" font-size="24" fill="#31464b">심장</text><text x="456" y="326" text-anchor="middle" font-family="sans-serif" font-size="24" fill="#31464b">산소 공급·펌프</text></svg>
-```
-
-## static/visuals/knee.svg
-
-```xml
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d"><title id="t">무릎 구조 이해 그림</title><desc id="d">대퇴골, 무릎관절, 정강뼈의 관계를 단순화한 교육용 그림</desc><rect width="640" height="360" rx="28" fill="#eef7f4"/><path d="M285 40c-18 62-14 112 13 150l-33 61c-14 26-19 48-20 69" fill="none" stroke="#315f5b" stroke-width="34" stroke-linecap="round"/><path d="M358 40c18 62 14 112-13 150l33 61c14 26 19 48 20 69" fill="none" stroke="#315f5b" stroke-width="34" stroke-linecap="round"/><ellipse cx="321" cy="195" rx="77" ry="39" fill="#9fd0c8" stroke="#2b756c" stroke-width="8"/><circle cx="321" cy="191" r="24" fill="#f6d8b0" stroke="#9f6d34" stroke-width="6"/><path d="M262 205c41 15 79 15 118 0" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round"/><text x="321" y="335" text-anchor="middle" font-family="sans-serif" font-size="26" fill="#29464a">무릎관절</text></svg>
-```
-
-## static/visuals/knee_detail.png
-
-이 파일은 바이너리 이미지이므로 ZIP 안의 파일을 그대로 업로드하세요.
-
-## static/visuals/lungs.svg
-
-```xml
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d"><title id="t">폐와 기도 이해 그림</title><desc id="d">기관과 좌우 폐의 연결을 단순화한 교육용 그림</desc><rect width="640" height="360" rx="28" fill="#f2fbfb"/><path d="M320 55v95" stroke="#4c716f" stroke-width="22" stroke-linecap="round"/><path d="M320 132l-70 54m70-54 70 54" stroke="#4c716f" stroke-width="15" stroke-linecap="round"/><path d="M258 142c-90 7-122 99-88 157 34 58 102 15 121-36 16-42 7-89-33-121z" fill="#b8e1dc" stroke="#3b8179" stroke-width="7"/><path d="M382 142c90 7 122 99 88 157-34 58-102 15-121-36-16-42-7-89 33-121z" fill="#b8e1dc" stroke="#3b8179" stroke-width="7"/><text x="320" y="332" text-anchor="middle" font-family="sans-serif" font-size="25" fill="#2f5253">공기 → 기도 → 폐</text></svg>
-```
-
-## static/visuals/medicine.svg
-
-```xml
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d"><title id="t">약 복용 이해 그림</title><desc id="d">알약과 물컵을 단순화한 교육용 그림</desc><rect width="640" height="360" rx="28" fill="#f7f9ff"/><g transform="rotate(-28 235 165)"><rect x="135" y="119" width="200" height="92" rx="46" fill="#ef8a8a" stroke="#a24d4d" stroke-width="7"/><path d="M235 119v92" stroke="#fff" stroke-width="7"/></g><path d="M410 100h100l-13 165h-74z" fill="#d7eef8" stroke="#5e8da0" stroke-width="7"/><path d="M418 169h84" stroke="#65b6d2" stroke-width="10"/><text x="320" y="322" text-anchor="middle" font-family="sans-serif" font-size="24" fill="#3d4d5b">약은 이름·용량·복용법을 확인해요</text></svg>
-```
-
-## static/visuals/spine.svg
-
-```xml
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d"><title id="t">척추 이해 그림</title><desc id="d">목에서 허리까지 이어지는 척추를 단순화한 교육용 그림</desc><rect width="640" height="360" rx="28" fill="#f6f8fb"/><path d="M320 44c-30 36 26 47-4 82s27 46-4 82 25 44-1 82" fill="none" stroke="#5e6673" stroke-width="18" stroke-linecap="round"/><g fill="#d8e2eb" stroke="#667480" stroke-width="4"><rect x="282" y="67" width="76" height="24" rx="10"/><rect x="280" y="112" width="80" height="24" rx="10"/><rect x="277" y="157" width="86" height="24" rx="10"/><rect x="274" y="202" width="92" height="24" rx="10"/><rect x="270" y="247" width="100" height="24" rx="10"/></g><text x="320" y="327" text-anchor="middle" font-family="sans-serif" font-size="25" fill="#394653">척추는 몸을 지지하고 신경을 보호해요</text></svg>
-```
-
-## static/visuals/stomach.svg
-
-```xml
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d"><title id="t">위와 소화기관 이해 그림</title><desc id="d">식도에서 위로 음식이 이동하는 모습을 단순화한 교육용 그림</desc><rect width="640" height="360" rx="28" fill="#fff9f1"/><path d="M320 42v105" stroke="#7f705f" stroke-width="22" stroke-linecap="round"/><path d="M319 139c-38 9-74 28-91 65-26 58 18 118 88 103 92-20 144-123 76-172-17-12-43-13-73 4z" fill="#efc48d" stroke="#9b6d37" stroke-width="7"/><path d="M334 145c34 8 60 30 64 63" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round"/><text x="320" y="334" text-anchor="middle" font-family="sans-serif" font-size="25" fill="#54483a">식도 → 위 → 장</text></svg>
-```
-
-## static/visuals/wound.svg
-
-```xml
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d"><title id="t">상처 회복 이해 그림</title><desc id="d">피부 손상 주변의 붉음과 부종을 단순화한 교육용 그림</desc><rect width="640" height="360" rx="28" fill="#fff8f5"/><rect x="70" y="90" width="500" height="185" rx="58" fill="#f2cdbd" stroke="#b98370" stroke-width="7"/><ellipse cx="320" cy="182" rx="128" ry="72" fill="#efaaaa" opacity=".75"/><path d="M235 185c42-60 132-61 174 0-42 47-132 47-174 0z" fill="#bc5252"/><path d="M261 185c30-30 89-30 119 0-30 26-89 26-119 0z" fill="#fff0e8"/><text x="320" y="318" text-anchor="middle" font-family="sans-serif" font-size="24" fill="#55413b">붉음·붓기·열감은 변화 추이를 같이 봐요</text></svg>
-```
-

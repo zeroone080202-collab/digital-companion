@@ -1,13 +1,9 @@
-MEDI V0.9 GEMINI FREE IMAGE FIX
+MEDI v0.10 Gemini Dynamic Medical AI Patch
 
-Main changes:
-- Gemini free-tier API only
-- OpenAI not required
-- Groq not required
-- Image data actually sent to Gemini
-- Radiology kind preserved
-- Missing local_ai.js restored
-- Missing visual assets restored
-- Detailed knee illustration added
-- Render config updated for Gemini
-- Code version mismatch fixed
+Core changes:
+- current-question Gemini generation for ordinary medical questions
+- no canned retrieval answer fallback
+- no browser WebGPU AI fallback
+- Gemini multimodal image input retained
+- MEDI RAG is supplemental evidence, not a requirement to answer
+- diagrams only when user explicitly requests visual explanation and a relevant asset exists

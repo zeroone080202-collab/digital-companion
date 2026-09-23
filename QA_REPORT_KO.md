@@ -1,23 +1,21 @@
-# MEDI v0.9 QA
+# MEDI v0.10 QA
 
-검사한 항목:
+검사 결과:
 
 - Python 문법 검사: PASS
   - app/config.py
-  - app/provider.py
   - app/main.py
+  - app/provider.py
   - app/schemas.py
 - JavaScript 문법 검사: PASS
   - static/app.js
-  - static/local_ai.js
-- Gemini mock API 멀티모달 payload 검사: PASS
-  - 이미지가 `inline_data`로 전달됨
-  - `responseJsonSchema` 구조화 출력 설정 포함
-  - `gemini_free` ProviderResult 생성 확인
-- MEDI 이미지→검색 핵심어 추출 경로 검사: PASS
-- static/app.js가 참조하는 시각자료 11개 존재 여부: PASS
-- static/local_ai.js 누락 여부: PASS
-- OpenAI API 키를 필수로 요구하지 않음: PASS
-- Groq API 키를 필수로 요구하지 않음: PASS
+- `app/main.py`의 일반 질문 경로에서 `fixed_answer('out_of_scope')` 제거 확인: PASS
+- 일반 질문의 브라우저 보조 AI 자동 폴백 제거 확인: PASS
+- Gemini 미설정 시 고정 검색답변 대신 `gemini_not_configured` 오류 반환 확인: PASS
+- Gemini 오류 시 검색 결과를 AI 답변으로 가장하는 fallback 제거 확인: PASS
+- 시각자료 자동 표시 조건을 명시적 시각 의도(그림/구조/위치/해부/흐름/원리 등)로 제한: PASS
+- `static/index.html`에서 `local_ai.js` 로딩 제거: PASS
+- Gemini 기본 모델 `gemini-2.5-flash`: 확인
+- 이미지 inline_data 전송 코드는 유지: 확인
 
-주의: 실제 Gemini 호출은 사용자의 API 키가 필요하므로 여기서는 키를 사용하지 않고 MockTransport로 요청 구조를 검사했습니다.
+실제 Google 서버 호출은 사용자의 Gemini API 키가 없으므로 실행하지 않았습니다.
