@@ -1,8 +1,5 @@
-MEDI v0.10.1 Gemini connection fix patch
-Changed:
-- app/config.py
+MEDI_V103_SYMPTOM_HIGHLIGHT_PATCH
 - app/provider.py
-- app/main.py
 - static/app.js
-- env.example
-- render.yaml
+- static/app.css
+- README_KO.md
