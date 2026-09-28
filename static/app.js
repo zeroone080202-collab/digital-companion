@@ -138,7 +138,8 @@ $('question').addEventListener('paste',async e=>{
 function renderAttachments(){$('attachments').replaceChildren();state.images.forEach((im,i)=>{const card=el('div','attachment'),img=el('img');img.src=im.data_url;img.alt=T.image;const inf=el('div','attachment-info');inf.append(el('span','attachment-name',im.name),el('small','attachment-kind','첨부 이미지'));const del=el('button','','\u00d7');del.type='button';del.setAttribute('aria-label',T.delete+' '+im.name);del.onclick=()=>{state.images.splice(i,1);renderAttachments();};card.append(img,inf,del);$('attachments').append(card);});}
 function setBusy(b){state.busy=b;$('pending').hidden=!b;$('sendButton').hidden=b;$('stopButton').hidden=!b;for(const id of ['question','mode','attachButton','newChat','welcomeImage'])$(id).disabled=b;statusUI();}
 function scrollBottom(){requestAnimationFrame(()=>$('scrollArea').scrollTo({top:$('scrollArea').scrollHeight,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));}
-function answerText(a){return a.paragraphs.map(p=>(p.heading?p.heading+'\n':'')+p.text).join('\n\n')+(a.image_observations.length?'\n\n'+a.image_observations.join('\n'):'')+'\n\n'+a.limitations;}
+function stripEmphasis(s){return String(s||'').replace(/\*\*(.+?)\*\*/g,'$1');}
+function answerText(a){return a.paragraphs.map(p=>(p.heading?p.heading+'\n':'')+stripEmphasis(p.text)).join('\n\n')+(a.image_observations.length?'\n\n'+a.image_observations.join('\n'):'')+'\n\n'+a.limitations;}
 const VISUAL_AIDS=[
  {keys:['인공심폐기','인공심폐','심폐우회','체외순환','heart-lung','cardiopulmonary bypass'],src:'/static/visuals/heart_lung_machine.svg',title:'인공심폐기는 이렇게 도와줘요',caption:'심장수술 중 혈액이 저장통·펌프·산화기를 거쳐 다시 몸으로 돌아오는 흐름을 표시했어요.'},
  {keys:['무릎','슬관절','슬개','반월상','십자인대','knee'],src:'/static/visuals/knee_detail.png',title:'무릎은 이런 구조예요',caption:'대퇴골·정강뼈·무릎뼈·연골·반월상연골·십자인대의 위치를 함께 표시했어요.'},
@@ -184,16 +185,47 @@ function retryImageTurn(t){
  scrollBottom();
  toast('같은 이미지와 질문을 다시 준비했습니다. 전송하면 재분석합니다.');
 }
+function appendRich(node,line){
+ const segs=String(line).split(/\*\*(.+?)\*\*/g);
+ segs.forEach((seg,i)=>{if(!seg)return;if(i%2===1)node.append(el('strong','',seg));else node.append(document.createTextNode(seg));});
+}
+function appendList(container,items){
+ const list=el('ul','answer-list');
+ for(const item of items){const li=el('li');appendRich(li,item);list.append(li);}
+ container.append(list);
+}
+// Turns a MEDI paragraph's plain text into real paragraphs/lists instead of one
+// pre-wrapped blob, so lines the model starts with "• " show up as an actual
+// bullet list and **word** becomes real emphasis. Improves on-screen readability
+// without requiring a markdown renderer.
+function renderAnswerBody(container,text){
+ const lines=String(text||'').split('\n');
+ let list=null,para=null;
+ for(const raw of lines){
+  const line=raw.trim();
+  if(!line){list=null;para=null;continue;}
+  if(/^[•\-]\s+/.test(line)){
+   para=null;
+   if(!list){list=el('ul','answer-list');container.append(list);}
+   const li=el('li');appendRich(li,line.replace(/^[•\-]\s+/,''));list.append(li);
+  }else{
+   list=null;
+   if(!para){para=el('p');container.append(para);}else para.append(el('br'));
+   appendRich(para,line);
+  }
+ }
+}
 function renderTurn(t){
  const turn=el('article','turn');turn.dataset.id=t.id;turn.append(el('div','user-message',t.question));if(t.previewImages?.length){const imgs=el('div','user-images');for(const src of t.previewImages){const img=el('img');img.src=src;img.alt=T.image;imgs.append(img);}turn.append(imgs);}if(t.had_images&&!t.previewImages?.length)turn.append(el('p','source-meta','\uc774\ubbf8\uc9c0 \ucca8\ubd80 \uc774\ub825\uc774 \uc788\uc2b5\ub2c8\ub2e4. \uc6d0\ubcf8\uc740 \uc800\uc7a5\ud558\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4.'));
  if(t.response){const r=t.response,a=r.answer,assistant=el('div','assistant-message'),label=el('div','assistant-label'),mark=el('img');mark.src='/static/mark.svg';mark.alt='';label.append(mark,el('span','','MEDI'));
  if(a.urgency==='emergency')label.append(el('span','evidence-badge emergency','즉시 도움 안내'));
  assistant.append(label);
  const visual=pickVisualAid(t.question,a,t.had_images);
- a.paragraphs.forEach((p,index)=>{const heading=(p.heading||'').trim();let cls='answer-paragraph'+(index===0?' answer-summary':'');if(/내 증상과 특히 관련된 부분|특히 관련된 부분|핵심 확인|내 상태에서 중요한 점|내 증상에서 중요한 점/.test(heading))cls+=' answer-highlight';if(/이 경우는 빨리 확인하세요|빨리 진료|즉시|응급|위험 신호/.test(heading))cls+=' answer-alert';const block=el('div',cls);if(heading)block.append(el('h3','',heading));block.append(el('p','',p.text));assistant.append(block);if(index===0&&visual)assistant.append(makeVisualAid(visual));});
+ a.paragraphs.forEach((p,index)=>{const heading=(p.heading||'').trim();let cls='answer-paragraph'+(index===0?' answer-summary':'');if(/내 증상과 특히 관련된 부분|특히 관련된 부분|핵심 확인|내 상태에서 중요한 점|내 증상에서 중요한 점/.test(heading))cls+=' answer-highlight';if(/이 경우는 빨리 확인하세요|빨리 진료|즉시|응급|위험 신호/.test(heading))cls+=' answer-alert';const block=el('div',cls);if(heading)block.append(el('h3','',heading));renderAnswerBody(block,p.text);assistant.append(block);if(index===0&&visual)assistant.append(makeVisualAid(visual));});
  if(a.image_observations.length){
   const obs=el('div',r.image_analysis_ok?'answer-paragraph image-analysis-ok':'answer-paragraph image-analysis-warning');
-  obs.append(el('h3','',r.image_analysis_ok?T.observations:'이미지 분석 연결 안내'),el('p','',a.image_observations.join('\n')));
+  obs.append(el('h3','',r.image_analysis_ok?T.observations:'이미지 분석 연결 안내'));
+  appendList(obs,a.image_observations);
   if(t.had_images&&!r.image_analysis_ok&&r.retryable&&t.previewImages?.length){const retry=el('button','retry-analysis','이미지 다시 분석');retry.type='button';retry.onclick=()=>retryImageTurn(t);obs.append(retry);}
   assistant.append(obs);
  }
